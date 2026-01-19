@@ -1,0 +1,12 @@
+functions-framework
+cloudevents
+firebase-admin
+google-cloud-firestore==2.*
+google-api-python-client==2.*
+google-auth==2.*
+google-auth-httplib2==0.2.*
+pyap==0.3.*
+python-whois==0.8.*
+dnspython==2.*
+google-cloud-aiplatform>=1.50.0
+

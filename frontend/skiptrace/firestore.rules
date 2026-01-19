@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check job ownership
+    function isJobOwner(jobId) {
+      return request.auth != null && 
+             get(/databases/$(database)/documents/jobs/$(jobId)).data.user_id == request.auth.uid;
+    }
+    
+    // Chat messages - ONLY collection affected by these rules
+    // Only accessible by job owner (user_id must match)
+    match /jobs/{jobId}/chat_messages/{messageId} {
+      allow read, write: if isJobOwner(jobId);
+    }
+    
+    // Allow read access to jobs for authenticated users (needed for ownership check in isJobOwner function)
+    // Note: Backend functions use Admin SDK which bypasses these rules, so writes from backend are unaffected
+    match /jobs/{jobId} {
+      allow read: if request.auth != null;
+      // No write rule - frontend should not write to jobs directly (goes through API Gateway)
+      // Backend writes via Admin SDK bypass rules, so this doesn't affect them
+    }
+    
+    // All other collections/paths are unaffected by these rules
+    // If other collections exist, they will use their existing rules or default deny
+    // Backend functions using Admin SDK bypass all rules
+  }
+}

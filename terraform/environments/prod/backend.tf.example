@@ -1,0 +1,13 @@
+# =============================================================================
+# Terraform Backend Configuration - Production (Example)
+# =============================================================================
+# Copy this file to backend.tf and update the bucket name.
+# Use a separate state file/bucket from development for production.
+# =============================================================================
+
+terraform {
+  backend "gcs" {
+    bucket = "YOUR_PROJECT_ID-terraform-state"
+    prefix = "prod"
+  }
+}

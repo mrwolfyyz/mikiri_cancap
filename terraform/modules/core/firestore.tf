@@ -1,0 +1,63 @@
+# =============================================================================
+# Firestore Database
+# =============================================================================
+# Creates the Firestore database for storing job data and chat messages.
+# Firestore security rules must be deployed separately via Firebase CLI.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Firestore Database
+# -----------------------------------------------------------------------------
+
+resource "google_firestore_database" "default" {
+  project     = var.project_id
+  name        = "(default)"
+  location_id = var.region
+  type        = "FIRESTORE_NATIVE"
+
+  # Enable point-in-time recovery for production
+  point_in_time_recovery_enablement = var.environment == "prod" ? "POINT_IN_TIME_RECOVERY_ENABLED" : "POINT_IN_TIME_RECOVERY_DISABLED"
+
+  # Deletion protection for production
+  delete_protection_state = var.environment == "prod" ? "DELETE_PROTECTION_ENABLED" : "DELETE_PROTECTION_DISABLED"
+
+  depends_on = [
+    google_project_service.apis["firestore.googleapis.com"],
+    time_sleep.api_propagation
+  ]
+}
+
+# -----------------------------------------------------------------------------
+# Firestore Indexes (if needed)
+# -----------------------------------------------------------------------------
+# Add composite indexes here if required for queries
+# Example:
+# resource "google_firestore_index" "jobs_by_user" {
+#   project    = var.project_id
+#   database   = google_firestore_database.default.name
+#   collection = "jobs"
+#
+#   fields {
+#     field_path = "user_id"
+#     order      = "ASCENDING"
+#   }
+#
+#   fields {
+#     field_path = "created_at"
+#     order      = "DESCENDING"
+#   }
+# }
+
+# -----------------------------------------------------------------------------
+# NOTE: Firestore Security Rules
+# -----------------------------------------------------------------------------
+# Firestore security rules cannot be deployed via Terraform directly.
+# Rules must be deployed using Firebase CLI after terraform apply:
+#
+#   cd frontend/skiptrace
+#   firebase deploy --only firestore:rules --project=$PROJECT_ID
+#
+# Rules files are located at:
+#   - frontend/skiptrace/firestore.rules
+#   - frontend/origination/firestore.rules
+# -----------------------------------------------------------------------------

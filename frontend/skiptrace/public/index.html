@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skip Trace Intelligence Platform</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <div class="logo">
+                <h1>Skip Trace Intelligence Platform</h1>
+                <p class="subtitle">Specialized for Skip Tracing</p>
+            </div>
+            <button id="darkModeToggle" class="dark-mode-toggle" aria-label="Toggle dark mode">
+                <span class="icon-light">☀️</span>
+                <span class="icon-dark">🌙</span>
+            </button>
+        </header>
+
+        <!-- Tab Navigation -->
+        <nav class="tabs">
+            <button class="tab-button active" data-tab="main">Investigation</button>
+            <button class="tab-button" data-tab="setup">Setup & Help</button>
+        </nav>
+
+        <!-- Main Investigation Tab -->
+        <div id="main-tab" class="tab-content active">
+            <div class="hero">
+                <h2>Deep intelligence for skip tracing. Fast.</h2>
+            </div>
+
+            <!-- Configuration Warning -->
+            <div id="driveWarning" class="warning-banner" style="display: none;">
+                ⚠️ Google Drive not configured. Go to <a href="#" id="setupLink">Setup</a> to add your Drive folder.
+            </div>
+
+            <!-- Investigation Form -->
+            <form id="investigationForm" class="investigation-form">
+                <div class="form-group">
+                    <label for="fullName">Full Name *</label>
+                    <input 
+                        type="text" 
+                        id="fullName" 
+                        name="fullName" 
+                        placeholder="e.g., Jacob Kinross"
+                        required
+                        autocomplete="name"
+                    >
+                    <span class="error-message" id="fullNameError"></span>
+                </div>
+
+                <div class="form-group">
+                    <label for="city">Last Known City *</label>
+                    <input 
+                        type="text" 
+                        id="city" 
+                        name="city" 
+                        placeholder="e.g., Toronto"
+                        required
+                    >
+                    <span class="helper-text">Where they were last located</span>
+                    <span class="error-message" id="cityError"></span>
+                </div>
+
+                <div class="form-group">
+                    <label for="email">Email (optional)</label>
+                    <input 
+                        type="email" 
+                        id="email" 
+                        name="email" 
+                        placeholder="jacob.kinross@gmail.com"
+                        autocomplete="email"
+                    >
+                    <span class="helper-text">Auto-generated from name if left blank</span>
+                    <span class="error-message" id="emailError"></span>
+                </div>
+
+                <div class="form-group">
+                    <label for="companyName">Company Name (optional)</label>
+                    <input 
+                        type="text" 
+                        id="companyName" 
+                        name="companyName" 
+                        placeholder="e.g., Acme Corporation"
+                        autocomplete="organization"
+                    >
+                    <span class="helper-text">Optional: Company name for domain verification</span>
+                    <span class="error-message" id="companyNameError"></span>
+                </div>
+
+                <button type="submit" id="submitButton" class="submit-button">
+                    Generate Skip Trace Report
+                </button>
+            </form>
+
+            <!-- Progress Display -->
+            <div id="progressSection" class="progress-section" style="display: none;">
+                <div class="progress-content">
+                    <div class="spinner"></div>
+                    <h3 id="progressStatus">Queuing investigation...</h3>
+                    <p class="progress-time">Usually takes 60-90 seconds</p>
+                    <p class="job-id-display">Job ID: <span id="jobIdDisplay"></span></p>
+                </div>
+            </div>
+
+            <!-- Results Display -->
+            <div id="resultsSection" class="results-section" style="display: none;">
+                <div class="results-content">
+                    <div class="success-icon">✓</div>
+                    <h3>Skip Trace Report Complete</h3>
+                    
+                    <div id="resultSummary" class="result-summary"></div>
+
+                    <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+                        <a id="viewDriveButton" href="#" target="_blank" class="view-drive-button">
+                            View Reports in Google Drive
+                        </a>
+
+                        <a id="openChatButton" href="#" target="_blank" class="view-drive-button" style="display: none;">
+                            Open Chat
+                        </a>
+                    </div>
+
+                    <button id="newReportButton" class="new-report-button">
+                        Generate Another Report
+                    </button>
+                </div>
+            </div>
+
+            <!-- Error Display -->
+            <div id="errorSection" class="error-section" style="display: none;">
+                <div class="error-content">
+                    <div class="error-icon">⚠️</div>
+                    <h3>Investigation Failed</h3>
+                    <p id="errorMessage"></p>
+                    <button id="retryButton" class="retry-button">Try Again</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Setup & Help Tab -->
+        <div id="setup-tab" class="tab-content">
+            <h2>Setup & Configuration</h2>
+
+            <!-- Google Drive Section -->
+            <section class="setup-section">
+                <h3>📁 Step 1: Configure Google Shared Drive</h3>
+                <p class="section-description">
+                    Reports are automatically saved to a Google Shared Drive folder. Follow these steps to set it up:
+                </p>
+
+                <div class="warning-box" style="margin-bottom: 24px;">
+                    <strong>⚠️ IMPORTANT:</strong> You must use a <strong>Shared Drive (Team Drive)</strong>, not a personal "My Drive" folder. The service account only has access to Shared Drives.
+                </div>
+
+                <details class="collapsible" open>
+                    <summary>1.1 Create or choose a Shared Drive folder</summary>
+                    <div class="instruction-steps">
+                        <ol>
+                            <li>
+                                <strong>Go to Google Drive:</strong> Visit 
+                                <a href="https://drive.google.com" target="_blank">drive.google.com</a>
+                            </li>
+                            <li>
+                                <strong>Navigate to Shared Drives</strong>
+                                <ul>
+                                    <li>In the left sidebar, click <strong>Shared drives</strong></li>
+                                    <li>If you don't see this option, you may need a Google Workspace account</li>
+                                </ul>
+                            </li>
+                            <li>
+                                <strong>Create or choose a folder inside a Shared Drive:</strong>
+                                <ul>
+                                    <li>Open an existing Shared Drive</li>
+                                    <li>Click <strong>+ New</strong> → <strong>New folder</strong></li>
+                                    <li>Name it something like "Skip Trace Reports" or "Investigations"</li>
+                                </ul>
+                            </li>
+                            <li>
+                                <strong>Open the folder</strong> by double-clicking it
+                            </li>
+                            <li>
+                                <strong>Copy the URL</strong> from your browser's address bar
+                                <ul>
+                                    <li>It should look like: <code>https://drive.google.com/drive/folders/1abc...</code></li>
+                                    <li>The long string after <code>/folders/</code> is your folder ID</li>
+                                </ul>
+                            </li>
+                        </ol>
+                        
+                        <div class="warning-box">
+                            <strong>⚠️ Personal Drive won't work!</strong> The folder MUST be inside a Shared Drive. Personal "My Drive" folders are not accessible to the service account.
+                        </div>
+                    </div>
+                </details>
+
+                <details class="collapsible" open>
+                    <summary>1.2 Share the folder with the service account (CRITICAL)</summary>
+                    <div class="instruction-steps">
+                        <div class="warning-box">
+                            <strong>⚠️ IMPORTANT:</strong> Without this step, reports cannot be uploaded to your Drive!
+                        </div>
+                        
+                        <ol>
+                            <li>
+                                <strong>Right-click the folder</strong> in Google Drive (the folder you created in the Shared Drive)
+                            </li>
+                            <li>
+                                Click <strong>Share</strong> (or click the share icon)
+                            </li>
+                            <li>
+                                In the "Add people and groups" field, paste this email:
+                                <div id="serviceAccountEmail" style="background: var(--bg-primary); padding: 12px; border-radius: 4px; margin: 8px 0; font-family: monospace; font-size: 0.9em; word-break: break-all;">
+                                    Loading...
+                                </div>
+                            </li>
+                            <li>
+                                Set the permission to <strong>Content manager</strong> or <strong>Manager</strong>
+                                <ul>
+                                    <li>Don't use "Viewer" or "Commenter" - it needs write access!</li>
+                                </ul>
+                            </li>
+                            <li>
+                                <strong>Uncheck "Notify people"</strong> (optional - it's just a service account)
+                            </li>
+                            <li>
+                                Click <strong>Done</strong>
+                            </li>
+                        </ol>
+                        
+                        <div class="tip-box">
+                            <strong>💡 What's this?</strong> This is the service account that runs the backend. Giving it access lets it automatically upload reports to your Shared Drive folder.
+                        </div>
+                    </div>
+                </details>
+
+                <details class="collapsible" open>
+                    <summary>1.3 Save your folder configuration</summary>
+                    <div class="instruction-steps">
+                        <p>Now paste your Shared Drive folder URL below and click Save Configuration:</p>
+                    </div>
+                </details>
+
+                <div class="drive-config">
+                    <div class="form-group">
+                        <label for="driveUrl">Google Shared Drive Folder URL</label>
+                        <input 
+                            type="url" 
+                            id="driveUrl" 
+                            placeholder="https://drive.google.com/drive/folders/1abc..."
+                        >
+                        <span class="helper-text">
+                            Paste the full URL from your browser's address bar (must be from a Shared Drive)
+                        </span>
+                    </div>
+
+                    <div class="button-group">
+                        <button id="saveDriveButton" class="primary-button">Save Configuration</button>
+                        <button id="clearDriveButton" class="secondary-button">Clear</button>
+                    </div>
+
+                    <div id="driveStatus" class="status-message" style="display: none;"></div>
+                </div>
+
+                <div class="folder-structure">
+                    <p><strong>How reports are organized:</strong></p>
+                    <pre>YourSharedDriveFolder/
+  ├── John_Doe_abc123/
+  │   ├── Identity___John_Doe.md
+  │   └── Skiptrace___John_Doe.md
+  └── Jane_Smith_def456/
+      ├── Identity___Jane_Smith.md
+      └── Skiptrace___Jane_Smith.md</pre>
+                    <p class="helper-text">Each investigation creates a new subfolder with 2 markdown reports: Identity and Skip Trace Checklist</p>
+                </div>
+            </section>
+
+            <!-- Obsidian Integration -->
+            <section class="setup-section">
+                <h3>📝 Step 2: Set Up Obsidian (Optional)</h3>
+                <p class="section-description">
+                    Obsidian gives you a powerful way to view and link between skip trace reports. It's free and works great with Shared Drives.
+                    <div class="tip-box" style="margin-bottom: 20px;">
+                        <strong>🔍 Used by investigators:</strong> Obsidian is the go-to tool for investigative journalists, intelligence analysts, and skip tracers working complex cases.
+                    </div>
+                </p>
+
+                <details class="collapsible">
+                    <summary>2.1 Download & Install Obsidian</summary>
+                    <div class="instruction-steps">
+                        <ol>
+                            <li>Visit <a href="https://obsidian.md" target="_blank">obsidian.md</a></li>
+                            <li>Click <strong>Download</strong> for your operating system (Windows/Mac/Linux)</li>
+                            <li>Install the app (it's completely free - no account needed)</li>
+                        </ol>
+                    </div>
+                </details>
+
+                <details class="collapsible">
+                    <summary>2.2 Install Google Drive Desktop</summary>
+                    <div class="instruction-steps">
+                        <ol>
+                            <li>Visit <a href="https://www.google.com/drive/download/" target="_blank">google.com/drive/download</a></li>
+                            <li>Download <strong>Drive for desktop</strong> (not Backup and Sync)</li>
+                            <li>Install and sign in with your Google account</li>
+                            <li>
+                                After installation, Shared Drives will appear in your file explorer:
+                                <ul>
+                                    <li><strong>Mac:</strong> <code>/Volumes/GoogleDrive/Shared drives/YourSharedDrive</code></li>
+                                    <li><strong>Windows:</strong> <code>G:\Shared drives\YourSharedDrive</code></li>
+                                    <li><strong>Linux:</strong> Follow Google's setup for your distro</li>
+                                </ul>
+                            </li>
+                        </ol>
+                        
+                        <div class="tip-box">
+                            <strong>💡 Tip:</strong> Drive Desktop keeps files synced in real-time. Changes appear instantly!
+                        </div>
+                    </div>
+                </details>
+
+                <details class="collapsible">
+                    <summary>2.3 Configure Obsidian Vault</summary>
+                    <div class="instruction-steps">
+                        <ol>
+                            <li>Open <strong>Obsidian</strong></li>
+                            <li>Click <strong>Open folder as vault</strong> (or create a new vault)</li>
+                            <li>
+                                Navigate to your Shared Drive folder:
+                                <ul>
+                                    <li><strong>Mac:</strong> <code>/Volumes/GoogleDrive/Shared drives/YourSharedDrive/Skip Trace Reports</code></li>
+                                    <li><strong>Windows:</strong> <code>G:\Shared drives\YourSharedDrive\Skip Trace Reports</code></li>
+                                </ul>
+                            </li>
+                            <li>Click <strong>Open</strong></li>
+                            <li>When you run investigations, the markdown files will appear automatically in Obsidian!</li>
+                        </ol>
+                        
+                        <div class="warning-box">
+                            <strong>⚠️ Important:</strong> The folder path must be inside a synced Shared Drive for this to work.
+                        </div>
+                    </div>
+                </details>
+
+                <details class="collapsible">
+                    <summary>2.4 What You Get in Obsidian</summary>
+                    <div class="instruction-steps">
+                        <p>Each skip trace investigation creates 2 interconnected markdown files:</p>
+                        <ul>
+                            <li><strong>Identity Report</strong> - Contact details, social profiles, data breach history, addresses, phone numbers</li>
+                            <li><strong>Skip Trace Checklist</strong> - Operational checklist with handles to investigate, addresses to verify, phone numbers to check</li>
+                        </ul>
+                        <p>Files use <strong>internal links</strong> (like <code>[[Identity___John_Doe]]</code>) that you can click to jump between reports.</p>
+                        
+                        <div class="tip-box">
+                            <strong>💡 Pro tip:</strong> Use Obsidian's graph view to visualize connections between skip trace targets!
+                        </div>
+                    </div>
+                </details>
+            </section>
+
+            <!-- Troubleshooting -->
+            <section class="setup-section">
+                <h3>🔧 Troubleshooting</h3>
+
+                <details class="collapsible">
+                    <summary>Reports aren't appearing in my Drive folder</summary>
+                    <div class="instruction-steps">
+                        <p><strong>Check these common issues:</strong></p>
+                        <ol>
+                            <li>
+                                <strong>Are you using a Shared Drive?</strong>
+                                <ul>
+                                    <li>Personal "My Drive" folders won't work!</li>
+                                    <li>The folder MUST be inside a Shared Drive (Team Drive)</li>
+                                    <li>Check that the folder is in the "Shared drives" section, not "My Drive"</li>
+                                </ul>
+                            </li>
+                            <li>
+                                <strong>Did you share the folder with the service account?</strong>
+                                <ul>
+                                    <li>Go back to Step 1.2 above - this is the #1 reason reports don't appear!</li>
+                                    <li>Make sure <code id="serviceAccountEmailCode">functions-sa@YOUR_PROJECT_ID.iam.gserviceaccount.com</code> has "Content manager" or "Manager" access</li>
+                                    <li>Right-click the folder → "Share" → Check "Manage access" to verify</li>
+                                </ul>
+                            </li>
+                            <li>
+                                <strong>Verify your folder URL is correct</strong>
+                                <ul>
+                                    <li>Go back to Step 1.1 and double-check the URL</li>
+                                    <li>Make sure you copied the entire URL including the long folder ID</li>
+                                    <li>Try clicking "View Reports in Google Drive" after a completed investigation</li>
+                                </ul>
+                            </li>
+                            <li>
+                                <strong>Wait a moment</strong>
+                                <ul>
+                                    <li>Drive can take 5-10 seconds to show new files</li>
+                                    <li>Try refreshing your Drive browser tab</li>
+                                </ul>
+                            </li>
+                            <li>
+                                <strong>Check investigation completed successfully</strong>
+                                <ul>
+                                    <li>Did you see "Skip Trace Report Complete" message?</li>
+                                    <li>If investigation failed, reports won't be generated</li>
+                                </ul>
+                            </li>
+                        </ol>
+                        
+                        <div class="warning-box">
+                            <strong>Still not working?</strong> Email brad@bbak.ai with your job ID (shown during investigation)
+                        </div>
+                    </div>
+                </details>
+
+                <details class="collapsible">
+                    <summary>Files not syncing to Obsidian</summary>
+                    <div class="instruction-steps">
+                        <p><strong>Try these fixes:</strong></p>
+                        <ol>
+                            <li>
+                                <strong>Verify Google Drive Desktop is running</strong>
+                                <ul>
+                                    <li>Look for the Drive icon in your system tray (Windows) or menu bar (Mac)</li>
+                                    <li>Click it and make sure it says "Synced" or "Up to date"</li>
+                                    <li>If it's paused, click Resume</li>
+                                </ul>
+                            </li>
+                            <li>
+                                <strong>Check Obsidian is pointed to the right folder</strong>
+                                <ul>
+                                    <li>In Obsidian, look at Settings → Files & Links</li>
+                                    <li>Verify the vault path is inside a synced Shared Drive</li>
+                                    <li>Example: <code>/Volumes/GoogleDrive/Shared drives/YourSharedDrive/Skip Trace Reports</code></li>
+                                </ul>
+                            </li>
+                            <li>
+                                <strong>Force a refresh</strong>
+                                <ul>
+                                    <li>In Obsidian, press Cmd+R (Mac) or Ctrl+R (Windows)</li>
+                                    <li>Or close and reopen Obsidian</li>
+                                </ul>
+                            </li>
+                            <li>
+                                <strong>Check sync status in Drive Desktop</strong>
+                                <ul>
+                                    <li>Right-click the Drive icon → Preferences</li>
+                                    <li>Make sure your Shared Drive is enabled for syncing</li>
+                                </ul>
+                            </li>
+                        </ol>
+                    </div>
+                </details>
+
+                <details class="collapsible">
+                    <summary>Investigation is taking too long</summary>
+                    <div class="instruction-steps">
+                        <p><strong>Normal timing:</strong></p>
+                        <ul>
+                            <li>Most investigations: <strong>60-90 seconds</strong></li>
+                            <li>Complex cases: <strong>Up to 2 minutes</strong></li>
+                        </ul>
+                        
+                        <p><strong>If it's stuck for 3+ minutes:</strong></p>
+                        <ol>
+                            <li>Check your internet connection</li>
+                            <li>Try refreshing the page and submitting again</li>
+                            <li>If it keeps failing, email brad@bbak.ai with the job ID</li>
+                        </ol>
+                        
+                        <div class="tip-box">
+                            <strong>💡 Tip:</strong> The job ID is shown during investigation - screenshot it if reporting issues!
+                        </div>
+                    </div>
+                </details>
+
+                <details class="collapsible">
+                    <summary>Error: "Invalid Drive folder URL"</summary>
+                    <div class="instruction-steps">
+                        <p><strong>Your URL must look like one of these:</strong></p>
+                        <ul>
+                            <li><code>https://drive.google.com/drive/folders/1abc...</code></li>
+                            <li><code>https://drive.google.com/drive/u/0/folders/1abc...</code></li>
+                        </ul>
+                        
+                        <p><strong>Common mistakes:</strong></p>
+                        <ul>
+                            <li>❌ Pasting a file URL instead of folder URL</li>
+                            <li>❌ Pasting a shared link that has extra parameters</li>
+                            <li>❌ Missing the folder ID (the long string after /folders/)</li>
+                            <li>❌ Using a personal "My Drive" folder instead of a Shared Drive</li>
+                        </ul>
+                        
+                        <p><strong>Fix:</strong></p>
+                        <ol>
+                            <li>Go back to Step 1.1 above</li>
+                            <li>Make sure you're in a Shared Drive, not "My Drive"</li>
+                            <li>Make sure you're copying from the address bar (not a share link)</li>
+                            <li>Make sure you've opened the folder first</li>
+                        </ol>
+                    </div>
+                </details>
+
+                <details class="collapsible">
+                    <summary>I don't have access to Shared Drives</summary>
+                    <div class="instruction-steps">
+                        <div class="warning-box">
+                            <strong>⚠️ Shared Drives require Google Workspace</strong>
+                        </div>
+                        
+                        <p>Shared Drives (formerly Team Drives) are only available with:</p>
+                        <ul>
+                            <li>Google Workspace (Business Starter, Business Standard, Business Plus, Enterprise)</li>
+                            <li>Google Workspace for Education</li>
+                            <li>Google Workspace for Nonprofits</li>
+                        </ul>
+                        
+                        <p><strong>If you only have a personal Gmail account:</strong></p>
+                        <ul>
+                            <li>You'll need to upgrade to Google Workspace (~$6-18/user/month)</li>
+                            <li>Or ask your IT admin to create a Shared Drive for you</li>
+                            <li>Visit <a href="https://workspace.google.com" target="_blank">workspace.google.com</a> to upgrade</li>
+                        </ul>
+                    </div>
+                </details>
+            </section>
+
+            <!-- Help & Feedback -->
+            <section class="setup-section">
+                <h3>💬 Help & Feedback</h3>
+                <p>
+                    This is an early preview. Found a bug? Have a feature request? Can't get something working?
+                </p>
+                <p class="contact-info">
+                    <strong>Email:</strong> <a href="mailto:brad@bbak.ai">brad@bbak.ai</a>
+                </p>
+                <p class="help-note">
+                    I read every email within 24 hours. Good news, bad news, weird edge cases - send it all. 
+                    Include screenshots if something's broken, and I'll get you sorted out.
+                </p>
+            </section>
+        </div>
+
+        <!-- Footer -->
+        <footer>
+            <p>&copy; 2025 BounceBack AI. Built for CanCap.</p>
+        </footer>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

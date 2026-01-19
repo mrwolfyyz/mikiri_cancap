@@ -1,0 +1,12 @@
+# =============================================================================
+# Production Environment Variables (Example)
+# =============================================================================
+# Copy this file to terraform.tfvars and update the values.
+# IMPORTANT: Never commit terraform.tfvars to version control!
+# =============================================================================
+
+project_id = "your-production-project-id"
+region     = "northamerica-northeast1"
+
+# IMPORTANT: Restrict CORS to specific domains in production
+cors_allowed_origins = "https://YOUR_PROJECT_ID-skiptrace.web.app,https://YOUR_PROJECT_ID-origination.web.app"

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Annotations>
+  <Annotation about="instagram.com/*" score="1"><Label name="_include_"/></Annotation>
+  <Annotation about="twitter.com/*" score="1"><Label name="_include_"/></Annotation>
+  <Annotation about="x.com/*" score="1"><Label name="_include_"/></Annotation>
+  <Annotation about="facebook.com/*" score="1"><Label name="_include_"/></Annotation>
+  <Annotation about="github.com/*" score="1"><Label name="_include_"/></Annotation>
+  <Annotation about="tiktok.com/*" score="1"><Label name="_include_"/></Annotation>
+  <Annotation about="linkedin.com/in/*" score="1"><Label name="_include_"/></Annotation>
+  <Annotation about="gravatar.com/*" score="1"><Label name="_include_"/></Annotation>
+  <Annotation about="chess.com/member/*" score="1"><Label name="_include_"/></Annotation>
+  <Annotation about="theknot.com/*" score="1"><Label name="_include_"/></Annotation>
+  <Annotation about="zola.com/*" score="1"><Label name="_include_"/></Annotation>
+</Annotations>
+
+
+
+
+
+
+
+

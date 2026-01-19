@@ -1,0 +1,9 @@
+# =============================================================================
+# Development Environment Variables (Example)
+# =============================================================================
+# Copy this file to terraform.tfvars and update the values before running
+# terraform apply.
+# =============================================================================
+
+project_id = "your-gcp-project-id"
+region     = "northamerica-northeast1"
