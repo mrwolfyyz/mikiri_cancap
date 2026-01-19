@@ -6,6 +6,8 @@ This directory contains documentation and configuration information for all Prog
 
 This repository uses 6 unique Google Programmable Search Engines (PSEs) to perform various types of web searches. Since XML export functionality is currently broken in the Google PSE control panel, all PSEs must be configured manually using the documentation in this directory.
 
+**Important**: The CX IDs shown in this documentation are from the original Mikiri deployment. When you create new PSEs, Google will assign different CX IDs. Use the CX IDs that Google generates for your PSEs in your environment variables.
+
 ## Quick Start
 
 1. **Review the Master Reference**: See [PSE_CONFIGURATIONS.md](PSE_CONFIGURATIONS.md) for a complete overview of all PSEs and their mappings.
@@ -22,24 +24,38 @@ This repository uses 6 unique Google Programmable Search Engines (PSEs) to perfo
 
 ## Prerequisites
 
-Before setting up PSEs, ensure you have:
+Before setting up PSEs, complete these steps:
 
-1. **Google Cloud Project** with Custom Search API enabled
-2. **Google Custom Search API Key** - Create credentials in [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-3. **Access to Google PSE Control Panel** - [https://programmablesearchengine.google.com/](https://programmablesearchengine.google.com/)
-4. **Understanding of your deployment environment** - Know where to set environment variables/secrets
+### 1. Enable Custom Search API
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Select your project (or create a new one)
+3. Navigate to **APIs & Services** → **Library**
+4. Search for "Custom Search API"
+5. Click on "Custom Search API" and click **Enable**
+
+### 2. Create Google Custom Search API Key
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), navigate to **APIs & Services** → **Credentials**
+2. Click **Create Credentials** → **API Key**
+3. Copy the API key immediately and save it securely
+4. (Recommended) Click **Restrict Key** to add security restrictions:
+   - Under "API restrictions", select "Restrict key"
+   - Select "Custom Search API" from the dropdown
+   - Click **Save**
+5. Save this API key as `GOOGLE_SEARCH_API_KEY` in your environment/secrets
+
+### 3. Access to Google PSE Control Panel
+
+Ensure you can access [https://programmablesearchengine.google.com/](https://programmablesearchengine.google.com/)
+
+### 4. Deployment Environment
+
+Know where to set environment variables/secrets in your deployment system (GCP Secret Manager, environment variables, etc.)
 
 ## Setup Process
 
-### Step 1: Create Google Custom Search API Key
-
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Navigate to **APIs & Services** → **Credentials**
-3. Click **Create Credentials** → **API Key**
-4. Restrict the API key to **Custom Search API** (recommended)
-5. Save the API key as `GOOGLE_SEARCH_API_KEY` in your environment/secrets
-
-### Step 2: Create Each PSE
+### Step 1: Create Each PSE
 
 For each PSE you need to create:
 
@@ -54,14 +70,15 @@ For each PSE you need to create:
 
 4. **Save and Copy CX ID**:
    - After creating the PSE, copy the "Search engine ID" (CX value)
-   - Verify it matches the expected CX ID in the documentation (if recreating the exact configuration)
+   - The CX ID will be different from what's documented (Google generates a new ID for each PSE)
    - Save the CX ID for environment variable configuration
+   - **Important**: When creating PRECISION_PSE_CX, save the same CX ID for both `PRECISION_PSE_CX` and `RECALL_PSE_CX_2` environment variables - they share the same PSE
 
 5. **Configure Query Enhancement** (if applicable):
    - For PSEs with query enhancement (REVIEWS_PSE_CX and COMPLAINTS_PSE_CX), configure synonyms under **Search Features** → **Query Enhancement**
    - See the individual PSE documentation for specific synonym lists
 
-### Step 3: Verify PSE Configuration
+### Step 2: Verify PSE Configuration
 
 After creating each PSE, verify:
 
@@ -71,7 +88,7 @@ After creating each PSE, verify:
 - ✅ Query enhancement synonyms are configured (if applicable)
 - ✅ CX ID is copied and saved
 
-### Step 4: Set Environment Variables
+### Step 3: Set Environment Variables
 
 Set the following environment variables (or secrets in your deployment system):
 
@@ -79,21 +96,24 @@ Set the following environment variables (or secrets in your deployment system):
 # Required for all searches
 GOOGLE_SEARCH_API_KEY=<your-api-key>
 
+# PSE CX IDs - use the CX IDs that Google generated for YOUR PSEs (not the values shown below)
+# The values below are from the original Mikiri deployment and are shown as reference only
+
 # Base search
-GOOGLE_SEARCH_CX=b345e1e90697640a5
+GOOGLE_SEARCH_CX=<your-cx-id>
 
 # Identity resolution PSEs
-PRECISION_PSE_CX=73bc98f068711495f
-RECALL_PSE_CX=a332dc1c537154367
-RECALL_PSE_CX_2=73bc98f068711495f  # Same as PRECISION_PSE_CX
-LINKEDIN_PSE_CX=03146b58fead44d18
+PRECISION_PSE_CX=<your-cx-id>
+RECALL_PSE_CX=<your-cx-id>
+RECALL_PSE_CX_2=<same-as-PRECISION_PSE_CX>  # IMPORTANT: Use the same CX ID as PRECISION_PSE_CX
+LINKEDIN_PSE_CX=<your-cx-id>
 
 # Address verification PSEs
-REVIEWS_PSE_CX=d5c9ade2080064150
-COMPLAINTS_PSE_CX=f55c8831c767349da
+REVIEWS_PSE_CX=<your-cx-id>
+COMPLAINTS_PSE_CX=<your-cx-id>
 ```
 
-**Important**: `RECALL_PSE_CX_2` should be set to the same value as `PRECISION_PSE_CX` (they use the same PSE).
+**Important**: `RECALL_PSE_CX_2` should be set to the same value as `PRECISION_PSE_CX` (they use the same PSE). Only create 6 PSEs total, not 7.
 
 ## Common Issues
 
@@ -102,12 +122,6 @@ COMPLAINTS_PSE_CX=f55c8831c767349da
 - **Check site restrictions**: Ensure site restrictions match the documentation exactly (including wildcards `*` and path patterns)
 - **Verify region**: All PSEs should be set to Canada region
 - **Check API key**: Verify `GOOGLE_SEARCH_API_KEY` is correctly set and has access to Custom Search API
-
-### PSE Configuration Doesn't Match Expected CX ID
-
-- **Expected behavior**: If you're recreating PSEs from scratch, the CX ID will be different. This is normal.
-- **Solution**: Use the CX ID that Google assigns when you create the PSE, and update your environment variables accordingly.
-- **Note**: The CX IDs in the documentation are from the original setup - new PSEs will have different IDs.
 
 ### Query Enhancement Not Working
 

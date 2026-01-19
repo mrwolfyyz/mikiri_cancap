@@ -14,7 +14,7 @@ This Programmable Search Engine (PSE) is configured for business complaint searc
 ## Environment Variable
 
 - **Variable Name**: `COMPLAINTS_PSE_CX`
-- **Usage**: Set this environment variable to `f55c8831c767349da` for all Cloud Functions that use this PSE
+- **Usage**: Set this environment variable to the CX ID that Google generated when you created this PSE
 
 ## Site Restrictions
 
@@ -66,8 +66,8 @@ When creating this PSE in Google PSE control panel:
 9. **Configure Query Enhancement** (under Search Features → Query Enhancement):
    - Add search term: `complaints`
    - Add synonyms: `issues`, `scam`, `fraud`, `lawsuit`, `investigation`
-10. Save the PSE and copy the Search Engine ID (CX value) - it should match `f55c8831c767349da` if recreating the exact configuration
-11. Set the `COMPLAINTS_PSE_CX` environment variable to this CX ID
+10. Save the PSE and copy the Search Engine ID (CX value) - Google will generate a new CX ID for your PSE
+11. Set the `COMPLAINTS_PSE_CX` environment variable to the CX ID that Google generated
 
 ## Notes
 

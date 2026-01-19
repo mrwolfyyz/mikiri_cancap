@@ -1,4 +1,23 @@
-# Loan Origination to Borrower Intelligence Chrome Extension
+# ⚠️ STATUS: Future Enhancement - Not Yet Production Ready
+
+**This Chrome extension is planned for future deployment after the core platform is validated in CanCap's environment.**
+
+The extension provides a quality-of-life feature for both CanCap teams:
+- **Origination team**: One-click data extraction from loan origination system → Origination Intelligence frontend
+- **Skip tracing team**: One-click data extraction from skip trace system → Skip Trace Intelligence frontend
+
+It will be configured once:
+- Core platform deployment is complete and stable
+- Initial user testing with both teams is successful
+- CanCap approves the integration workflow with their existing systems
+
+For current deployment, teams should use the web interfaces directly and manually enter borrower information:
+- Skip Trace Intelligence: `https://PROJECT_ID-skiptrace.web.app`
+- Origination Intelligence: `https://PROJECT_ID-origination.web.app`
+
+---
+
+# Chrome Extension for CanCap Intelligence Platforms
 
 This Chrome extension extracts loan application data from the mock loan origination page and opens the Borrower Intelligence Platform with pre-filled fields.
 

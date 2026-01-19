@@ -14,7 +14,7 @@ This Programmable Search Engine (PSE) provides unrestricted web search capabilit
 ## Environment Variable
 
 - **Variable Name**: `GOOGLE_SEARCH_CX`
-- **Usage**: Set this environment variable to `b345e1e90697640a5` for all Cloud Functions that use this PSE
+- **Usage**: Set this environment variable to the CX ID that Google generated when you created this PSE
 
 ## Site Restrictions
 
@@ -50,8 +50,8 @@ When creating this PSE in Google PSE control panel:
 6. Enable **Search the entire web**
 7. Disable "Region restricted results"
 8. **Do not add any site restrictions** - leave "Sites to search" empty
-9. Save the PSE and copy the Search Engine ID (CX value) - it should match `b345e1e90697640a5` if recreating the exact configuration
-10. Set the `GOOGLE_SEARCH_CX` environment variable to this CX ID
+9. Save the PSE and copy the Search Engine ID (CX value) - Google will generate a new CX ID for your PSE
+10. Set the `GOOGLE_SEARCH_CX` environment variable to the CX ID that Google generated
 
 ## Notes
 
