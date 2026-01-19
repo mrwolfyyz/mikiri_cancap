@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Loan Origination to Skip Trace Intelligence",
+  "version": "1.0.0",
+  "description": "Extracts loan application data and opens Skip Trace Intelligence Platform with pre-filled fields",
+  "permissions": [
+    "activeTab",
+    "tabs",
+    "scripting",
+    "notifications"
+  ],
+  "host_permissions": [
+    "http://localhost/*",
+    "https://*.web.app/*",
+    "https://*.firebaseapp.com/*"
+  ],
+  "action": {
+    "default_title": "Send to Skip Trace Intelligence",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/*/mock-loan-system/*",
+        "file:///*/mock-loan-system/*",
+        "http://*/mock-loan-system/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

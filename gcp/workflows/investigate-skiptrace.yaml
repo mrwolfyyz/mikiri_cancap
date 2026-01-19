@@ -1,0 +1,306 @@
+# BounceBack Skip Trace Investigation Workflow
+# This orchestrates the skip tracing investigation pipeline (simplified version)
+# Only runs identity resolution, domain enrichment, and address geocoding
+
+main:
+  params: [input]
+  steps:
+    - init:
+        assign:
+          - job_id: ${input.job_id}
+          - email: ${input.email}
+          - full_name: ${input.full_name}
+          - city: ${input.city}
+          - company_name: ${default(map.get(input, "company_name"), "")}
+          - project_id: "bounceback-demo"
+
+    - update_status_running:
+        call: googleapis.firestore.v1.projects.databases.documents.patch
+        args:
+          name: ${"projects/" + project_id + "/databases/(default)/documents/jobs/" + job_id}
+          updateMask:
+            fieldPaths: ["status", "started_at", "workflow_type"]
+          body:
+            fields:
+              status:
+                stringValue: "running"
+              started_at:
+                timestampValue: ${time.format(sys.now())}
+              workflow_type:
+                stringValue: "skiptrace"
+        result: update_result
+
+    # Company Domain Lookup (only if company_name provided)
+    - check_company_name:
+        switch:
+          - condition: ${company_name != ""}
+            steps:
+              - company_domain_lookup:
+                  try:
+                    call: http.post
+                    args:
+                      url: "https://company-domain-lookup-q7fmnugkyq-nn.a.run.app"
+                      auth:
+                        type: OIDC
+                      body:
+                        company_name: ${company_name}
+                        job_id: ${job_id}
+                      timeout: 60
+                    result: company_domain_result
+                  retry:
+                    max_attempts: 2
+                    interval: 2s
+                    max_interval: 30s
+                    multiplier: 2.0
+                  except:
+                    as: e
+                    assign:
+                      - company_domain_result: null
+
+    # Phase 1: Identity Resolution
+    - phase1_identity:
+        try:
+          call: http.post
+          args:
+            url: "https://phase1-identity-q7fmnugkyq-nn.a.run.app"
+            auth:
+              type: OIDC
+            body:
+              job_id: ${job_id}
+              email: ${email}
+              full_name: ${full_name}
+              city: ${city}
+              company_name: ${company_name}
+            timeout: 120
+          result: identity_result
+        retry:
+          max_attempts: 3
+          interval: 2s
+          max_interval: 60s
+          multiplier: 2.0
+        except:
+          as: e
+          raise: ${e}
+
+    # Initialize phase2 results and errors (skip trace only)
+    - init_phase2:
+        assign:
+          - domain_enrichment_result:
+              body: null
+          - geocoding_identity_result:
+              body: null
+          - phase2_errors:
+              domain_enrichment: null
+              geocoding_identity: null
+          # Extract company_domain from company_domain_lookup result if available
+          - company_domain: ${default(map.get(map.get(company_domain_result, "body"), "domain"), "")}
+
+    # Phase 2: Parallel execution of domain enrichment and identity geocoding
+    - phase2_parallel:
+        parallel:
+          shared: [identity_result, domain_enrichment_result, geocoding_identity_result, phase2_errors, company_domain]
+          branches:
+            - domain_enrichment_branch:
+                steps:
+                  - call_domain_enrichment:
+                      try:
+                        call: http.post
+                        args:
+                          url: "https://domain-enrichment-q7fmnugkyq-nn.a.run.app"
+                          auth:
+                            type: OIDC
+                          body:
+                            email: ${email}
+                            company_domain: ${company_domain}
+                          timeout: 60
+                        result: domain_enrichment_result
+                      retry:
+                        max_attempts: 3
+                        interval: 2s
+                        max_interval: 60s
+                        multiplier: 2.0
+                      except:
+                        as: e
+                        steps:
+                          - set_domain_enrichment_error:
+                              assign:
+                                - domain_enrichment_result:
+                                    body: null
+                                - phase2_errors.domain_enrichment: ${string(e.message)}
+
+            - geocoding_identity_branch:
+                steps:
+                  - call_geocoding_identity:
+                      try:
+                        call: http.post
+                        args:
+                          url: "https://address-geocoding-q7fmnugkyq-nn.a.run.app"
+                          auth:
+                            type: OIDC
+                          body:
+                            identity: ${identity_result.body}
+                            corporate: null
+                          timeout: 600
+                        result: geocoding_identity_result
+                      retry:
+                        max_attempts: 3
+                        interval: 2s
+                        max_interval: 60s
+                        multiplier: 2.0
+                      except:
+                        as: e
+                        steps:
+                          - set_geocoding_identity_error:
+                              assign:
+                                - geocoding_identity_result:
+                                    body: null
+                                - phase2_errors.geocoding_identity: ${string(e.message)}
+
+    # Build result structure directly (no aggregator needed)
+    - build_enrichment:
+        assign:
+          # Extract enrichment data safely
+          - empty_dict: {}
+          - domain_enrichment_body: ${default(map.get(domain_enrichment_result, "body"), empty_dict)}
+          - geocoding_identity_body: ${default(map.get(geocoding_identity_result, "body"), empty_dict)}
+          # Build enrichment object
+          - enrichment:
+              domains: ${default(map.get(domain_enrichment_body, "domains"), empty_dict)}
+              addresses: ${default(map.get(geocoding_identity_body, "addresses"), empty_dict)}
+
+    - sanitize_errors:
+        assign:
+          - sanitized_errors:
+              domain_enrichment: ${string(default(phase2_errors.domain_enrichment, ""))}
+              geocoding_identity: ${string(default(phase2_errors.geocoding_identity, ""))}
+
+    - filter_errors:
+        switch:
+          - condition: ${sanitized_errors.domain_enrichment != "" and sanitized_errors.geocoding_identity != ""}
+            steps:
+              - set_both_errors:
+                  assign:
+                    - final_errors:
+                        domain_enrichment: ${sanitized_errors.domain_enrichment}
+                        geocoding_identity: ${sanitized_errors.geocoding_identity}
+                    - has_partial_failure: true
+          - condition: ${sanitized_errors.domain_enrichment != ""}
+            steps:
+              - set_domain_error:
+                  assign:
+                    - final_errors:
+                        domain_enrichment: ${sanitized_errors.domain_enrichment}
+                    - has_partial_failure: true
+          - condition: ${sanitized_errors.geocoding_identity != ""}
+            steps:
+              - set_geocoding_error:
+                  assign:
+                    - final_errors:
+                        geocoding_identity: ${sanitized_errors.geocoding_identity}
+                    - has_partial_failure: true
+          - condition: ${true}
+            steps:
+              - set_no_errors:
+                  assign:
+                    - final_errors: {}
+                    - has_partial_failure: false
+
+    - build_result_summary:
+        assign:
+          - identity_location: ${default(map.get(identity_result.body, "location"), empty_dict)}
+          - location_confidence: ${default(map.get(identity_location, "confidence"), "unknown")}
+          - has_high_confidence: ${location_confidence == "high"}
+          - summary_bullets: []
+    
+    - add_identity_bullet_if_needed:
+        switch:
+          - condition: ${has_high_confidence}
+            steps:
+              - add_identity_bullet:
+                  assign:
+                    - summary_bullets: ["High-confidence identity and location verified"]
+
+    - add_domain_error_if_needed:
+        switch:
+          - condition: ${has_partial_failure and map.get(final_errors, "domain_enrichment") != "" and map.get(final_errors, "domain_enrichment") != null}
+            steps:
+              - add_domain_error_bullet:
+                  assign:
+                    - domain_error_text: ${map.get(final_errors, "domain_enrichment")}
+                    - domain_prefix: "Domain enrichment: Error - "
+                    - domain_error_bullet: ${domain_prefix + domain_error_text}
+                    - summary_bullets: ${summary_bullets + [domain_error_bullet]}
+
+    - add_geocoding_error_if_needed:
+        switch:
+          - condition: ${has_partial_failure and map.get(final_errors, "geocoding_identity") != "" and map.get(final_errors, "geocoding_identity") != null}
+            steps:
+              - add_geocoding_bullet:
+                  assign:
+                    - geocoding_error_text: ${map.get(final_errors, "geocoding_identity")}
+                    - geocoding_prefix: "Address geocoding: Error - "
+                    - geocoding_error_bullet: ${geocoding_prefix + geocoding_error_text}
+                    - summary_bullets: ${summary_bullets + [geocoding_error_bullet]}
+
+    - determine_result_status:
+        switch:
+          - condition: ${has_partial_failure}
+            steps:
+              - set_partial_failure_status:
+                  assign:
+                    - overall_status: "partial_failure"
+                    - headline: "Skip trace investigation completed with partial data (some sources unavailable)"
+          - condition: ${true}
+            steps:
+              - set_success_status:
+                  assign:
+                    - overall_status: "clear"
+                    - headline: "Skip trace investigation complete"
+
+    - finalize_result_summary:
+        assign:
+          - result_summary:
+              overall_status: ${overall_status}
+              headline: ${headline}
+              bullets: ${summary_bullets}
+              partial_failure: ${has_partial_failure}
+
+    - build_final_result:
+        assign:
+          - final_result:
+              identity: ${identity_result.body}
+              enrichment: ${enrichment}
+              result_summary: ${result_summary}
+              partial_failure: ${has_partial_failure}
+              errors: ${final_errors}
+
+    - prepare_firestore_data:
+        assign:
+          - result_json: ${json.encode_to_string(final_result)}
+          - result_summary_json: ${json.encode_to_string(result_summary)}
+          - errors_json: ${json.encode_to_string(final_errors)}
+
+    - update_status_post_processing:
+        call: googleapis.firestore.v1.projects.databases.documents.patch
+        args:
+          name: ${"projects/" + project_id + "/databases/(default)/documents/jobs/" + job_id}
+          updateMask:
+            fieldPaths: ["status", "result", "result_summary", "partial_failure", "errors"]
+          body:
+            fields:
+              status:
+                stringValue: "post_processing"
+              result:
+                stringValue: ${result_json}
+              result_summary:
+                stringValue: ${result_summary_json}
+              partial_failure:
+                booleanValue: ${has_partial_failure}
+              errors:
+                stringValue: ${errors_json}
+        result: final_update
+
+    - return_success:
+        return:
+          job_id: ${job_id}
+          status: "post_processing"

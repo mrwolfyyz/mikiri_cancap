@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Credit Analysis Chat - Interactive Assistant</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Force light mode - override any dark styles from shared stylesheet */
+        html, body {
+            background: #F8F9FA !important;
+            color: #1A1A1A !important;
+        }
+        
+        body .container {
+            background: transparent !important;
+        }
+        
+        /* Chat-specific styles */
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 140px); /* Account for header */
+            min-height: 500px;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: var(--space-md);
+        }
+
+        .chat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--space-sm) 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: var(--space-sm);
+        }
+
+        .chat-header-left {
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+        }
+
+        .chat-header h2 {
+            font-size: 1.1rem;
+            margin: 0;
+        }
+
+        .chat-header .job-id {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            font-family: monospace;
+        }
+
+        .chat-header .back-link {
+            font-size: 0.9rem;
+            margin: 0;
+        }
+
+        .chat-messages {
+            flex: 1 1 auto;
+            min-height: 0; /* CRITICAL: Allows flex child to scroll */
+            overflow-y: auto;
+            padding: var(--space-md);
+            margin-bottom: var(--space-md);
+            background: var(--bg-secondary);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+        }
+
+        .message {
+            margin-bottom: var(--space-lg); /* More spacing between messages */
+            padding: var(--space-sm);
+            border-radius: var(--radius);
+            position: relative;
+            clear: both; /* Prevent float-like overlap */
+        }
+
+        .message.user {
+            background: var(--accent);
+            color: white;
+            margin-left: 20%;
+            text-align: right;
+        }
+
+        .message.assistant {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            margin-right: 5%; /* Expanded from 20% for better readability */
+        }
+
+        .message-content {
+            line-height: 1.7;
+            word-wrap: break-word;
+        }
+
+        /* Markdown rendering styles */
+        .message-content h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin: 16px 0 8px 0;
+            color: var(--text-primary);
+        }
+
+        .message-content h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin: 12px 0 6px 0;
+            color: var(--text-primary);
+        }
+
+        .message-content strong {
+            font-weight: 600;
+        }
+
+        .message-content ul, .message-content ol {
+            margin: 8px 0;
+            padding-left: 24px;
+        }
+
+        .message-content li {
+            margin-bottom: 4px;
+        }
+
+        .message-content p {
+            margin: 8px 0;
+        }
+
+        .message-content a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .message-content a:hover {
+            text-decoration: underline;
+        }
+
+        .message-content code {
+            background: var(--bg-secondary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+
+        .search-suggestions {
+            margin-top: var(--space-md);
+            padding: var(--space-md);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            position: relative; /* Create positioning context */
+            overflow: visible; /* Allow content, but contained by parent */
+        }
+
+        .search-suggestions h4 {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: var(--space-sm);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .search-entry-point {
+            /* Render exactly as provided - no modifications to Google's HTML/CSS */
+            /* But contain it properly to prevent layout breakage */
+            position: relative;
+            overflow: auto;
+            max-height: 400px;
+            contain: layout style paint;
+            width: 100%;
+            /* Force light mode - override Google's dark mode media query */
+            color-scheme: light;
+        }
+        
+        /* Override Google's dark mode media query - force light mode always */
+        /* Use higher specificity to override Google's @media (prefers-color-scheme: dark) */
+        .search-entry-point .container {
+            background-color: #fafafa !important;
+            box-shadow: 0 0 0 1px #0000000f !important;
+        }
+        
+        .search-entry-point .headline-label {
+            color: #1f1f1f !important;
+        }
+        
+        .search-entry-point .chip {
+            background-color: #ffffff !important;
+            border-color: #d2d2d2 !important;
+            color: #5e5e5e !important;
+            text-decoration: none !important;
+        }
+        
+        .search-entry-point .chip:hover {
+            background-color: #f2f2f2 !important;
+        }
+        
+        .search-entry-point .chip:focus {
+            background-color: #f2f2f2 !important;
+        }
+        
+        .search-entry-point .chip:active {
+            background-color: #d8d8d8 !important;
+            border-color: #b6b6b6 !important;
+        }
+        
+        /* Hide dark logo, show light logo */
+        .search-entry-point .logo-dark {
+            display: none !important;
+        }
+        
+        .search-entry-point .logo-light {
+            display: block !important;
+        }
+        
+        .search-entry-point .gradient {
+            background: linear-gradient(90deg, #fafafa 15%, #fafafa00 100%) !important;
+        }
+
+        /* FIX: Override Google's horizontal carousel to wrap vertically */
+        .search-entry-point .carousel {
+            white-space: normal !important;
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 8px !important;
+            overflow: visible !important;
+            margin-right: 0 !important;
+        }
+
+        .search-entry-point .chip {
+            white-space: normal !important;
+            margin: 0 !important;
+            flex-shrink: 0;
+        }
+
+        /* Hide the gradient overlay since we're not scrolling anymore */
+        .search-entry-point .gradient-container {
+            display: none !important;
+        }
+
+        /* Ensure Google's content doesn't break horizontal boundaries */
+        .search-entry-point * {
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+
+        .chat-input-container {
+            flex-shrink: 0; /* Don't shrink */
+            z-index: 10; /* Always on top */
+            position: relative; /* Create stacking context */
+            display: flex;
+            gap: var(--space-sm);
+            padding: var(--space-md);
+            background: var(--bg-secondary);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+        }
+
+        .chat-input {
+            flex: 1;
+            padding: var(--space-sm);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 1rem;
+            resize: none;
+            min-height: 60px;
+            max-height: 200px;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+
+        .send-button {
+            padding: var(--space-sm) var(--space-md);
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+            align-self: flex-end;
+        }
+
+        .send-button:hover:not(:disabled) {
+            background: var(--accent-hover);
+        }
+
+        .send-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Typing indicator */
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: var(--space-sm) var(--space-md);
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-right: 5%;
+            margin-bottom: var(--space-md);
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        .typing-indicator .dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-indicator .dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent);
+            border-radius: 50%;
+            animation: typingBounce 1.4s infinite ease-in-out;
+        }
+
+        .typing-indicator .dot:nth-child(1) { animation-delay: 0s; }
+        .typing-indicator .dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator .dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typingBounce {
+            0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+
+        .error-message {
+            padding: var(--space-sm);
+            background: rgba(220, 38, 38, 0.1);
+            border: 1px solid var(--error);
+            border-radius: var(--radius);
+            color: var(--error);
+            margin-bottom: var(--space-md);
+        }
+
+        .back-link {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Collapsible search suggestions */
+        .search-suggestions-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .search-suggestions-toggle:hover h4 {
+            color: var(--text-primary);
+        }
+
+        .search-suggestions-toggle .toggle-icon {
+            font-size: 0.8rem;
+            transition: transform 0.2s;
+        }
+
+        .search-suggestions.collapsed .search-entry-point {
+            display: none;
+        }
+
+        .search-suggestions.collapsed .toggle-icon {
+            transform: rotate(-90deg);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <h1>Credit Analysis Chat</h1>
+                <p class="subtitle">Borrower Intelligence Assistant</p>
+            </div>
+        </header>
+
+        <div class="chat-container">
+            <div class="chat-header">
+                <div class="chat-header-left">
+                    <a href="index.html" class="back-link">← Back</a>
+                    <h2>Credit Analysis Assistant</h2>
+                    <div class="job-id">Job: <span id="jobIdDisplay"></span></div>
+                </div>
+            </div>
+
+            <div id="errorContainer" style="display: none;"></div>
+
+            <div class="chat-messages" id="chatMessages">
+                <div class="message assistant">
+                    <div class="message-content">
+                        <p>I have your full investigation reports loaded (Borrower Summary, Identity, Corporate, Adverse Media, Regulator) and can search the web in real-time. Ask me to:</p>
+                        <ul>
+                            <li>Validate claims - verify employment, confirm business relationships, check addresses</li>
+                            <li>Identify what's confirmed vs. what needs more verification</li>
+                            <li>Investigate adverse media hits or regulatory actions</li>
+                            <li>Search for additional context about the borrower or their companies</li>
+                            <li>Spot inconsistencies or red flags across the reports</li>
+                        </ul>
+                        <p>The more context you give me about the application, the better I can help you build a complete picture.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input-container">
+                <textarea 
+                    id="messageInput" 
+                    class="chat-input" 
+                    placeholder="Type your question here..."
+                    rows="2"
+                ></textarea>
+                <button id="sendButton" class="send-button">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    
+    <script>
+        // ===========================
+        // Configuration
+        // ===========================
+        // These values are loaded dynamically from firebase-config.json (generated by Terraform)
+        let API_URL = null;
+        let FIREBASE_CONFIG = null;
+        
+        // Load configuration from firebase-config.json (generated by Terraform)
+        async function loadConfig() {
+            try {
+                const response = await fetch('firebase-config.json');
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                const config = await response.json();
+                
+                // Set API URL from config
+                API_URL = config.apiUrl;
+                
+                // Set Firebase config
+                FIREBASE_CONFIG = {
+                    apiKey: config.apiKey,
+                    authDomain: config.authDomain,
+                    projectId: config.projectId,
+                    storageBucket: config.storageBucket,
+                    messagingSenderId: config.messagingSenderId,
+                    appId: config.appId
+                };
+                
+                console.log('Configuration loaded from firebase-config.json');
+                return true;
+            } catch (error) {
+                console.error('Failed to load firebase-config.json:', error);
+                showError('Configuration Error: firebase-config.json not found. Please ensure the deployment is complete.');
+                return false;
+            }
+        }
+        
+        // ===========================
+        // Firebase Authentication
+        // ===========================
+        async function initializeAuth() {
+            try {
+                // Initialize Firebase
+                firebase.initializeApp(FIREBASE_CONFIG);
+                
+                // Initialize Firestore
+                const db = firebase.firestore();
+                
+                // Sign in anonymously
+                await firebase.auth().signInAnonymously();
+                const user = firebase.auth().currentUser;
+                console.log("Anonymous authentication successful, UID:", user?.uid);
+                
+                return db;
+            } catch (error) {
+                console.error("Authentication error:", error);
+                alert("Unable to initialize authentication. Please refresh the page.");
+                throw error;
+            }
+        }
+
+        // Helper function to get current valid token (gets fresh token on each call)
+        async function getAuthToken() {
+            const user = firebase.auth().currentUser;
+            if (!user) {
+                throw new Error("User not authenticated");
+            }
+            // Force refresh if expired (Firebase SDK handles caching internally)
+            return await user.getIdToken(true);
+        }
+        
+        // ===========================
+        // State Management
+        // ===========================
+        let jobId = null;
+        let conversationHistory = [];
+        let markdownContext = null;
+        let markdownFetched = false;
+        let db = null; // Firestore instance
+
+        // ===========================
+        // DOM Elements
+        // ===========================
+        const elements = {
+            jobIdDisplay: document.getElementById("jobIdDisplay"),
+            chatMessages: document.getElementById("chatMessages"),
+            messageInput: document.getElementById("messageInput"),
+            sendButton: document.getElementById("sendButton"),
+            errorContainer: document.getElementById("errorContainer"),
+        };
+
+        // ===========================
+        // Theme Management
+        // ===========================
+        // Dark mode removed - chat page uses fixed light theme for consistency
+
+        // ===========================
+        // URL Parameter Extraction
+        // ===========================
+        function getJobIdFromURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get("job_id");
+        }
+
+        // ===========================
+        // Firestore Functions
+        // ===========================
+        
+        // Create deterministic message ID to prevent duplicates on retry
+        function createMessageId(role, content) {
+            const timestamp = Date.now();
+            const str = `${role}-${content}-${timestamp}`;
+            // Simple hash function
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // Convert to 32bit integer
+            }
+            return `msg_${Math.abs(hash).toString(36)}_${timestamp}`;
+        }
+
+        async function saveMessageToFirestore(jobId, role, content, groundingMetadata = null) {
+            try {
+                // Create deterministic ID - same message always gets same ID
+                const messageId = createMessageId(role, content);
+                
+                // Fetch job to get created_at timestamp for expire_at calculation
+                const jobDoc = await db.collection('jobs').doc(jobId).get();
+                const jobData = jobDoc.data();
+                const jobCreatedAt = jobData?.created_at;
+                
+                // Calculate expire_at: job creation + 7 days (aligned with job retention policy)
+                let expireAt;
+                if (jobCreatedAt) {
+                    // Firestore Timestamp - add 7 days in milliseconds
+                    const expireMillis = jobCreatedAt.toMillis() + (7 * 24 * 60 * 60 * 1000);
+                    expireAt = firebase.firestore.Timestamp.fromMillis(expireMillis);
+                } else {
+                    // Fallback: current time + 7 days (shouldn't happen, but be safe)
+                    expireAt = firebase.firestore.Timestamp.fromDate(
+                        new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                    );
+                }
+                
+                const messageRef = db.collection('jobs').doc(jobId)
+                    .collection('chat_messages')
+                    .doc(messageId); // Use deterministic ID
+                
+                const messageData = {
+                    role: role,
+                    content: content,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    created_at: firebase.firestore.FieldValue.serverTimestamp(),
+                    expire_at: expireAt  // TTL field for 7-day retention
+                };
+                
+                if (groundingMetadata) {
+                    messageData.grounding_metadata = groundingMetadata;
+                }
+                
+                // Use merge: true to prevent overwrite on retry (idempotent)
+                await messageRef.set(messageData, { merge: true });
+                console.log(`Saved ${role} message to Firestore`);
+                return { success: true };
+            } catch (error) {
+                console.error("Error saving message to Firestore:", error);
+                return { success: false, error };
+            }
+        }
+
+        // Simple recursive retry with exponential backoff
+        async function saveMessageWithRetry(jobId, role, content, groundingMetadata = null, retryCount = 0) {
+            const result = await saveMessageToFirestore(jobId, role, content, groundingMetadata);
+            
+            if (result.success) {
+                return result;
+            }
+            
+            // If save failed, retry with exponential backoff
+            if (retryCount >= 3) {
+                console.error("Failed to save message after 3 retries");
+                // Show subtle UI indicator (optional)
+                return result;
+            }
+            
+            // Exponential backoff: 100ms, 200ms, 400ms
+            const delay = 100 * Math.pow(2, retryCount);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            
+            return saveMessageWithRetry(jobId, role, content, groundingMetadata, retryCount + 1);
+        }
+
+        async function loadChatHistory(jobId) {
+            try {
+                const user = firebase.auth().currentUser;
+                console.log("[loadChatHistory] Current user UID:", user?.uid);
+                
+                // Check if job exists first (optional but good practice)
+                const jobDoc = await db.collection('jobs').doc(jobId).get();
+                if (!jobDoc.exists) {
+                    console.warn("[loadChatHistory] Job does not exist yet");
+                    return [];
+                }
+                
+                const jobData = jobDoc.data();
+                console.log("[loadChatHistory] Job user_id:", jobData?.user_id);
+                console.log("[loadChatHistory] Current auth UID:", user?.uid);
+                console.log("[loadChatHistory] UIDs match:", jobData?.user_id === user?.uid);
+                
+                const messagesRef = db.collection('jobs').doc(jobId)
+                    .collection('chat_messages')
+                    .orderBy('timestamp', 'asc'); // Order by server timestamp
+                
+                const snapshot = await messagesRef.get();
+                console.log("[loadChatHistory] Found", snapshot.size, "messages");
+                
+                if (snapshot.empty) {
+                    return []; // No existing chat history
+                }
+                
+                // If history exists, markdown was already sent in first message
+                markdownFetched = true;
+                
+                const history = [];
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    history.push({
+                        role: data.role,
+                        content: data.content
+                    });
+                    
+                    // Render in UI
+                    addMessage(data.role, data.content, data.grounding_metadata || null);
+                });
+                
+                return history;
+            } catch (error) {
+                console.error("[loadChatHistory] Error loading chat history:", error);
+                console.error("[loadChatHistory] Error details:", error.message, error.code);
+                // Continue without history - don't block user
+                return [];
+            }
+        }
+
+        // ===========================
+        // API Functions
+        // ===========================
+        async function getMarkdown(jobId) {
+            try {
+                const token = await getAuthToken();
+                const response = await fetch(`${API_URL}/get_markdown/${jobId}`, {
+                    headers: {
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        // Try refresh
+                        const newToken = await getAuthToken();
+                        const retryResponse = await fetch(`${API_URL}/get_markdown/${jobId}`, {
+                            headers: {
+                                "Authorization": `Bearer ${newToken}`
+                            }
+                        });
+                        if (!retryResponse.ok) {
+                            throw new Error("Authentication failed. Please refresh the page.");
+                        }
+                        return await retryResponse.json();
+                    }
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || `HTTP ${response.status}`);
+                }
+                return await response.json();
+            } catch (error) {
+                console.error("Error fetching markdown:", error);
+                throw error;
+            }
+        }
+
+        async function sendChatMessage(payload) {
+            try {
+                const token = await getAuthToken();
+                
+                // Add job_id to payload for ownership verification
+                if (jobId) {
+                    payload.job_id = jobId;
+                }
+                
+                const response = await fetch(`${API_URL}/chat_handler_origination`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload),
+                });
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        // Try refresh
+                        const newToken = await getAuthToken();
+                        const retryResponse = await fetch(`${API_URL}/chat_handler_origination`, {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                                "Authorization": `Bearer ${newToken}`
+                            },
+                            body: JSON.stringify(payload),
+                        });
+                        if (!retryResponse.ok) {
+                            throw new Error("Authentication failed. Please refresh the page.");
+                        }
+                        return await retryResponse.json();
+                    }
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || `HTTP ${response.status}`);
+                }
+
+                return await response.json();
+            } catch (error) {
+                console.error("Error sending chat message:", error);
+                throw error;
+            }
+        }
+
+        // ===========================
+        // Markdown Rendering
+        // ===========================
+        function renderMarkdown(text) {
+            if (!text) return '';
+            
+            // Escape HTML first to prevent XSS
+            let html = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            
+            // Headers (### and ##)
+            html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+            html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+            
+            // Bold (**text**)
+            html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            
+            // Italic (*text*)
+            html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+            
+            // Inline code (`code`)
+            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+            
+            // Links [text](url)
+            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+            
+            // Unordered lists (- item)
+            html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+            html = html.replace(/(<li>.*<\/li>)\n(?=<li>)/g, '$1');
+            html = html.replace(/(<li>[\s\S]*?<\/li>)(?!\n<li>)/g, '<ul>$1</ul>');
+            
+            // Numbered lists (1. item)
+            html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+            
+            // Paragraphs (double newlines)
+            html = html.replace(/\n\n+/g, '</p><p>');
+            
+            // Single newlines to <br> (but not inside lists)
+            html = html.replace(/([^>])\n([^<])/g, '$1<br>$2');
+            
+            // Wrap in paragraph if not starting with block element
+            if (!html.match(/^<(h[34]|ul|ol|p)/)) {
+                html = '<p>' + html + '</p>';
+            }
+            
+            // Clean up empty paragraphs
+            html = html.replace(/<p><\/p>/g, '');
+            html = html.replace(/<p>\s*<\/p>/g, '');
+            
+            return html;
+        }
+
+        // ===========================
+        // UI Functions
+        // ===========================
+        function addMessage(role, content, groundingMetadata = null) {
+            const messageDiv = document.createElement("div");
+            messageDiv.className = `message ${role}`;
+            
+            const contentDiv = document.createElement("div");
+            contentDiv.className = "message-content";
+            
+            // Render markdown for assistant messages, plain text for user
+            if (role === "assistant") {
+                contentDiv.innerHTML = renderMarkdown(content);
+            } else {
+                contentDiv.textContent = content;
+            }
+            messageDiv.appendChild(contentDiv);
+
+            // Add search suggestions if present
+            if (groundingMetadata && groundingMetadata.search_entry_point) {
+                const suggestionsDiv = document.createElement("div");
+                suggestionsDiv.className = "search-suggestions";
+                
+                // Create collapsible header
+                const toggleDiv = document.createElement("div");
+                toggleDiv.className = "search-suggestions-toggle";
+                
+                const title = document.createElement("h4");
+                title.textContent = "Search Suggestions";
+                
+                const toggleIcon = document.createElement("span");
+                toggleIcon.className = "toggle-icon";
+                toggleIcon.textContent = "▼";
+                
+                toggleDiv.appendChild(title);
+                toggleDiv.appendChild(toggleIcon);
+                suggestionsDiv.appendChild(toggleDiv);
+                
+                // Toggle collapse on click
+                toggleDiv.addEventListener("click", () => {
+                    suggestionsDiv.classList.toggle("collapsed");
+                });
+                
+                const entryPoint = document.createElement("div");
+                entryPoint.className = "search-entry-point";
+                
+                // Scope Google's styles to prevent affecting our page
+                let htmlContent = groundingMetadata.search_entry_point;
+                
+                // Extract and scope the <style> tag
+                const styleMatch = htmlContent.match(/<style>([\s\S]*?)<\/style>/);
+                if (styleMatch) {
+                    const styleContent = styleMatch[1];
+                    // Scope all selectors to .search-entry-point
+                    const scopedStyle = styleContent
+                        .replace(/(@media[^{]*\{)/g, '.search-entry-point $1')
+                        .replace(/(^|\n)(\.[a-zA-Z][^{]*\{)/gm, '$1.search-entry-point $2')
+                        .replace(/(^|\n)([a-zA-Z][^{]*\{)/gm, '$1.search-entry-point $2');
+                    
+                    // Remove original style tag and add scoped one
+                    htmlContent = htmlContent.replace(/<style>[\s\S]*?<\/style>/, '');
+                    const scopedStyleTag = `<style>${scopedStyle}</style>`;
+                    htmlContent = scopedStyleTag + htmlContent;
+                }
+                
+                // Render HTML exactly as provided (compliance requirement)
+                entryPoint.innerHTML = htmlContent;
+                
+                suggestionsDiv.appendChild(entryPoint);
+                
+                messageDiv.appendChild(suggestionsDiv);
+            }
+
+            elements.chatMessages.appendChild(messageDiv);
+            
+            // Scroll behavior: for assistant responses, scroll to show the start of the response
+            // For user messages, scroll to bottom as usual
+            if (role === "assistant") {
+                // Scroll so the new message's top is at the top of the visible area
+                messageDiv.scrollIntoView({ behavior: "smooth", block: "start" });
+            } else {
+                elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+            }
+        }
+
+        function showError(message) {
+            elements.errorContainer.textContent = message;
+            elements.errorContainer.className = "error-message";
+            elements.errorContainer.style.display = "block";
+        }
+
+        function hideError() {
+            elements.errorContainer.style.display = "none";
+        }
+
+        function showTypingIndicator() {
+            // Remove existing typing indicator if any
+            hideTypingIndicator();
+            
+            const typingDiv = document.createElement("div");
+            typingDiv.className = "typing-indicator";
+            typingDiv.id = "typingIndicator";
+            typingDiv.innerHTML = `
+                <div class="dots">
+                    <span class="dot"></span>
+                    <span class="dot"></span>
+                    <span class="dot"></span>
+                </div>
+                <span>Searching and thinking...</span>
+            `;
+            elements.chatMessages.appendChild(typingDiv);
+            elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+        }
+
+        function hideTypingIndicator() {
+            const existing = document.getElementById("typingIndicator");
+            if (existing) {
+                existing.remove();
+            }
+        }
+
+        function setLoading(loading) {
+            elements.sendButton.disabled = loading;
+            if (loading) {
+                elements.sendButton.innerHTML = '<span class="loading"></span>';
+                showTypingIndicator();
+            } else {
+                elements.sendButton.textContent = "Send";
+                hideTypingIndicator();
+            }
+            elements.messageInput.disabled = loading;
+        }
+
+        // ===========================
+        // Message Handling
+        // ===========================
+        async function handleSendMessage() {
+            const message = elements.messageInput.value.trim();
+            if (!message || elements.sendButton.disabled) {
+                return;
+            }
+
+            // Clear input
+            elements.messageInput.value = "";
+            hideError();
+
+            // Add user message to UI
+            addMessage("user", message);
+
+            // Update conversation history
+            conversationHistory.push({ role: "user", content: message });
+
+            // Save user message to Firestore (with retry)
+            if (jobId && db) {
+                saveMessageWithRetry(jobId, "user", message).catch(err => {
+                    console.error("Failed to save user message to Firestore:", err);
+                    // Continue even if save fails
+                });
+            }
+
+            setLoading(true);
+
+            try {
+                // Fetch markdown on first message if not already fetched
+                // Only fetch if no history exists (history loading sets markdownFetched = true)
+                if (conversationHistory.length === 1 && !markdownFetched && jobId) {
+                    try {
+                        markdownContext = await getMarkdown(jobId);
+                        markdownFetched = true;
+                        console.log("Fetched markdown context");
+                    } catch (error) {
+                        console.warn("Could not fetch markdown context:", error);
+                        // Continue without markdown context
+                    }
+                }
+
+                // Build request payload
+                const payload = {
+                    message: message,
+                    conversation_history: conversationHistory.slice(0, -1), // Exclude current message
+                };
+
+                // Include markdown context only for first message
+                if (markdownContext && conversationHistory.length === 1) {
+                    payload.markdown_context = markdownContext;
+                }
+
+                // Send to chat handler
+                const response = await sendChatMessage(payload);
+
+                // Update conversation history
+                conversationHistory = response.conversation_history || conversationHistory;
+
+                // Add assistant response to UI
+                addMessage(
+                    "assistant",
+                    response.response,
+                    response.grounding_metadata || null
+                );
+
+                // Save assistant message to Firestore (with retry)
+                if (jobId && db) {
+                    saveMessageWithRetry(jobId, "assistant", response.response, response.grounding_metadata || null).catch(err => {
+                        console.error("Failed to save assistant message to Firestore:", err);
+                        // Continue even if save fails
+                    });
+                }
+            } catch (error) {
+                console.error("Error handling message:", error);
+                // Provide user-friendly error message
+                let friendlyError = error.message;
+                if (error.message.includes("timeout") || error.message.includes("Timeout")) {
+                    friendlyError = "The request took too long. This can happen with complex questions. Please try a shorter question or try again.";
+                } else if (error.message.includes("network") || error.message.includes("fetch")) {
+                    friendlyError = "Unable to connect. Please check your internet connection and try again.";
+                }
+                showError(friendlyError);
+                // Remove failed user message from history
+                conversationHistory.pop();
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // ===========================
+        // Event Listeners
+        // ===========================
+        function initEventListeners() {
+            elements.sendButton.addEventListener("click", handleSendMessage);
+            elements.messageInput.addEventListener("keydown", (e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                }
+            });
+        }
+
+        // ===========================
+        // Initialization
+        // ===========================
+        async function init() {
+            // Load configuration first (from firebase-config.json generated by Terraform)
+            const configLoaded = await loadConfig();
+            if (!configLoaded) {
+                console.error("Failed to load configuration. Application cannot start.");
+                return;
+            }
+            
+            // Initialize Firebase authentication and Firestore
+            db = await initializeAuth();
+            initEventListeners();
+
+            // Get job ID from URL
+            jobId = getJobIdFromURL();
+            if (!jobId) {
+                showError("No job ID provided. Please access this page from a completed investigation.");
+                elements.messageInput.disabled = true;
+                elements.sendButton.disabled = true;
+                return;
+            }
+
+            elements.jobIdDisplay.textContent = jobId;
+
+            // Load existing chat history
+            if (db) {
+                // Store initial welcome message before loading history
+                const initialMessage = elements.chatMessages.querySelector('.message.assistant');
+                const initialMessageHTML = initialMessage ? initialMessage.outerHTML : null;
+                
+                // Show loading indicator
+                elements.chatMessages.innerHTML = '<div class="loading-history" style="padding: var(--space-md); text-align: center; color: var(--text-secondary);">Loading chat history...</div>';
+                
+                const history = await loadChatHistory(jobId);
+                conversationHistory = history;
+                
+                // Remove loading indicator
+                const loader = document.querySelector('.loading-history');
+                if (loader) {
+                    loader.remove();
+                }
+                
+                // If no history was loaded, restore the initial welcome message
+                if (history.length === 0 && initialMessageHTML) {
+                    elements.chatMessages.innerHTML = initialMessageHTML;
+                }
+            }
+        }
+
+        // Start the app when DOM is ready
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", init);
+        } else {
+            init();
+        }
+    </script>
+</body>
+</html>
