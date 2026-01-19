@@ -8,13 +8,13 @@ This Programmable Search Engine (PSE) is configured for lifestyle and hobby site
 
 - **CX ID**: `a332dc1c537154367`
 - **Region**: Canada
-- **Engine Identifier**: `recall_indentity`
+- **Engine Identifier**: `recall_identity`
 - **Public URL**: `https://cse.google.com/cse?cx=a332dc1c537154367`
 
 ## Environment Variable
 
 - **Variable Name**: `RECALL_PSE_CX`
-- **Usage**: Set this environment variable to `a332dc1c537154367` for all Cloud Functions that use this PSE
+- **Usage**: Set this environment variable to the CX ID that Google generated when you created this PSE
 
 ## Site Restrictions
 
@@ -45,10 +45,8 @@ This PSE is restricted to the following sites/patterns:
 
 ## Search Features
 
-- **Image search**: Not specified (check in Google PSE control panel)
-- **SafeSearch**: Not specified (check in Google PSE control panel)
-- **Search the entire web**: Not specified (check in Google PSE control panel)
 - **Region restricted results**: OFF
+- All other search features use default settings
 
 ## Usage
 
@@ -68,8 +66,8 @@ When creating this PSE in Google PSE control panel:
 3. Set region to **Canada**
 4. Disable "Region restricted results"
 5. Add all sites listed in the "Site Restrictions" section above
-6. Save the PSE and copy the Search Engine ID (CX value) - it should match `a332dc1c537154367` if recreating the exact configuration
-7. Set the `RECALL_PSE_CX` environment variable to this CX ID
+6. Save the PSE and copy the Search Engine ID (CX value) - Google will generate a new CX ID for your PSE
+7. Set the `RECALL_PSE_CX` environment variable to the CX ID that Google generated
 
 ## Notes
 

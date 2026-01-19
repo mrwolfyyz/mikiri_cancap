@@ -2,6 +2,10 @@
 
 This document provides a master reference for all Programmable Search Engines (PSEs) used in the skip trace and origination repository.
 
+## Important: CX IDs Are Reference Only
+
+**The CX IDs documented below are from the original Mikiri deployment.** When you create new PSEs for your deployment, Google will generate different CX IDs. Use the CX IDs that Google assigns to your new PSEs in your environment variables, not the ones documented here. The documented CX IDs serve as a reference to show which PSEs were configured in the original setup.
+
 ## Summary
 
 **Total Unique PSEs**: 6  
@@ -14,7 +18,7 @@ This document provides a master reference for all Programmable Search Engines (P
 | `GOOGLE_SEARCH_CX` | `b345e1e90697640a5` | general_search | Canada | None (entire web) | Base search, company domain lookup |
 | `PRECISION_PSE_CX` | `73bc98f068711495f` | precision_identity | Canada | Social platforms (see below) | Precision social searches |
 | `RECALL_PSE_CX_2` | `73bc98f068711495f` | precision_identity | Canada | Social platforms (same as PRECISION_PSE_CX) | Additional recall searches (reuses PRECISION_PSE_CX) |
-| `RECALL_PSE_CX` | `a332dc1c537154367` | recall_indentity | Canada | Lifestyle sites (see below) | Lifestyle/hobby searches |
+| `RECALL_PSE_CX` | `a332dc1c537154367` | recall_identity | Canada | Lifestyle sites (see below) | Lifestyle/hobby searches |
 | `LINKEDIN_PSE_CX` | `03146b58fead44d18` | linkedin_canada_only | Canada | `ca.linkedin.com/in/*` | LinkedIn profile searches |
 | `REVIEWS_PSE_CX` | `d5c9ade2080064150` | business_reviews | Canada | None (entire web) | Business review searches |
 | `COMPLAINTS_PSE_CX` | `f55c8831c767349da` | business_complaints | Canada | None (entire web) | Business complaint searches |
@@ -83,9 +87,13 @@ This document provides a master reference for all Programmable Search Engines (P
 
 ## Environment Variable Setup
 
-When deploying, set these environment variables (or secrets) to their corresponding CX IDs:
+When deploying, set these environment variables (or secrets) to their corresponding values:
 
 ```bash
+# Google Custom Search API Key (required for all searches)
+GOOGLE_SEARCH_API_KEY=<your-api-key>
+
+# PSE CX IDs (use the CX IDs from your newly created PSEs, not the values shown below)
 GOOGLE_SEARCH_CX=b345e1e90697640a5
 PRECISION_PSE_CX=73bc98f068711495f
 RECALL_PSE_CX=a332dc1c537154367
@@ -120,7 +128,7 @@ For detailed setup instructions and configuration details for each PSE, see:
 
 ## Important Notes
 
-1. **RECALL_PSE_CX_2 Reuses PRECISION_PSE_CX**: The `RECALL_PSE_CX_2` environment variable should be set to the same CX ID as `PRECISION_PSE_CX` (`73bc98f068711495f`). They use the same PSE configuration.
+1. **RECALL_PSE_CX_2 Reuses PRECISION_PSE_CX**: The `RECALL_PSE_CX_2` environment variable should be set to the same CX ID as `PRECISION_PSE_CX`. They use the same PSE configuration.
 
 2. **Region**: All PSEs are configured for the **Canada** region.
 

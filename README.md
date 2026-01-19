@@ -1,6 +1,10 @@
 # Skip Trace & Origination Intelligence Platform
 
-A comprehensive platform for conducting skip trace investigations and loan origination background checks, built on Google Cloud Platform.
+**Dual-purpose risk intelligence for subprime auto lending** - combining origination fraud detection with skip trace vehicle recovery using exclusively free and open-source data. Delivers comprehensive borrower investigations in under 60 seconds, identifying risk at loan origination and locating borrowers and vehicles for collections.
+
+**The innovation**: Creates a continuous learning feedback loop where skip trace findings automatically inform origination decisions. Real-world recovery outcomes - what actually works in collections - deploy back to underwriting risk models within hours, not months. All powered by AI analysis of public data sources, eliminating expensive third-party data subscriptions.
+
+**Current status**: Beta deployment for CanCap's internal use, designed for rapid iteration based on skip tracing and origination team feedback.
 
 ## Overview
 
@@ -59,21 +63,37 @@ This platform provides two main investigation types:
 │  │  Identity   │ │ Enrichment  │ │  Geocoding  │               │
 │  └─────────────┘ └─────────────┘ └─────────────┘               │
 │  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐               │
-│  │  Company    │ │ Aggregator  │ │   Report    │               │
-│  │  Domain     │ │             │ │  Generator  │               │
-│  └─────────────┘ └─────────────┘ └─────────────┘               │
-│  ┌─────────────────────────────────────────────┐               │
-│  │            Chat Handlers (x2)               │               │
-│  │        (Firestore-triggered AI Chat)        │               │
-│  └─────────────────────────────────────────────┘               │
-└─────────────────────────────────────────────────────────────────┘
-                             │
+│  │  Company    │ │ Aggregator  │ │   Report    │───────┐       │
+│  │  Domain     │ │             │ │  Generator  │       │       │
+│  └─────────────┘ └─────────────┘ └──────┬──────┘       │       │
+│  ┌─────────────────────────────────────────────┐       │       │
+│  │            Chat Handlers (x2)               │       │       │
+│  │        (Firestore-triggered AI Chat)        │       │       │
+│  └─────────────────────────────────────────────┘       │       │
+└─────────────────────────────────────────────────────────┼───────┘
+                             │                            │
+                             ▼                            │
+┌─────────────────────────────────────────────────────────┼───────┐
+│                        Firestore                        │       │
+│  • jobs (investigation results, markdown reports)       │       │
+│  • chat_sessions_* (conversation history)               │       │
+└─────────────────────────────────────────────────────────┘       │
+                                                                   │
+                                                                   │
+                             ┌─────────────────────────────────────┘
+                             │ Markdown Reports
                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        Firestore                                 │
-│  • jobs (investigation results)                                 │
-│  • chat_sessions_* (conversation history)                       │
-└─────────────────────────────────────────────────────────────────┘
+                    ┌─────────────────┐
+                    │  Google Drive   │
+                    │  (Per-borrower  │
+                    │   folders)      │
+                    └────────┬────────┘
+                             │ Sync (external)
+                             ▼
+                    ┌─────────────────┐
+                    │    Obsidian     │
+                    │ (Knowledge Base)│
+                    └─────────────────┘
 ```
 
 ## Features
@@ -88,10 +108,15 @@ This platform provides two main investigation types:
 
 ```
 skip-trace-origination/
+├── .env.example              # Environment configuration template (optional)
+├── .gitignore                # Git exclusions
+├── README.md
+├── VALIDATION_REPORT.md      # Static validation results
 ├── chrome-extension/          # Browser extension for loan system integration
 ├── docs/                      # Documentation
 │   ├── DEPLOYMENT.md         
 │   ├── PREREQUISITES.md      
+│   ├── REPOSITORY_SETUP.md   # Guide for setting up git repository
 │   └── TROUBLESHOOTING.md    
 ├── frontend/                  
 │   ├── skiptrace/            # Skip trace web app
@@ -113,7 +138,7 @@ skip-trace-origination/
 │   │   └── address_verification/
 │   ├── shared/               # Shared utilities
 │   │   └── retry_utils.py
-│   └── workflows/            # Cloud Workflow definitions
+│   └── workflows/            # Cloud Workflow templates
 │       ├── investigate-skiptrace.yaml.tpl
 │       └── investigate-origination.yaml.tpl
 ├── pse-configurations/       # Programmable Search Engine setup guides
@@ -134,13 +159,17 @@ skip-trace-origination/
 
 ### Prerequisites
 
+⚠️ **IMPORTANT**: You must complete [docs/PREREQUISITES.md](docs/PREREQUISITES.md) before starting deployment.
+
+Required:
 - GCP Project with billing enabled
 - gcloud CLI authenticated
 - Terraform >= 1.5.0
 - Firebase CLI
 - API keys (Google Search, HIBP)
+- All PSEs created (6 unique search engines)
 
-See [docs/PREREQUISITES.md](docs/PREREQUISITES.md) for detailed setup.
+See [docs/PREREQUISITES.md](docs/PREREQUISITES.md) for complete setup instructions and verification checklist.
 
 ### Deployment
 
@@ -160,13 +189,24 @@ terraform apply
 
 # 4. Add secrets
 echo -n "API_KEY" | gcloud secrets versions add GOOGLE_SEARCH_API_KEY --data-file=-
-# ... add other secrets
+# ... add other secrets (see DEPLOYMENT.md Step 4 for complete list)
 
-# 5. Deploy frontends
-cd frontend/skiptrace
+# 5. Configure Firebase hosting targets
+cd ../../frontend/skiptrace
+firebase target:apply hosting skiptrace PROJECT_ID-skiptrace
+cd ../origination
+firebase target:apply hosting origination PROJECT_ID-origination
+
+# 6. Deploy frontends and Firestore rules
+cd ../skiptrace
 firebase deploy --only hosting
+firebase deploy --only firestore:rules
+cd ../origination
+firebase deploy --only hosting
+firebase deploy --only firestore:rules
 
-# 6. Validate
+# 7. Validate
+cd ../..
 ./scripts/validate-deployment.sh PROJECT_ID REGION
 ```
 
@@ -174,17 +214,15 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide.
 
 ## Configuration
 
-Key Terraform variables:
+Key Terraform variables to configure in `terraform.tfvars`:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `project_id` | GCP Project ID | (required) |
 | `region` | GCP Region | `northamerica-northeast1` |
 | `cors_allowed_origins` | CORS policy | `*` (dev) |
-| `function_memory` | Function memory | 512MB |
-| `function_timeout` | Function timeout | 60-540s |
 
-See `terraform/modules/core/variables.tf` for all options.
+**Note**: Additional variables like `function_memory`, `function_timeout`, and `function_max_instances` are configured per-function with sensible defaults. See `terraform/modules/core/variables.tf` for all configuration options.
 
 ## Security
 
@@ -197,7 +235,7 @@ See `terraform/modules/core/variables.tf` for all options.
 ### Production Recommendations
 
 1. Set specific CORS origins
-2. Enable Firebase App Check
+2. Enable Firebase App Check (see `terraform/modules/core/firebase.tf` for configuration)
 3. Configure monitoring and alerting
 4. Use VPC Service Controls
 5. Enable audit logging

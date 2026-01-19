@@ -14,7 +14,7 @@ This Programmable Search Engine (PSE) is configured specifically for LinkedIn pr
 ## Environment Variable
 
 - **Variable Name**: `LINKEDIN_PSE_CX`
-- **Usage**: Set this environment variable to `03146b58fead44d18` for all Cloud Functions that use this PSE
+- **Usage**: Set this environment variable to the CX ID that Google generated when you created this PSE
 
 ## Site Restrictions
 
@@ -24,10 +24,8 @@ This PSE is restricted to Canadian LinkedIn profiles:
 
 ## Search Features
 
-- **Image search**: Enabled
-- **SafeSearch**: Enabled
-- **Search the entire web**: Enabled
 - **Region restricted results**: Disabled (OFF)
+- All other search features use default settings
 
 ## Usage
 
@@ -45,13 +43,10 @@ When creating this PSE in Google PSE control panel:
 1. Create a new Programmable Search Engine
 2. Name it "LinkedIn Search" or "LinkedIn Canada Only" or similar
 3. Set region to **Canada**
-4. Enable **Image search**
-5. Enable **SafeSearch**
-6. Enable **Search the entire web**
-7. Disable "Region restricted results"
-8. Add site restriction: `ca.linkedin.com/in/*`
-9. Save the PSE and copy the Search Engine ID (CX value) - it should match `03146b58fead44d18` if recreating the exact configuration
-10. Set the `LINKEDIN_PSE_CX` environment variable to this CX ID
+4. Disable "Region restricted results"
+5. Add site restriction: `ca.linkedin.com/in/*`
+6. Save the PSE and copy the Search Engine ID (CX value) - Google will generate a new CX ID for your PSE
+7. Set the `LINKEDIN_PSE_CX` environment variable to the CX ID that Google generated
 
 ## Notes
 

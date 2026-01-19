@@ -212,7 +212,7 @@ Required for web search functionality.
 1. Go to [Google Cloud Console > APIs & Services](https://console.cloud.google.com/apis/credentials)
 2. Click "Create Credentials" > "API Key"
 3. Restrict the key to "Custom Search API" only
-4. **Store the API key securely** - you'll add it to Secret Manager in DEPLOYMENT.md Step 4
+4. **Store the API key securely** - you'll add it to Secret Manager in the 'Add Secret Values' step in DEPLOYMENT.md
 
 **Note**: Keep your API key in a secure location temporarily (e.g., password manager, encrypted file). You'll use it when adding secrets after Terraform deployment.
 
@@ -222,7 +222,7 @@ Required for breach detection functionality.
 
 1. Go to [Have I Been Pwned API](https://haveibeenpwned.com/API/Key)
 2. Purchase an API key (supports the service)
-3. **Store the API key securely** - you'll add it to Secret Manager in DEPLOYMENT.md Step 4
+3. **Store the API key securely** - you'll add it to Secret Manager in the 'Add Secret Values' step in DEPLOYMENT.md
 
 **Note**: Keep your API key in a secure location temporarily. You'll use it when adding secrets after Terraform deployment.
 
@@ -236,12 +236,18 @@ Required for AI-powered analysis.
    - Look for "Generative Language API" quotas
    - Default quotas are usually sufficient for development/testing
 
-### 4. Google Drive API (Optional)
+### 4. Google Drive API (Post-Deployment Setup)
 
-Required for report export to Google Drive.
+**Note**: Drive configuration is **not** part of prerequisites. After deployment, you'll configure Drive access through the web interface.
 
 1. Drive API is enabled automatically via Terraform
-2. Service account must have access to target folders
+2. A service account (`functions-sa@PROJECT_ID.iam.gserviceaccount.com`) is created automatically
+3. **After deployment completes**, follow the setup wizard in the web application's "Setup & Help" tab to:
+   - Create a folder in a Google Shared Drive
+   - Share it with the service account
+   - Configure the folder URL
+
+**Why this is post-deployment**: Google Drive access requires manual folder sharing with the service account, which can only be done after the service account is created by Terraform.
 
 ---
 
@@ -277,7 +283,7 @@ The platform uses several Google Programmable Search Engines (PSE) for specializ
 - [Reviews Search Engine](pse-configurations/reviews-search.md) - `REVIEWS_PSE_CX`
 - [Complaints Search Engine](pse-configurations/complaints-search.md) - `COMPLAINTS_PSE_CX`
 
-**After creating each PSE**, copy the Search Engine ID (CX) and store it securely. You'll add all CX values to Secret Manager in DEPLOYMENT.md Step 4.
+**After creating each PSE**, copy the Search Engine ID (CX) and store it securely. You'll add all CX values to Secret Manager in the 'Add Secret Values' step in DEPLOYMENT.md.
 
 ---
 
@@ -376,7 +382,7 @@ Run through this checklist before deployment. **Verify each item with the comman
   # You can keep it in a secure note or encrypted file
   echo "API key created and stored securely"
   ```
-  **Note**: API keys will be added to Secret Manager in DEPLOYMENT.md Step 4.
+  **Note**: API keys will be added to Secret Manager in the 'Add Secret Values' step in DEPLOYMENT.md.
 
 - [ ] **HIBP API key purchased**
   ```bash
@@ -398,7 +404,7 @@ Run through this checklist before deployment. **Verify each item with the comman
   COMPLAINTS_PSE_CX=your-cx-here
   EOF
   ```
-  **Note**: These will be added to Secret Manager in DEPLOYMENT.md Step 4.
+  **Note**: These will be added to Secret Manager in the 'Add Secret Values' step in DEPLOYMENT.md.
 
 ### PSEs Created
 - [ ] **Precision PSE (CX: ____________)**
@@ -438,7 +444,12 @@ Run through this checklist before deployment. **Verify each item with the comman
 
 ## Quick Start Commands
 
+**Note**: These commands assume you've cloned the repository and are in the repository root directory.
+
 ```bash
+# 0. Navigate to repository (if not already there)
+# Example: cd /path/to/skip-trace-origination
+
 # 1. Verify tools
 gcloud version
 terraform version
@@ -461,8 +472,8 @@ gcloud projects describe $PROJECT_ID
 gsutil mb -l northamerica-northeast1 -p $PROJECT_ID gs://${PROJECT_ID}-terraform-state
 gsutil versioning set on gs://${PROJECT_ID}-terraform-state
 
-# 6. Ready to deploy!
-cd skip-trace-origination/terraform/environments/dev
+# 6. Navigate to Terraform environment and initialize
+cd terraform/environments/dev
 terraform init
 ```
 
