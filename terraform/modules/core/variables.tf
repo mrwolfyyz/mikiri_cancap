@@ -64,8 +64,8 @@ variable "function_timeout" {
     aggregator                   = 30
     report_generator_skiptrace   = 540
     report_generator_origination = 540
-    chat_handler                 = 60
-    chat_handler_origination     = 60
+    chat_handler                 = 120
+    chat_handler_origination     = 120
     address_verification         = 120
   }
 }
