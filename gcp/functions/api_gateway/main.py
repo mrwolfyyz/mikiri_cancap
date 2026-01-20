@@ -228,9 +228,24 @@ def format_job_response(job_id: str, job: dict[str, Any]) -> dict[str, Any]:
     return response
 
 
-def get_cors_headers():
-    """Get CORS headers based on configuration."""
-    return {"Access-Control-Allow-Origin": CORS_ALLOWED_ORIGINS}
+def get_cors_headers(request: Request):
+    """Get CORS headers based on configuration and request origin."""
+    origin = request.headers.get("Origin", "")
+    
+    # If CORS_ALLOWED_ORIGINS is "*", allow all origins
+    if CORS_ALLOWED_ORIGINS == "*":
+        return {"Access-Control-Allow-Origin": "*"}
+    
+    # Split comma-separated origins and check if request origin matches
+    allowed_origins = [o.strip() for o in CORS_ALLOWED_ORIGINS.split(",")]
+    
+    # If request origin is in allowed list, return it (browser requires exact match)
+    if origin in allowed_origins:
+        return {"Access-Control-Allow-Origin": origin}
+    
+    # If no match and not "*", return first allowed origin as fallback
+    # (or could return "*" if you want to allow all)
+    return {"Access-Control-Allow-Origin": allowed_origins[0] if allowed_origins else "*"}
 
 
 @functions_framework.http
@@ -238,15 +253,22 @@ def main(request: Request):
     """Main HTTP handler."""
     # Enable CORS
     if request.method == "OPTIONS":
+        origin = request.headers.get("Origin", "")
+        if CORS_ALLOWED_ORIGINS == "*":
+            allow_origin = "*"
+        else:
+            allowed_origins = [o.strip() for o in CORS_ALLOWED_ORIGINS.split(",")]
+            allow_origin = origin if origin in allowed_origins else (allowed_origins[0] if allowed_origins else "*")
+        
         headers = {
-            "Access-Control-Allow-Origin": CORS_ALLOWED_ORIGINS,
+            "Access-Control-Allow-Origin": allow_origin,
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type, Authorization",
             "Access-Control-Max-Age": "3600",
         }
         return ("", 204, headers)
     
-    headers = get_cors_headers()
+    headers = get_cors_headers(request)
     
     path = request.path
     

@@ -34,8 +34,7 @@ locals {
     google_project_iam_member.compute_storage_viewer,
     google_project_iam_member.compute_artifactregistry_writer,
     google_storage_bucket_iam_member.compute_object_admin,
-    # Compute SA Eventarc permission (required for Eventarc trigger creation/validation)
-    google_project_iam_member.compute_eventarc_eventreceiver,
+    # Note: Eventarc permission is NOT included here as it's only needed for Eventarc-triggered functions
   ]
 }
 
@@ -239,16 +238,24 @@ resource "google_cloudfunctions2_function" "chat_handler" {
   labels = local.common_labels
 
   # Cloud Build dependencies required for all function deployments
-  # See local.cloud_build_dependencies for the full list
+  # Includes both Cloud Build SA and Compute SA permissions (required as of 2024 default change)
   depends_on = [
     google_project_service.apis["cloudfunctions.googleapis.com"],
     google_project_service.apis["run.googleapis.com"],
     google_project_service.apis["cloudbuild.googleapis.com"],
     time_sleep.api_propagation,
+    # Cloud Build SA permissions (for explicit Cloud Build triggers)
     google_project_iam_member.cloudbuild_functions_developer,
     google_project_iam_member.cloudbuild_run_admin,
     google_project_iam_member.cloudbuild_service_account_user,
     google_storage_bucket_iam_member.cloudbuild_object_admin,
+    # Compute SA permissions (for Functions Gen2 internal builds - default as of 2024)
+    google_project_iam_member.compute_functions_developer,
+    google_project_iam_member.compute_run_admin,
+    google_project_iam_member.compute_service_account_user,
+    google_project_iam_member.compute_storage_viewer,
+    google_project_iam_member.compute_artifactregistry_writer,
+    google_storage_bucket_iam_member.compute_object_admin,
   ]
 }
 
@@ -297,16 +304,24 @@ resource "google_cloudfunctions2_function" "chat_handler_origination" {
   labels = local.common_labels
 
   # Cloud Build dependencies required for all function deployments
-  # See local.cloud_build_dependencies for the full list
+  # Includes both Cloud Build SA and Compute SA permissions (required as of 2024 default change)
   depends_on = [
     google_project_service.apis["cloudfunctions.googleapis.com"],
     google_project_service.apis["run.googleapis.com"],
     google_project_service.apis["cloudbuild.googleapis.com"],
     time_sleep.api_propagation,
+    # Cloud Build SA permissions (for explicit Cloud Build triggers)
     google_project_iam_member.cloudbuild_functions_developer,
     google_project_iam_member.cloudbuild_run_admin,
     google_project_iam_member.cloudbuild_service_account_user,
     google_storage_bucket_iam_member.cloudbuild_object_admin,
+    # Compute SA permissions (for Functions Gen2 internal builds - default as of 2024)
+    google_project_iam_member.compute_functions_developer,
+    google_project_iam_member.compute_run_admin,
+    google_project_iam_member.compute_service_account_user,
+    google_project_iam_member.compute_storage_viewer,
+    google_project_iam_member.compute_artifactregistry_writer,
+    google_storage_bucket_iam_member.compute_object_admin,
   ]
 }
 
@@ -378,16 +393,26 @@ resource "google_cloudfunctions2_function" "address_verification" {
 
   labels = local.common_labels
 
-  # Cloud Build dependencies + secret manager (see local.cloud_build_dependencies)
+  # Cloud Build dependencies + secret manager
+  # Includes both Cloud Build SA and Compute SA permissions (required as of 2024 default change)
   depends_on = [
     google_project_service.apis["cloudfunctions.googleapis.com"],
     google_project_service.apis["run.googleapis.com"],
     google_project_service.apis["cloudbuild.googleapis.com"],
     time_sleep.api_propagation,
+    # Cloud Build SA permissions (for explicit Cloud Build triggers)
     google_project_iam_member.cloudbuild_functions_developer,
     google_project_iam_member.cloudbuild_run_admin,
     google_project_iam_member.cloudbuild_service_account_user,
     google_storage_bucket_iam_member.cloudbuild_object_admin,
+    # Compute SA permissions (for Functions Gen2 internal builds - default as of 2024)
+    google_project_iam_member.compute_functions_developer,
+    google_project_iam_member.compute_run_admin,
+    google_project_iam_member.compute_service_account_user,
+    google_project_iam_member.compute_storage_viewer,
+    google_project_iam_member.compute_artifactregistry_writer,
+    google_storage_bucket_iam_member.compute_object_admin,
+    # Secret manager
     google_secret_manager_secret_version.placeholder,
   ]
 }
@@ -441,11 +466,29 @@ resource "google_cloudfunctions2_function" "api_gateway" {
 
   labels = local.common_labels
 
+  # Cloud Build dependencies + function dependencies (api_gateway needs URLs from other functions)
+  # Includes both Cloud Build SA and Compute SA permissions (required as of 2024 default change)
   depends_on = [
+    google_project_service.apis["cloudfunctions.googleapis.com"],
+    google_project_service.apis["run.googleapis.com"],
+    google_project_service.apis["cloudbuild.googleapis.com"],
+    time_sleep.api_propagation,
+    # Cloud Build SA permissions (for explicit Cloud Build triggers)
+    google_project_iam_member.cloudbuild_functions_developer,
+    google_project_iam_member.cloudbuild_run_admin,
+    google_project_iam_member.cloudbuild_service_account_user,
+    google_storage_bucket_iam_member.cloudbuild_object_admin,
+    # Compute SA permissions (for Functions Gen2 internal builds - default as of 2024)
+    google_project_iam_member.compute_functions_developer,
+    google_project_iam_member.compute_run_admin,
+    google_project_iam_member.compute_service_account_user,
+    google_project_iam_member.compute_storage_viewer,
+    google_project_iam_member.compute_artifactregistry_writer,
+    google_storage_bucket_iam_member.compute_object_admin,
+    # Function dependencies (api_gateway needs URLs from other functions)
     google_cloudfunctions2_function.chat_handler,
     google_cloudfunctions2_function.chat_handler_origination,
     google_cloudfunctions2_function.address_verification,
-    time_sleep.api_propagation,
   ]
 }
 
@@ -540,16 +583,26 @@ resource "google_cloudfunctions2_function" "phase1_identity" {
 
   labels = local.common_labels
 
-  # Cloud Build dependencies + secret manager (see local.cloud_build_dependencies)
+  # Cloud Build dependencies + secret manager
+  # Includes both Cloud Build SA and Compute SA permissions (required as of 2024 default change)
   depends_on = [
     google_project_service.apis["cloudfunctions.googleapis.com"],
     google_project_service.apis["run.googleapis.com"],
     google_project_service.apis["cloudbuild.googleapis.com"],
     time_sleep.api_propagation,
+    # Cloud Build SA permissions (for explicit Cloud Build triggers)
     google_project_iam_member.cloudbuild_functions_developer,
     google_project_iam_member.cloudbuild_run_admin,
     google_project_iam_member.cloudbuild_service_account_user,
     google_storage_bucket_iam_member.cloudbuild_object_admin,
+    # Compute SA permissions (for Functions Gen2 internal builds - default as of 2024)
+    google_project_iam_member.compute_functions_developer,
+    google_project_iam_member.compute_run_admin,
+    google_project_iam_member.compute_service_account_user,
+    google_project_iam_member.compute_storage_viewer,
+    google_project_iam_member.compute_artifactregistry_writer,
+    google_storage_bucket_iam_member.compute_object_admin,
+    # Secret manager
     google_secret_manager_secret_version.placeholder,
   ]
 }
@@ -598,16 +651,26 @@ resource "google_cloudfunctions2_function" "domain_enrichment" {
 
   labels = local.common_labels
 
-  # Cloud Build dependencies + domain_enrichment preparation (see local.cloud_build_dependencies)
+  # Cloud Build dependencies + domain_enrichment preparation
+  # Includes both Cloud Build SA and Compute SA permissions (required as of 2024 default change)
   depends_on = [
     google_project_service.apis["cloudfunctions.googleapis.com"],
     google_project_service.apis["run.googleapis.com"],
     google_project_service.apis["cloudbuild.googleapis.com"],
     time_sleep.api_propagation,
+    # Cloud Build SA permissions (for explicit Cloud Build triggers)
     google_project_iam_member.cloudbuild_functions_developer,
     google_project_iam_member.cloudbuild_run_admin,
     google_project_iam_member.cloudbuild_service_account_user,
     google_storage_bucket_iam_member.cloudbuild_object_admin,
+    # Compute SA permissions (for Functions Gen2 internal builds - default as of 2024)
+    google_project_iam_member.compute_functions_developer,
+    google_project_iam_member.compute_run_admin,
+    google_project_iam_member.compute_service_account_user,
+    google_project_iam_member.compute_storage_viewer,
+    google_project_iam_member.compute_artifactregistry_writer,
+    google_storage_bucket_iam_member.compute_object_admin,
+    # Domain enrichment preparation
     null_resource.prepare_domain_enrichment,
   ]
 }
@@ -656,16 +719,24 @@ resource "google_cloudfunctions2_function" "address_geocoding" {
   labels = local.common_labels
 
   # Cloud Build dependencies required for all function deployments
-  # See local.cloud_build_dependencies for the full list
+  # Includes both Cloud Build SA and Compute SA permissions (required as of 2024 default change)
   depends_on = [
     google_project_service.apis["cloudfunctions.googleapis.com"],
     google_project_service.apis["run.googleapis.com"],
     google_project_service.apis["cloudbuild.googleapis.com"],
     time_sleep.api_propagation,
+    # Cloud Build SA permissions (for explicit Cloud Build triggers)
     google_project_iam_member.cloudbuild_functions_developer,
     google_project_iam_member.cloudbuild_run_admin,
     google_project_iam_member.cloudbuild_service_account_user,
     google_storage_bucket_iam_member.cloudbuild_object_admin,
+    # Compute SA permissions (for Functions Gen2 internal builds - default as of 2024)
+    google_project_iam_member.compute_functions_developer,
+    google_project_iam_member.compute_run_admin,
+    google_project_iam_member.compute_service_account_user,
+    google_project_iam_member.compute_storage_viewer,
+    google_project_iam_member.compute_artifactregistry_writer,
+    google_storage_bucket_iam_member.compute_object_admin,
   ]
 }
 
@@ -725,16 +796,26 @@ resource "google_cloudfunctions2_function" "company_domain_lookup" {
 
   labels = local.common_labels
 
-  # Cloud Build dependencies + secret manager (see local.cloud_build_dependencies)
+  # Cloud Build dependencies + secret manager
+  # Includes both Cloud Build SA and Compute SA permissions (required as of 2024 default change)
   depends_on = [
     google_project_service.apis["cloudfunctions.googleapis.com"],
     google_project_service.apis["run.googleapis.com"],
     google_project_service.apis["cloudbuild.googleapis.com"],
     time_sleep.api_propagation,
+    # Cloud Build SA permissions (for explicit Cloud Build triggers)
     google_project_iam_member.cloudbuild_functions_developer,
     google_project_iam_member.cloudbuild_run_admin,
     google_project_iam_member.cloudbuild_service_account_user,
     google_storage_bucket_iam_member.cloudbuild_object_admin,
+    # Compute SA permissions (for Functions Gen2 internal builds - default as of 2024)
+    google_project_iam_member.compute_functions_developer,
+    google_project_iam_member.compute_run_admin,
+    google_project_iam_member.compute_service_account_user,
+    google_project_iam_member.compute_storage_viewer,
+    google_project_iam_member.compute_artifactregistry_writer,
+    google_storage_bucket_iam_member.compute_object_admin,
+    # Secret manager
     google_secret_manager_secret_version.placeholder,
   ]
 }
@@ -783,16 +864,24 @@ resource "google_cloudfunctions2_function" "aggregator" {
   labels = local.common_labels
 
   # Cloud Build dependencies required for all function deployments
-  # See local.cloud_build_dependencies for the full list
+  # Includes both Cloud Build SA and Compute SA permissions (required as of 2024 default change)
   depends_on = [
     google_project_service.apis["cloudfunctions.googleapis.com"],
     google_project_service.apis["run.googleapis.com"],
     google_project_service.apis["cloudbuild.googleapis.com"],
     time_sleep.api_propagation,
+    # Cloud Build SA permissions (for explicit Cloud Build triggers)
     google_project_iam_member.cloudbuild_functions_developer,
     google_project_iam_member.cloudbuild_run_admin,
     google_project_iam_member.cloudbuild_service_account_user,
     google_storage_bucket_iam_member.cloudbuild_object_admin,
+    # Compute SA permissions (for Functions Gen2 internal builds - default as of 2024)
+    google_project_iam_member.compute_functions_developer,
+    google_project_iam_member.compute_run_admin,
+    google_project_iam_member.compute_service_account_user,
+    google_project_iam_member.compute_storage_viewer,
+    google_project_iam_member.compute_artifactregistry_writer,
+    google_storage_bucket_iam_member.compute_object_admin,
   ]
 }
 
@@ -860,7 +949,8 @@ resource "google_cloudfunctions2_function" "report_generator_skiptrace" {
 
   labels = local.common_labels
 
-  # Cloud Build dependencies + Eventarc dependencies (see local.cloud_build_dependencies)
+  # Cloud Build dependencies + Eventarc dependencies
+  # Includes both Cloud Build SA and Compute SA permissions (required as of 2024 default change)
   # Note: eventarc_eventreceiver binding is not in depends_on because Eventarc SA is Google-managed
   # and may not exist immediately after API enablement. Functions can be created independently;
   # the IAM binding will succeed on second apply if it failed on first.
@@ -869,10 +959,21 @@ resource "google_cloudfunctions2_function" "report_generator_skiptrace" {
     google_project_service.apis["run.googleapis.com"],
     google_project_service.apis["cloudbuild.googleapis.com"],
     time_sleep.api_propagation,
+    # Cloud Build SA permissions (for explicit Cloud Build triggers)
     google_project_iam_member.cloudbuild_functions_developer,
     google_project_iam_member.cloudbuild_run_admin,
     google_project_iam_member.cloudbuild_service_account_user,
     google_storage_bucket_iam_member.cloudbuild_object_admin,
+    # Compute SA permissions (for Functions Gen2 internal builds - default as of 2024)
+    google_project_iam_member.compute_functions_developer,
+    google_project_iam_member.compute_run_admin,
+    google_project_iam_member.compute_service_account_user,
+    google_project_iam_member.compute_storage_viewer,
+    google_project_iam_member.compute_artifactregistry_writer,
+    google_storage_bucket_iam_member.compute_object_admin,
+    # Compute SA Eventarc permission (required for Eventarc trigger creation/validation)
+    google_project_iam_member.compute_eventarc_eventreceiver,
+    # Eventarc and Firestore dependencies
     google_project_service.apis["eventarc.googleapis.com"],
     google_firestore_database.default,
   ]
@@ -939,7 +1040,8 @@ resource "google_cloudfunctions2_function" "report_generator_origination" {
 
   labels = local.common_labels
 
-  # Cloud Build dependencies + Eventarc dependencies (see local.cloud_build_dependencies)
+  # Cloud Build dependencies + Eventarc dependencies
+  # Includes both Cloud Build SA and Compute SA permissions (required as of 2024 default change)
   # Note: eventarc_eventreceiver binding is not in depends_on because Eventarc SA is Google-managed
   # and may not exist immediately after API enablement. Functions can be created independently;
   # the IAM binding will succeed on second apply if it failed on first.
@@ -948,10 +1050,21 @@ resource "google_cloudfunctions2_function" "report_generator_origination" {
     google_project_service.apis["run.googleapis.com"],
     google_project_service.apis["cloudbuild.googleapis.com"],
     time_sleep.api_propagation,
+    # Cloud Build SA permissions (for explicit Cloud Build triggers)
     google_project_iam_member.cloudbuild_functions_developer,
     google_project_iam_member.cloudbuild_run_admin,
     google_project_iam_member.cloudbuild_service_account_user,
     google_storage_bucket_iam_member.cloudbuild_object_admin,
+    # Compute SA permissions (for Functions Gen2 internal builds - default as of 2024)
+    google_project_iam_member.compute_functions_developer,
+    google_project_iam_member.compute_run_admin,
+    google_project_iam_member.compute_service_account_user,
+    google_project_iam_member.compute_storage_viewer,
+    google_project_iam_member.compute_artifactregistry_writer,
+    google_storage_bucket_iam_member.compute_object_admin,
+    # Compute SA Eventarc permission (required for Eventarc trigger creation/validation)
+    google_project_iam_member.compute_eventarc_eventreceiver,
+    # Eventarc and Firestore dependencies
     google_project_service.apis["eventarc.googleapis.com"],
     google_firestore_database.default,
   ]

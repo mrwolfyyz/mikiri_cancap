@@ -118,6 +118,7 @@ Identity Toolkit (Identity Platform) API requires a quota project to be explicit
 
 1. **Quota project not set**: ADC credentials don't have a quota project configured.
 2. **OAuth client project mismatch**: If ADC credentials were created with an OAuth client from a different project, the error may show a different "consumer" project number (e.g., `projects/764086051850`) than your target project number.
+3. **Organizational/account-level OAuth client**: The OAuth client may belong to an organization-level or account-level project that cannot be changed by re-authenticating ADC. Even when setting the correct project before `gcloud auth application-default login`, the OAuth client may still belong to a different project due to organizational OAuth consent screen settings.
 
 **Solution:**
 
@@ -131,14 +132,28 @@ Identity Toolkit (Identity Platform) API requires a quota project to be explicit
    gcloud auth application-default set-quota-project PROJECT_ID
    ```
 
-3. **If OAuth client mismatch, re-authenticate ADC**:
+3. **If OAuth client mismatch, try re-authenticating ADC**:
    ```bash
    # Re-authenticate with correct project active
+   gcloud config set project PROJECT_ID
    gcloud auth application-default login
    
    # Then set quota project again
    gcloud auth application-default set-quota-project PROJECT_ID
+   
+   # Verify if OAuth client matches (may still belong to org-level project)
+   PROJECT_NUMBER=$(gcloud projects describe PROJECT_ID --format="value(projectNumber)")
+   ADC_CLIENT_ID=$(cat ~/.config/gcloud/application_default_credentials.json | grep -o '"client_id": "[^"]*"' | cut -d'"' -f4 | cut -d'-' -f1)
+   if [ "$ADC_CLIENT_ID" != "$PROJECT_NUMBER" ]; then
+     echo "⚠️  OAuth client belongs to different project. This may be an org-level client."
+     echo "   Workaround: Configure Identity Platform manually via Firebase Console (see below)"
+   fi
    ```
+   
+   **Note**: If re-authentication doesn't fix the OAuth client mismatch, the OAuth client likely belongs to an organization-level or account-level project that cannot be changed. This is common in organizational GCP setups where the OAuth consent screen is configured at the organization level. In this case, you have two options:
+   
+   - **Option A (Recommended)**: Configure Identity Platform manually via Firebase Console (see "Firebase Anonymous Authentication Not Enabled" section below)
+   - **Option B**: Use a service account key for Terraform authentication instead of user credentials (requires creating and downloading a service account key)
 
 4. **Verify quota project is set**:
    ```bash
@@ -201,6 +216,8 @@ As of May-June 2024, GCP changed the default service account behavior for Cloud 
 
 This is **expected GCP behavior**, not a bug. The Terraform configuration grants permissions to both service accounts to ensure compatibility.
 
+**Note**: The current Terraform configuration (as of the fix) automatically ensures functions wait for Compute SA IAM bindings to be created before starting builds. This should prevent this error in most cases. However, if IAM propagation is very slow (5-10 minutes), you may still encounter this error even with the fix.
+
 **Solution:**
 
 1. **Check IAM propagation**: GCP IAM changes can take 5-10 minutes to propagate. Wait 5-10 minutes after granting permissions, then retry.
@@ -238,11 +255,11 @@ This is **expected GCP behavior**, not a bug. The Terraform configuration grants
    - `"serviceAccount: PROJECT_NUMBER-compute@developer.gserviceaccount.com"` (default as of 2024)
    - `"serviceAccount: PROJECT_NUMBER@cloudbuild.gserviceaccount.com"` (legacy)
 
-4. **Verify Terraform has granted permissions to both SAs**: The Terraform configuration should create IAM bindings for both `compute_functions_developer`, `compute_run_admin`, etc. (for Compute SA) and `cloudbuild_functions_developer`, `cloudbuild_run_admin`, etc. (for Cloud Build SA).
+4. **Verify Terraform has granted permissions to both SAs**: The Terraform configuration creates IAM bindings for both `compute_functions_developer`, `compute_run_admin`, etc. (for Compute SA) and `cloudbuild_functions_developer`, `cloudbuild_run_admin`, etc. (for Cloud Build SA). Additionally, all functions include Compute SA dependencies in their `depends_on` clauses to ensure IAM bindings are created before builds start.
 
 5. **Organization policy restrictions**: If using an organization, check if there are policies restricting service account permissions.
 
-**Note**: This dual-service-account approach is the **standard best practice** for Cloud Functions Gen2 deployments as of 2024. It ensures compatibility with both legacy and new default behaviors.
+**Note**: This dual-service-account approach is the **standard best practice** for Cloud Functions Gen2 deployments as of 2024. It ensures compatibility with both legacy and new default behaviors. The Terraform configuration automatically handles the dependencies - you should not encounter this error unless IAM propagation is unusually slow.
 
 ---
 
@@ -412,7 +429,12 @@ If the Identity Platform config failed due to quota project issues:
    terraform apply -target=module.core.google_identity_platform_config.default
    ```
 
-**Note**: Option A (Firebase Console) is the quickest workaround. Option B (REST API) works if authentication is properly configured. Option C (Terraform) is preferred for infrastructure as code, but may still fail if there's an OAuth client project mismatch that prevents the quota project from being used correctly.
+**Note**: 
+- **Option A (Firebase Console)** is the quickest and most reliable workaround, especially when dealing with organizational OAuth client mismatches. It doesn't require fixing the OAuth client issue.
+- **Option B (REST API)** works if authentication is properly configured, but may still fail with quota project errors if using user credentials with an OAuth client mismatch.
+- **Option C (Terraform)** is preferred for infrastructure as code, but will fail if there's an OAuth client project mismatch that prevents the quota project from being used correctly. This is common in organizational GCP setups where the OAuth consent screen is configured at the organization level and the OAuth client belongs to a different project than the target project.
+
+**Organizational OAuth Client Limitation**: If your organization has an OAuth consent screen configured at the organization level, the OAuth client used by `gcloud auth application-default login` may belong to an organization-level project that cannot be changed by the user. Re-authenticating ADC will not fix this. In such cases, Option A (Firebase Console) is the recommended solution, or you can use a service account key for Terraform authentication.
 
 ---
 

@@ -91,6 +91,21 @@ gcloud auth application-default print-access-token > /dev/null && echo "✓ Appl
 # IMPORTANT: You must set this manually - it's required before terraform apply
 gcloud auth application-default set-quota-project PROJECT_ID
 
+# Verify OAuth client project matches target project (required for Identity Platform API)
+# This prevents "quota project" errors due to OAuth client mismatch
+PROJECT_NUMBER=$(gcloud projects describe PROJECT_ID --format="value(projectNumber)")
+ADC_CLIENT_ID=$(cat ~/.config/gcloud/application_default_credentials.json | grep -o '"client_id": "[^"]*"' | cut -d'"' -f4 | cut -d'-' -f1)
+if [ "$ADC_CLIENT_ID" = "$PROJECT_NUMBER" ]; then
+  echo "✓ OAuth client project matches target project"
+else
+  echo "⚠️  WARNING: OAuth client project ($ADC_CLIENT_ID) does not match target project ($PROJECT_NUMBER)"
+  echo "   This will cause Identity Platform API to fail during terraform apply."
+  echo "   Try re-authenticating ADC (may not work if OAuth client is org-level):"
+  echo "   gcloud auth application-default login"
+  echo "   gcloud auth application-default set-quota-project PROJECT_ID"
+  echo "   If this doesn't fix it, configure Identity Platform manually via Firebase Console post-deployment."
+fi
+
 # Verify Firebase authentication
 firebase projects:list > /dev/null && echo "✓ Firebase authenticated" || echo "✗ Run: firebase login"
 
@@ -99,6 +114,12 @@ gcloud config get-value project
 ```
 
 **Note**: The quota project must be set in Application Default Credentials using `gcloud auth application-default set-quota-project`. This is a prerequisite for the Identity Platform API (`identitytoolkit.googleapis.com`). The `billing_project` parameter in Terraform provider blocks is configured but does not set the ADC quota project - it must be set separately using the `gcloud` command above.
+
+**Important**: If the OAuth client project does not match your target project, the Identity Platform API will reject requests even if the quota project is set correctly. This can happen when:
+1. ADC was created with credentials from a different project (re-authenticating ADC may fix this)
+2. The OAuth client belongs to an organization-level or account-level project (cannot be changed by re-authenticating)
+
+If re-authenticating ADC doesn't fix the OAuth client mismatch (common in organizational GCP setups), the `google_identity_platform_config` resource will fail during `terraform apply`. This is expected and non-blocking - all other resources will deploy successfully. You can configure Identity Platform manually via Firebase Console post-deployment. See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for details and workarounds.
 
 **If any checks fail**, go back to [PREREQUISITES.md](./PREREQUISITES.md) and complete the missing steps.
 
@@ -197,14 +218,18 @@ terraform apply
 # Type 'yes' when prompted
 ```
 
+**Note**: If you encounter errors about Eventarc or Workflows service agents not existing, wait 5-10 minutes for service agents to propagate after API enablement, then run `terraform apply` again. The Identity Platform Config resource may fail due to OAuth client mismatch (documented in PREREQUISITES.md) - this is expected and non-blocking if you configure authentication manually via Firebase Console.
+
 This will:
 - Enable required GCP APIs
 - Create Secret Manager secrets
-- Deploy Cloud Functions
+- Deploy Cloud Functions (functions automatically wait for required IAM permissions)
 - Create Cloud Workflows
 - Configure Firebase (auth, hosting sites, web apps)
 - Generate `firebase-config.json` for frontends
 - Generate `config.js` for Chrome extension
+
+**Note**: The Terraform configuration includes proper dependencies to ensure functions wait for Compute SA IAM permissions before building. This prevents the "Build failed" errors that can occur when Cloud Functions Gen2 builds start before IAM permissions are granted. If you still encounter build failures, see [TROUBLESHOOTING.md](./TROUBLESHOOTING.md#error-cloud-build-service-account-missing-permissions) for IAM propagation timing issues.
 
 ### Step 3b: Verify Generated Configuration Files
 
