@@ -1,4 +1,6 @@
-# Skip Trace & Origination Intelligence Platform
+# Mikiri: Skip Trace & Origination Intelligence Platform
+
+**The Name**: Mikiri (見切り) is the Japanese word for "understanding" or "seeing through." In samurai tradition, it meant "know your enemy" - the art of understanding your opponent's capabilities and intentions before engagement. Miyamoto Musashi, Japan's most legendary swordsman, exemplified this principle in his famous duel with Sasaki Kojirō. Through careful reconnaissance, Musashi observed that Kojirō wielded an exceptionally long sword called the "Drying Pole." In response, Musashi carved a bokken (wooden sword) from a boat oar - deliberately making it one inch longer than Kojirō's blade. This tactical insight, gained through patient observation, gave Musashi the critical reach advantage that secured his victory. Like Musashi's approach, this platform uses thorough investigation and analysis to reveal hidden information that provides decisive advantage in risk assessment.
 
 **Dual-purpose risk intelligence for subprime auto lending** - combining origination fraud detection with skip trace vehicle recovery using exclusively free and open-source data. Delivers comprehensive borrower investigations in under 60 seconds, identifying risk at loan origination and locating borrowers and vehicles for collections.
 
@@ -155,62 +157,19 @@ skip-trace-origination/
         └── prod/            # Production environment
 ```
 
-## Quick Start
+## Getting Started
 
-### Prerequisites
+⚠️ **IMPORTANT**: This platform requires careful, step-by-step deployment. Do not attempt shortcuts.
 
-⚠️ **IMPORTANT**: You must complete [docs/PREREQUISITES.md](docs/PREREQUISITES.md) before starting deployment.
+**Complete deployment requires following the documentation in this exact order:**
 
-Required:
-- GCP Project with billing enabled
-- gcloud CLI authenticated
-- Terraform >= 1.5.0
-- Firebase CLI
-- API keys (Google Search, HIBP)
-- All PSEs created (6 unique search engines)
+1. **[docs/PREREQUISITES.md](docs/PREREQUISITES.md)** - Set up GCP project, APIs, PSEs, and required tools
+2. **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Deploy infrastructure, secrets, and frontends
+3. **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Reference for common issues
 
-See [docs/PREREQUISITES.md](docs/PREREQUISITES.md) for complete setup instructions and verification checklist.
+The prerequisites include creating 6 Programmable Search Engines with specific configurations. Missing or incorrectly configured PSEs will cause investigation failures. Allow 2-3 hours for first-time deployment.
 
-### Deployment
-
-```bash
-# 1. Clone and configure
-git clone <repo-url>
-cd skip-trace-origination
-cp .env.example .env
-
-# 2. Prepare functions
-./scripts/prepare-functions.sh
-
-# 3. Deploy infrastructure
-cd terraform/environments/dev
-terraform init
-terraform apply
-
-# 4. Add secrets
-echo -n "API_KEY" | gcloud secrets versions add GOOGLE_SEARCH_API_KEY --data-file=-
-# ... add other secrets (see DEPLOYMENT.md Step 4 for complete list)
-
-# 5. Configure Firebase hosting targets
-cd ../../frontend/skiptrace
-firebase target:apply hosting skiptrace PROJECT_ID-skiptrace
-cd ../origination
-firebase target:apply hosting origination PROJECT_ID-origination
-
-# 6. Deploy frontends and Firestore rules
-cd ../skiptrace
-firebase deploy --only hosting
-firebase deploy --only firestore:rules
-cd ../origination
-firebase deploy --only hosting
-firebase deploy --only firestore:rules
-
-# 7. Validate
-cd ../..
-./scripts/validate-deployment.sh PROJECT_ID REGION
-```
-
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide.
+**Deployment validation**: After completing deployment, run `./scripts/validate-deployment.sh PROJECT_ID REGION` to verify all components are correctly configured.
 
 ## Configuration
 
