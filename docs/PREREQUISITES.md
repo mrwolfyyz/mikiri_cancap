@@ -146,17 +146,36 @@ sudo apt-get install google-cloud-cli
 gcloud init
 
 # Set default project
+# IMPORTANT: Do this BEFORE authenticating ADC to ensure OAuth client matches your project
 gcloud config set project YOUR_PROJECT_ID
 
 # Set default region
 gcloud config set compute/region northamerica-northeast1
 
 # Authenticate application default credentials (for Terraform)
+# IMPORTANT: Ensure the correct project is active before running this command
+# Note: The OAuth client used may belong to your organization/account level,
+# not necessarily the active project. This can cause Identity Platform API
+# issues if the OAuth client project doesn't match your target project.
 gcloud auth application-default login
 
 # Set quota project (required for Identity Platform API)
 gcloud auth application-default set-quota-project YOUR_PROJECT_ID
+
+# Verify OAuth client project matches your project (prevents Identity Platform API errors)
+PROJECT_NUMBER=$(gcloud projects describe YOUR_PROJECT_ID --format="value(projectNumber)")
+ADC_CLIENT_ID=$(cat ~/.config/gcloud/application_default_credentials.json | grep -o '"client_id": "[^"]*"' | cut -d'"' -f4 | cut -d'-' -f1)
+if [ "$ADC_CLIENT_ID" = "$PROJECT_NUMBER" ]; then
+  echo "✓ OAuth client project matches target project"
+else
+  echo "✗ ERROR: OAuth client project mismatch. Re-authenticate with correct project active:"
+  echo "   gcloud config set project YOUR_PROJECT_ID"
+  echo "   gcloud auth application-default login"
+  echo "   gcloud auth application-default set-quota-project YOUR_PROJECT_ID"
+fi
 ```
+
+**Note**: The order matters! Always set the project before authenticating ADC (`gcloud auth application-default login`). However, the OAuth client used by ADC may belong to an organization-level or account-level project that cannot be changed by simply setting the active project. If the OAuth client project doesn't match your target project, the Identity Platform API will fail even with quota project set correctly. This is a known limitation when using organization-level OAuth clients. See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for workarounds (manual Firebase Console configuration or service account authentication).
 
 ### 2. Terraform
 
