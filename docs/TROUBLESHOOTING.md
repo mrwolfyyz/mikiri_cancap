@@ -584,6 +584,21 @@ After deploying rules:
 
 ---
 
+### Google Custom Search API 403 Errors
+
+**Symptom:** Functions return 403 errors from Custom Search API despite valid API key
+
+**Cause:** Creating multiple new GCP projects/API keys in short succession can trigger Google's abuse detection, causing new API keys to be temporarily restricted.
+
+**Solution:** 
+- Use an API key that's been active for several weeks
+- If you must use a new key, wait 24-48 hours after creation before heavy usage
+- Contact Google Cloud Support if the issue persists
+
+**Prevention:** Avoid creating multiple test projects/API keys rapidly during deployment testing
+
+---
+
 ### Error: "Workflow execution failed"
 
 **Symptom:**
