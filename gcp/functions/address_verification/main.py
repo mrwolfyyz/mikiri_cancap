@@ -2,15 +2,13 @@
 Address Verification Cloud Function
 
 Performs fraud detection analysis on Canadian business addresses for auto loan applications.
-- Performs Google searches using Programmable Search Engine (PSE)
-- Uses Vertex AI Gemini 3 Flash Preview to analyze results for fraud indicators
+- Uses Gemini 2.5 Flash with Google Search grounding to analyze addresses for fraud indicators
 - Detects virtual workspaces, shipping locations, and verifies business presence
 """
 
 import functions_framework
 import os
 import json
-import requests
 import re
 import time
 from typing import List, Dict, Any, Optional
@@ -20,157 +18,16 @@ from urllib.request import urlopen, Request as URLRequest
 from urllib.error import URLError, HTTPError
 from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError
 
-# Vertex AI imports
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+# Google Gen AI SDK imports (for Gemini 2.5 Flash with grounding support)
+from google import genai
+from google.genai.types import GenerateContentConfig, Tool, GoogleSearch
 
 # -------------------------
 # Config
 # -------------------------
-GOOGLE_SEARCH_API_KEY = os.environ.get("GOOGLE_SEARCH_API_KEY", "")
-GOOGLE_SEARCH_CX = os.environ.get("GOOGLE_SEARCH_CX", "")
-REVIEWS_PSE_CX = os.environ.get("REVIEWS_PSE_CX", "")
-COMPLAINTS_PSE_CX = os.environ.get("COMPLAINTS_PSE_CX", "")
 GCP_PROJECT = os.environ.get("GCP_PROJECT", os.environ.get("GOOGLE_CLOUD_PROJECT", ""))
-# Use 'global' endpoint for Gemini models - routes to any supported region
-GCP_LOCATION = os.environ.get("GCP_LOCATION", "global")
+GCP_LOCATION = os.environ.get("GCP_LOCATION", "northamerica-northeast1")
 
-# -------------------------
-# Google Programmable Search Engine (PSE) Integration
-# -------------------------
-def google_search(query: str, num: int = 20) -> List[Dict[str, str]]:
-    """Call Google Custom Search API (PSE) with retry logic."""
-    if not GOOGLE_SEARCH_API_KEY:
-        print("[Google Search] No API key set")
-        return []
-    if not GOOGLE_SEARCH_CX:
-        print("[Google Search] No Search Engine ID (CX) set")
-        return []
-    
-    # Custom Search API max is 10 results per request, so we may need pagination
-    # For now, we'll request up to 10 results (the API limit)
-    num = min(num, 10)
-    
-    endpoint = "https://www.googleapis.com/customsearch/v1"
-    params = {
-        "key": GOOGLE_SEARCH_API_KEY,
-        "cx": GOOGLE_SEARCH_CX,
-        "q": query,
-        "num": num
-    }
-    
-    def _call_google_search():
-        r = requests.get(endpoint, params=params, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        results = []
-        for item in (data.get("items", []) or [])[:num]:
-            results.append({
-                "url": item.get("link", ""),
-                "title": item.get("title", ""),
-                "snippet": item.get("snippet", ""),
-            })
-        return results
-    
-    try:
-        return retry_with_backoff(
-            _call_google_search,
-            RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=30.0),
-            operation_name=f"Google Search: {query[:50]}"
-        )
-    except Exception as e:
-        print(f"[Google Search] Error after retries: {e}")
-        return []
-
-
-def google_search_reviews(query: str, num: int = 10) -> List[Dict[str, str]]:
-    """Call Google Custom Search API (PSE) with retry logic for reviews/ratings searches."""
-    if not GOOGLE_SEARCH_API_KEY:
-        print("[Google Search Reviews] No API key set")
-        return []
-    if not REVIEWS_PSE_CX:
-        print("[Google Search Reviews] No Reviews Search Engine ID (CX) set")
-        return []
-    
-    # Custom Search API max is 10 results per request, so we may need pagination
-    # For now, we'll request up to 10 results (the API limit)
-    num = min(num, 10)
-    
-    endpoint = "https://www.googleapis.com/customsearch/v1"
-    params = {
-        "key": GOOGLE_SEARCH_API_KEY,
-        "cx": REVIEWS_PSE_CX,
-        "q": query,
-        "num": num
-    }
-    
-    def _call_google_search():
-        r = requests.get(endpoint, params=params, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        results = []
-        for item in (data.get("items", []) or [])[:num]:
-            results.append({
-                "url": item.get("link", ""),
-                "title": item.get("title", ""),
-                "snippet": item.get("snippet", ""),
-            })
-        return results
-    
-    try:
-        return retry_with_backoff(
-            _call_google_search,
-            RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=30.0),
-            operation_name=f"Google Search Reviews: {query[:50]}"
-        )
-    except Exception as e:
-        print(f"[Google Search Reviews] Error after retries: {e}")
-        return []
-
-
-def google_search_complaints(query: str, num: int = 10) -> List[Dict[str, str]]:
-    """Call Google Custom Search API (PSE) with retry logic for complaints/fraud searches."""
-    if not GOOGLE_SEARCH_API_KEY:
-        print("[Google Search Complaints] No API key set")
-        return []
-    if not COMPLAINTS_PSE_CX:
-        print("[Google Search Complaints] No Complaints Search Engine ID (CX) set")
-        return []
-    
-    # Custom Search API max is 10 results per request, so we may need pagination
-    # For now, we'll request up to 10 results (the API limit)
-    num = min(num, 10)
-    
-    endpoint = "https://www.googleapis.com/customsearch/v1"
-    params = {
-        "key": GOOGLE_SEARCH_API_KEY,
-        "cx": COMPLAINTS_PSE_CX,
-        "q": query,
-        "num": num
-    }
-    
-    def _call_google_search():
-        r = requests.get(endpoint, params=params, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        results = []
-        for item in (data.get("items", []) or [])[:num]:
-            results.append({
-                "url": item.get("link", ""),
-                "title": item.get("title", ""),
-                "snippet": item.get("snippet", ""),
-            })
-        return results
-    
-    try:
-        return retry_with_backoff(
-            _call_google_search,
-            RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=30.0),
-            operation_name=f"Google Search Complaints: {query[:50]}"
-        )
-    except Exception as e:
-        print(f"[Google Search Complaints] Error after retries: {e}")
-        return []
 
 
 # -------------------------
@@ -260,119 +117,160 @@ def generate_street_view_url(address: str, lat: Optional[float] = None, lon: Opt
 
 
 # -------------------------
-# Vertex AI Gemini Integration
+# Vertex AI Gemini Integration with Google Search Grounding
 # -------------------------
-def vertex_ai_analyze_address(address: str, business_name: str, queries_payload: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Analyze address and search results using Vertex AI Gemini 3 Flash Preview for fraud detection."""
+def extract_grounding_metadata(response) -> Dict[str, Any]:
+    """
+    Extract grounding metadata from Google Gen AI SDK response for audit trail.
+    Maps to existing queries_payload format for downstream compatibility.
+    """
+    metadata = {
+        "grounding_sources": [],
+        "search_queries": [],
+        "search_entry_point": ""
+    }
+    
+    try:
+        # Google Gen AI SDK response structure
+        if hasattr(response, 'candidates') and response.candidates:
+            candidate = response.candidates[0]
+            
+            # Extract grounding metadata if available
+            if hasattr(candidate, 'grounding_metadata'):
+                grounding = candidate.grounding_metadata
+                
+                # Extract search queries
+                if hasattr(grounding, 'web_search_queries'):
+                    metadata["search_queries"] = list(grounding.web_search_queries)
+                
+                # Extract grounding chunks (sources)
+                if hasattr(grounding, 'grounding_chunks'):
+                    for chunk in grounding.grounding_chunks:
+                        if hasattr(chunk, 'web'):
+                            metadata["grounding_sources"].append({
+                                "url": getattr(chunk.web, 'uri', ''),
+                                "title": getattr(chunk.web, 'title', ''),
+                                "snippet": ""  # Grounding doesn't return snippets
+                            })
+                
+                # Extract search entry point if available
+                if hasattr(grounding, 'search_entry_point'):
+                    entry_point = grounding.search_entry_point
+                    if hasattr(entry_point, 'rendered_content'):
+                        metadata["search_entry_point"] = entry_point.rendered_content
+                    elif hasattr(entry_point, 'html'):
+                        metadata["search_entry_point"] = entry_point.html
+        
+    except Exception as e:
+        print(f"[Grounding Metadata] Error extracting metadata: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    return metadata
+
+
+def map_grounding_to_queries_payload(grounding_metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Transform grounding metadata to match existing queries_payload format.
+    Maintains backward compatibility with downstream consumers (report generators).
+    """
+    queries_payload = []
+    
+    if not grounding_metadata:
+        return queries_payload
+    
+    sources = grounding_metadata.get("grounding_sources", [])
+    search_queries = grounding_metadata.get("search_queries", [])
+    
+    if sources:
+        queries_payload.append({
+            "id": "gemini_grounded_search",
+            "type": "grounded",
+            "query": ", ".join(search_queries) if search_queries else "Gemini-determined queries",
+            "hits": sources
+        })
+    
+    return queries_payload
+
+
+def vertex_ai_analyze_address_grounded(address: str, business_name: str) -> Dict[str, Any]:
+    """
+    Analyze address using Gemini 2.5 Flash with Google Search grounding.
+    The model performs its own searches and returns grounded analysis.
+    """
     if not GCP_PROJECT:
         return {"error": "GCP_PROJECT not set"}
     
-    # Initialize Vertex AI
-    try:
-        vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
-    except Exception as e:
-        print(f"[Vertex AI] Initialization error: {e}")
-        return {"error": f"Vertex AI initialization failed: {str(e)}"}
-    
-    system_prompt = (
-        "You are a fraud detection expert analyzing Canadian business information and addresses for auto loan applications. "
-        "Your goal is to verify that the claimed business actually exists at the provided address and identify "
-        "fraudulent or suspicious information and addresses that may indicate loan application fraud.\n\n"
-        "Common red flags include:\n"
-        "- Virtual office addresses (Regus, WeWork, co-working spaces, etc.)\n"
-        "- Shipping/mailbox locations (UPS/FedEx stores, PO boxes, postal outlets)\n"
-        "- Addresses where the claimed business doesn't exist\n"
-        "- Addresses with inconsistent unit/suite numbers used by all other verified tenants in the building\n"
-        "- Addresses that are clearly residential when a business is claimed\n"
-        "- Absence of ratings or reviews or complaints or comments from customers or clients\n"
-        "- Absence of any supporting information or evidence of the business's existence\n"
-        "- Addresses or business names associated with known fraud patterns\n\n"
-        "Analyze the search results to determine if this is a legitimate business or if it raises fraud concerns. "
-        "The business name is provided - verify if this business actually exists at this address.\n\n"
-        "Return STRICT JSON only."
-    )
-    
-    schema = {
-        "type": "object",
-        "properties": {
-            "business_at_address": {
-                "type": "boolean",
-                "description": "Does the claimed business exist at this address? This is the PRIMARY verification."
-            },
-            "is_virtual_workspace": {
-                "type": "boolean",
-                "description": "Is this a virtual office or co-working space? (Red flag)"
-            },
-            "is_shipping_location": {
-                "type": "boolean",
-                "description": "Is this a UPS/FedEx store, PO box, or postal outlet? (Red flag)"
-            },
-            "is_residential": {
-                "type": "boolean",
-                "description": "Is this a residential address? (Red flag if business is claimed)"
-            },
-            "is_suspicious": {
-                "type": "boolean",
-                "description": "Overall fraud risk indicator based on all findings"
-            },
-            "fraud_risk_level": {
-                "type": "string",
-                "enum": ["low", "medium", "high"],
-                "description": "Overall fraud risk assessment"
-            },
-            "fraud_indicators": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Specific red flags found (e.g., 'Business not found at address', 'Virtual office address', 'UPS Store location')"
-            },
-            "confidence": {
-                "type": "string",
-                "enum": ["high", "medium", "low"],
-                "description": "Confidence level in the analysis"
-            },
-            "reasoning": {
-                "type": "string",
-                "description": "Explanation of findings, especially business verification status"
-            },
-            "key_findings": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Important details from search results"
-            }
-        },
-        "required": ["business_at_address", "is_virtual_workspace", "is_shipping_location", "is_residential", "is_suspicious", "fraud_risk_level", "fraud_indicators", "confidence", "reasoning", "key_findings"]
-    }
-    
+    system_prompt = """You are a fraud detection expert analyzing Canadian business information and addresses for auto loan applications. Your goal is to verify that the claimed business actually exists at the provided address and identify fraudulent or suspicious information and addresses that may indicate loan application fraud.
+
+Common red flags include:
+- Virtual office addresses (Regus, WeWork, co-working spaces, etc.)
+- Shipping/mailbox locations (UPS/FedEx stores, PO boxes, postal outlets)
+- Addresses where the claimed business doesn't exist
+- Addresses with inconsistent unit/suite numbers used by all other verified tenants in the building
+- Addresses that are clearly residential when a business is claimed
+- Absence of ratings or reviews or complaints or comments from customers or clients
+- Absence of any supporting information or evidence of the business's existence
+- Addresses or business names associated with known fraud patterns
+
+CRITICAL - UPS Store and FedEx Office mailbox detection:
+If a UPS Store or FedEx Office is located at the address being verified with a different unit number, you MUST treat this as a significant fraud indicator. The presence of a distinct unit number DOES NOT indicate a dedicated physical space. Flag this as "potential_ups_fedex_mailbox" in fraud_indicators.
+
+Analyze the search results to determine if this is a legitimate business or if it raises fraud concerns. The business name is provided - verify if this business actually exists at this address."""
+
     user_prompt = f"""Analyze the following business address verification request:
 
-Address: {address}
 Business Name: {business_name}
+Address: {address}
 
-Search Results from {len(queries_payload)} queries:
-{json.dumps(queries_payload, indent=2)}
+Search the web to verify this business exists at this address. Check for reviews, complaints, virtual office indicators, and any evidence of business presence or fraud.
 
-Return valid JSON with all required fields."""
-    
-    def _call_vertex_ai():
+Return valid JSON with these fields:
+{{
+  "business_at_address": boolean,
+  "is_virtual_workspace": boolean,
+  "is_shipping_location": boolean,
+  "is_residential": boolean,
+  "is_suspicious": boolean,
+  "fraud_risk_level": "low" | "medium" | "high",
+  "fraud_indicators": string[],
+  "confidence": "low" | "medium" | "high",
+  "reasoning": string,
+  "key_findings": string[]
+}}
+
+Return JSON only."""
+
+    def _call_vertex_ai_grounded():
         try:
-            # Use gemini-3-flash-preview with global endpoint
-            # Search results are provided in the prompt context
-            model = GenerativeModel(model_name="gemini-3-flash-preview")
-            print(f"[Vertex AI] Calling Gemini 3 Flash Preview...")
+            # Initialize Google Gen AI client with Vertex AI backend
+            client = genai.Client(
+                vertexai=True,
+                project=GCP_PROJECT,
+                location=GCP_LOCATION
+            )
             
-            # Generate response
-            # Combine system prompt and user prompt since system_instruction may not be available
-            full_prompt = f"{system_prompt}\n\n{user_prompt}"
-            response = model.generate_content(
-                full_prompt,
-                generation_config=GenerationConfig(
+            # Configure Google Search grounding tool
+            google_search_tool = Tool(google_search=GoogleSearch())
+            
+            print(f"[Vertex AI] Calling Gemini 2.5 Flash with Google Search grounding...")
+            
+            # Generate response with grounding
+            # NOTE: Cannot use response_schema with grounding in Gemini 2.5 Flash
+            # (Structured outputs with tools only available in Gemini 3)
+            # Must parse JSON manually from text response
+            # Use system_instruction parameter to match Google AI Studio behavior
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=user_prompt,
+                config=GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    tools=[google_search_tool],
                     temperature=0.1,
-                    response_mime_type="application/json",
-                    response_schema=schema,
                 )
             )
             
-            if not response or not response.text:
+            if not response or not hasattr(response, 'text') or not response.text:
                 raise EmptyLLMResponseError("Empty response from Vertex AI")
             
             # Parse JSON response
@@ -387,11 +285,14 @@ Return valid JSON with all required fields."""
                     lines = lines[:-1]
                 content = "\n".join(lines)
             
-            # Check if content is empty after stripping
             if not content.strip():
                 raise EmptyLLMResponseError("Empty content after stripping markdown")
             
             result = json.loads(content)
+            
+            # Extract grounding metadata for audit trail
+            grounding_metadata = extract_grounding_metadata(response)
+            result["_grounding_metadata"] = grounding_metadata
             
             # Validate and provide defaults for required fields
             required_fields = {
@@ -407,7 +308,6 @@ Return valid JSON with all required fields."""
                 "key_findings": []
             }
             
-            # Fill in missing fields with defaults
             missing_fields = []
             for field, default_value in required_fields.items():
                 if field not in result:
@@ -416,18 +316,13 @@ Return valid JSON with all required fields."""
             
             if missing_fields:
                 print(f"[Vertex AI] ⚠️  Missing fields filled with defaults: {missing_fields}")
-                # Update reasoning to note missing fields
-                if result.get("reasoning") == required_fields["reasoning"]:
-                    result["reasoning"] = f"Analysis completed. Note: Some fields were missing from model response and filled with defaults: {', '.join(missing_fields)}"
             
             # Validate enum values
             if result.get("fraud_risk_level") not in ["low", "medium", "high"]:
                 result["fraud_risk_level"] = "medium"
-                print(f"[Vertex AI] ⚠️  Invalid fraud_risk_level, defaulting to 'medium'")
             
             if result.get("confidence") not in ["low", "medium", "high"]:
                 result["confidence"] = "medium"
-                print(f"[Vertex AI] ⚠️  Invalid confidence, defaulting to 'medium'")
             
             # Ensure arrays are actually arrays
             if not isinstance(result.get("fraud_indicators"), list):
@@ -435,18 +330,20 @@ Return valid JSON with all required fields."""
             if not isinstance(result.get("key_findings"), list):
                 result["key_findings"] = []
             
-            print(f"[Vertex AI] ✅ Successfully analyzed address")
+            print(f"[Vertex AI] ✅ Successfully analyzed address with grounding")
             return result
             
         except Exception as e:
             print(f"[Vertex AI] Error: {e}")
+            import traceback
+            traceback.print_exc()
             raise
     
     try:
         return retry_with_backoff(
-            _call_vertex_ai,
+            _call_vertex_ai_grounded,
             RetryConfig(max_attempts=3, base_delay_seconds=2.0, max_delay_seconds=60.0),
-            operation_name="Vertex AI address analysis"
+            operation_name="Vertex AI grounded address analysis"
         )
     except Exception as e:
         return {"error": str(e)}
@@ -522,145 +419,24 @@ def main(request: Request):
     
     print(f"[Address Verification] Starting verification: {business_name} at {address}")
     
-    # Perform searches with multiple query variations
-    queries_payload = []
-    
     try:
-        # Search 1: Business name + address (without quotes - more flexible)
-        query1 = f"{business_name} {address}"
-        print(f"[Address Verification] Query 1: {query1}")
-        results1 = google_search(query1, num=10)
-        queries_payload.append({
-            "id": "business_name_and_address_flexible",
-            "type": "high_precision",
-            "query": query1,
-            "hits": results1
-        })
-        print(f"[Address Verification] Query 1 returned {len(results1)} results")
-        if results1:
-            print(f"[Address Verification] Query 1 sample results (first 3):")
-            for i, r in enumerate(results1[:3], 1):
-                print(f"  [{i}] Title: {r.get('title', '')[:80]}")
-                print(f"      URL: {r.get('url', '')[:80]}")
-                print(f"      Snippet: {r.get('snippet', '')[:100]}")
-        
-        # Search 2: Address only (without suite/unit and without quotes)
-        # Build address without suite/unit for this search
-        if street_address and city and province:
-            # Rebuild address without suite/unit
-            address_for_search = street_address
-            address_for_search += f", {city}, {province}"
-            if postal_code:
-                address_for_search += f" {postal_code}"
-        else:
-            # For backward compatibility: remove suite/unit from address string
-            address_for_search = address
-            if suite_unit:
-                # Remove suite/unit patterns (e.g., ", Suite 280," or ", Suite 280")
-                suite_patterns = [
-                    rf',\s*{re.escape(suite_unit)}\s*,',
-                    rf',\s*{re.escape(suite_unit)}\s*$',
-                    rf'\s+{re.escape(suite_unit)}\s*,',
-                    rf'\s+{re.escape(suite_unit)}\s*$',
-                ]
-                for pattern in suite_patterns:
-                    address_for_search = re.sub(pattern, ',', address_for_search, flags=re.IGNORECASE)
-                address_for_search = address_for_search.strip(',').strip()
-        
-        query2 = address_for_search
-        print(f"[Address Verification] Query 2: {query2}")
-        results2 = google_search(query2, num=10)
-        queries_payload.append({
-            "id": "address_only",
-            "type": "context",
-            "query": query2,
-            "hits": results2
-        })
-        print(f"[Address Verification] Query 2 returned {len(results2)} results")
-        
-        # Use city and province directly if provided, otherwise extract from address
-        city_province = None
-        if city and province:
-            # Use separate fields directly (no postal code included)
-            city_province = f"{city}, {province}"
-        else:
-            # Fallback: extract from address string (for backward compatibility)
-            address_parts = address.split(',')
-            if len(address_parts) >= 2:
-                extracted_city = address_parts[-2].strip() if len(address_parts) >= 2 else None
-                province_part = address_parts[-1].strip() if len(address_parts) >= 1 else None
-                
-                # Remove postal code from province part (Canadian postal code format: A1A 1A1 or A1A1A1)
-                if province_part:
-                    province_part = re.sub(r'\s*[A-Z]\d[A-Z]\s*\d[A-Z]\d\s*$', '', province_part).strip()
-                
-                if extracted_city and province_part:
-                    city_province = f"{extracted_city}, {province_part}"
-        
-        # Search 3: Business name + city/province (if address contains location info)
-        if city_province:
-            query3 = f"{business_name} {city_province}"
-            print(f"[Address Verification] Query 3: {query3}")
-            results3 = google_search(query3, num=10)
-            queries_payload.append({
-                "id": "business_name_and_location",
-                "type": "high_recall",
-                "query": query3,
-                "hits": results3
-            })
-            print(f"[Address Verification] Query 3 returned {len(results3)} results")
-        
-        # Search 4: Business name + city/province reviews/ratings
-        if city_province:
-            query4 = f"{business_name} {city_province} reviews OR ratings"
-            print(f"[Address Verification] Query 4: {query4}")
-            results4 = google_search_reviews(query4, num=10)
-            queries_payload.append({
-                "id": "business_reviews_ratings",
-                "type": "context",
-                "query": query4,
-                "hits": results4
-            })
-            print(f"[Address Verification] Query 4 returned {len(results4)} results")
-            if results4:
-                print(f"[Address Verification] Query 4 sample results (first 3):")
-                for i, r in enumerate(results4[:3], 1):
-                    print(f"  [{i}] Title: {r.get('title', '')[:80]}")
-                    print(f"      URL: {r.get('url', '')[:80]}")
-                    print(f"      Snippet: {r.get('snippet', '')[:100]}")
-        
-        # Search 5: Business name + city/province complaints/fraud/scam
-        if city_province:
-            query5 = f"{business_name} {city_province} complaints OR fraud OR scam"
-            print(f"[Address Verification] Query 5: {query5}")
-            results5 = google_search_complaints(query5, num=10)
-            queries_payload.append({
-                "id": "business_complaints_fraud",
-                "type": "context",
-                "query": query5,
-                "hits": results5
-            })
-            print(f"[Address Verification] Query 5 returned {len(results5)} results")
-            if results5:
-                print(f"[Address Verification] Query 5 sample results (first 3):")
-                for i, r in enumerate(results5[:3], 1):
-                    print(f"  [{i}] Title: {r.get('title', '')[:80]}")
-                    print(f"      URL: {r.get('url', '')[:80]}")
-                    print(f"      Snippet: {r.get('snippet', '')[:100]}")
-        
-        # Analyze with Vertex AI Gemini
-        print(f"[Address Verification] Analyzing results with Vertex AI Gemini...")
-        print(f"[Address Verification] Total queries: {len(queries_payload)}, Total results: {sum(len(q.get('hits', [])) for q in queries_payload)}")
-        analysis = vertex_ai_analyze_address(address, business_name, queries_payload)
+        # Analyze with Vertex AI Gemini using Google Search grounding
+        print(f"[Address Verification] Analyzing with Gemini 2.5 Flash + Google Search grounding...")
+        analysis = vertex_ai_analyze_address_grounded(address, business_name)
         
         if "error" in analysis:
             print(f"[Address Verification] Vertex AI analysis error: {analysis['error']}")
             return jsonify({"error": f"Analysis failed: {analysis['error']}"}), 500, headers
         
+        # Extract grounding metadata and map to queries_payload format
+        grounding_metadata = analysis.pop("_grounding_metadata", {})
+        queries_payload = map_grounding_to_queries_payload(grounding_metadata)
+        
         print(f"[Address Verification] Vertex AI analysis received:")
         print(f"  - business_at_address: {analysis.get('business_at_address')}")
         print(f"  - fraud_risk_level: {analysis.get('fraud_risk_level')}")
         print(f"  - confidence: {analysis.get('confidence')}")
+        print(f"  - grounding_sources: {len(grounding_metadata.get('grounding_sources', []))}")
         print(f"  - reasoning: {analysis.get('reasoning', '')[:200]}")
         
         # Geocode address for Street View link
@@ -680,7 +456,8 @@ def main(request: Request):
                 "street_view_url": street_view_url
             },
             "search_results": {
-                "queries": queries_payload
+                "queries": queries_payload,
+                "grounding_metadata": grounding_metadata  # Full metadata for audit
             }
         }
         
@@ -690,6 +467,8 @@ def main(request: Request):
         
     except Exception as e:
         print(f"[Address Verification] Error during verification: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": f"Verification failed: {str(e)}"}), 500, headers
 
 

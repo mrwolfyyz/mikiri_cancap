@@ -1,7 +1,6 @@
 functions-framework==3.*
-requests>=2.31.0
 google-cloud-firestore>=2.16
-google-cloud-aiplatform>=1.50.0
+google-genai>=1.1.0
 
 
 
