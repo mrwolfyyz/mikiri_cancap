@@ -362,32 +362,7 @@ resource "google_cloudfunctions2_function" "address_verification" {
 
     environment_variables = {
       GCP_PROJECT  = var.project_id
-      GCP_LOCATION = "global"  # Use global endpoint for Gemini models
-    }
-
-    secret_environment_variables {
-      key        = "GOOGLE_SEARCH_API_KEY"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["GOOGLE_SEARCH_API_KEY"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
-      key        = "GOOGLE_SEARCH_CX"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["GOOGLE_SEARCH_CX"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
-      key        = "REVIEWS_PSE_CX"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["REVIEWS_PSE_CX"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
-      key        = "COMPLAINTS_PSE_CX"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["COMPLAINTS_PSE_CX"].secret_id
-      version    = "latest"
+      GCP_LOCATION = "northamerica-northeast1"  # Use northamerica-northeast1 for CanCap data residency
     }
   }
 
@@ -778,19 +753,6 @@ resource "google_cloudfunctions2_function" "company_domain_lookup" {
     environment_variables = {
       GCP_PROJECT  = var.project_id
       GCP_LOCATION = var.region
-    }
-
-    secret_environment_variables {
-      key        = "GOOGLE_SEARCH_API_KEY"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["GOOGLE_SEARCH_API_KEY"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
-      key        = "GOOGLE_SEARCH_CX"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["GOOGLE_SEARCH_CX"].secret_id
-      version    = "latest"
     }
   }
 
