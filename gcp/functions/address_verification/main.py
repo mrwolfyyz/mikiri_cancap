@@ -267,6 +267,8 @@ Return JSON only."""
                     system_instruction=system_prompt,
                     tools=[google_search_tool],
                     temperature=0.1,
+                    top_p=0.95,  # Match Google AI Studio default
+                    max_output_tokens=2048,  # Ensure complete responses
                 )
             )
             
