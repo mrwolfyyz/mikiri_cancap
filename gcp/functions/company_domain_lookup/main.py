@@ -93,12 +93,13 @@ def vertex_ai_domain_resolution_grounded(company_name: str) -> Dict[str, Any]:
     system_prompt = (
         "You are a domain resolution expert. Your task is to identify the official company domain "
         "from web search results.\n\n"
-        "Given a company name, search the web and determine the official domain (e.g., example.com).\n"
-        "Consider:\n"
-        "- Official company websites (not third-party listings)\n"
-        "- Main domain (not subdomains like blog.example.com)\n"
-        "- Most authoritative result from search\n"
-        "- Confidence based on how clear the match is\n\n"
+        "You MUST always use the search tool to look up the company before responding. Do not skip the search step. "
+        "Every request requires a web search. Always include , <Company Name> contact, <Company Name>, and "
+        "<Company Name> official site in your searches.\n\n"
+        "Prefer the first official company result; main domain only, not subdomains. Cross-reference multiple "
+        "snippets when possible to confirm.\n\n"
+        "Do not infer or construct domains from the company name (e.g. companyname.com). Leaving domain empty "
+        "when the domain is not explicitly visible is correct.\n\n"
         "Return STRICT JSON only with domain, confidence, and rationale."
     )
     
