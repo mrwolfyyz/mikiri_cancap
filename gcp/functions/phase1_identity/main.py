@@ -86,6 +86,7 @@ class SearchHit:
     source: str
     query_id: str
     query_type: str
+    relevance_score: float = 0.0  # 0.0-1.0, default 0.0 for PSE results
 
 
 # -------------------------
@@ -443,6 +444,311 @@ def google_search_linkedin(query: str, num: int = 5) -> List[Dict[str, str]]:
     except Exception as e:
         print(f"[Google Search LinkedIn] Error after retries: {e}")
         return []
+
+
+def vertex_ai_search_linkedin(query: str, num: int = 5) -> List[Dict[str, str]]:
+    """
+    Search LinkedIn profiles using Vertex AI Search.
+    
+    Returns same interface as google_search_linkedin() for drop-in replacement.
+    Conversion to SearchHit happens at call site (same as PSE).
+    
+    Args:
+        query: Natural language search query (e.g., "John Smith CanCap Group")
+        num: Maximum number of results (default 5, max 25 for basic indexing)
+    
+    Returns:
+        List of dicts with keys: url, title, snippet, relevance_score
+    """
+    # Basic website indexing max is 25 results
+    num = min(num, 25)
+    
+    # Get configuration from environment
+    engine_id = os.environ.get("LINKEDIN_ENGINE_ID", "linkedin-search-engine")
+    
+    try:
+        from google.cloud import discoveryengine_v1 as discoveryengine
+        
+        # Client setup - global location uses default endpoint
+        client = discoveryengine.SearchServiceClient()
+        
+        # Serving config path - use engines path with default_search
+        serving_config = (
+            f"projects/{GCP_PROJECT}/locations/global/collections/default_collection"
+            f"/engines/{engine_id}/servingConfigs/default_search"
+        )
+        
+        # Content search spec - request snippets
+        content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
+            snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
+                return_snippet=True
+            )
+        )
+        
+        # Relevance score spec - request scores
+        relevance_score_spec = discoveryengine.SearchRequest.RelevanceScoreSpec(
+            return_relevance_score=True
+        )
+        
+        # Build request
+        request = discoveryengine.SearchRequest(
+            serving_config=serving_config,
+            query=query,
+            page_size=num,
+            content_search_spec=content_search_spec,
+            relevance_score_spec=relevance_score_spec,
+        )
+        
+        # Execute search
+        print(f"[Vertex AI Search LinkedIn] Executing search: query={query}, serving_config={serving_config}")
+        response = client.search(request)
+        print(f"[Vertex AI Search LinkedIn] Search completed: {len(response.results)} results returned")
+        
+        # Transform results to same format as PSE (List[Dict])
+        results = []
+        for idx, result in enumerate(response.results):
+            # Extract fields from derivedStructData
+            doc = result.document
+            derived = doc.derived_struct_data
+            url = derived.get("link", "")
+            title = derived.get("title", "")
+            
+            # Extract snippet - may be in snippets array
+            snippet = ""
+            snippets = derived.get("snippets", [])
+            if snippets and len(snippets) > 0:
+                snippet = snippets[0].get("snippet", "")
+            
+            # Extract relevance score (additional field, not in PSE)
+            # Note: model_scores and rank_signals are empty for basic website indexing
+            # So relevance_score will always be 0.0
+            relevance_score = 0.0
+            
+            # Return same dict format as PSE, plus relevance_score
+            results.append({
+                "url": url,
+                "title": title,
+                "snippet": snippet,
+                "relevance_score": relevance_score,
+            })
+        
+        print(f"[Vertex AI Search LinkedIn] Returning {len(results)} results with relevance_scores: {[r.get('relevance_score', 0.0) for r in results]}")
+        return results
+        
+    except Exception as e:
+        import traceback
+        print(f"[Vertex AI Search LinkedIn] Error: {e}")
+        print(f"[Vertex AI Search LinkedIn] Traceback: {traceback.format_exc()}")
+        return []
+
+
+def transform_pse_query_to_natural_language(pse_query: str) -> str:
+    """
+    Convert PSE-style query operators to natural language for Vertex AI Search.
+
+    Vertex AI Search doesn't support PSE operators like intitle:, intext:, etc.
+    This function removes those operators and converts to natural language.
+
+    Handles edge cases:
+    - Quoted and unquoted content after operators
+    - Nested quotes (though PSE queries typically don't have these)
+    - Escape characters
+    - Multiple operators in same query
+
+    Examples:
+    - 'intitle:"John Smith" OR intitle:"Smith" Toronto' -> 'John Smith OR Smith Toronto'
+    - 'intext:prefix OR "John Smith"' -> 'prefix OR John Smith'
+    - 'intitle:John intitle:"Michael Smith"' -> 'John Michael Smith'
+
+    Args:
+        pse_query: PSE-style query with operators (intitle:, intext:, etc.)
+
+    Returns:
+        Natural language query suitable for Vertex AI Search
+    """
+    # Remove intitle: and intext: operators, keep content
+    # Handle quoted content: intitle:"content" -> content
+    query = re.sub(r'intitle:"([^"]+)"', r'\1', pse_query)
+    # Handle unquoted content: intitle:word -> word
+    query = re.sub(r'intitle:(\S+)', r'\1', query)
+    # Handle intext: with quotes: intext:"content" -> content
+    query = re.sub(r'intext:"([^"]+)"', r'\1', query)
+    # Handle intext: without quotes: intext:word -> word
+    query = re.sub(r'intext:(\S+)', r'\1', query)
+    # Remove any remaining quotes (standalone quoted phrases)
+    query = re.sub(r'"([^"]+)"', r'\1', query)
+    # Clean up extra whitespace (multiple spaces, tabs, etc.)
+    query = ' '.join(query.split())
+    return query
+
+
+def vertex_ai_search_precision(query: str, num: int = 5) -> List[Dict[str, str]]:
+    """
+    Search social platforms using Vertex AI Search.
+
+    Note: The query parameter may contain PSE operators (intitle:, intext:).
+    These will be transformed to natural language before sending to Vertex AI.
+
+    Returns same interface as google_search_precision() for drop-in replacement.
+    Conversion to SearchHit happens at call site (same as PSE).
+
+    Args:
+        query: PSE-style query (will be transformed) or natural language query
+        num: Maximum number of results (default 5, max 25 for basic indexing)
+
+    Returns:
+        List of dicts with keys: url, title, snippet, relevance_score
+    """
+    # Only transform if query contains PSE operators (intitle:, intext:)
+    # If no PSE operators, use query as-is to preserve quotes and other formatting
+    if 'intitle:' in query or 'intext:' in query:
+        query_nl = transform_pse_query_to_natural_language(query)
+    else:
+        query_nl = query  # Preserve quotes and original formatting
+    num = min(num, 25)
+    engine_id = os.environ.get("PRECISION_ENGINE_ID", "precision-search-engine")
+
+    try:
+        from google.cloud import discoveryengine_v1 as discoveryengine
+
+        client = discoveryengine.SearchServiceClient()
+        serving_config = (
+            f"projects/{GCP_PROJECT}/locations/global/collections/default_collection"
+            f"/engines/{engine_id}/servingConfigs/default_search"
+        )
+        content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
+            snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
+                return_snippet=True
+            )
+        )
+        relevance_score_spec = discoveryengine.SearchRequest.RelevanceScoreSpec(
+            return_relevance_score=True
+        )
+        request = discoveryengine.SearchRequest(
+            serving_config=serving_config,
+            query=query_nl,
+            page_size=num,
+            content_search_spec=content_search_spec,
+            relevance_score_spec=relevance_score_spec,
+        )
+        print(f"[Vertex AI Search Precision] Executing search: query={query_nl[:80]}..., serving_config={serving_config}")
+        response = client.search(request)
+        print(f"[Vertex AI Search Precision] Search completed: {len(response.results)} results returned")
+
+        results = []
+        for result in response.results:
+            doc = result.document
+            derived = doc.derived_struct_data
+            url = derived.get("link", "")
+            title = derived.get("title", "")
+            snippet = ""
+            snippets = derived.get("snippets", [])
+            if snippets:
+                snippet = snippets[0].get("snippet", "")
+            relevance_score = 0.0
+            results.append({
+                "url": url,
+                "title": title,
+                "snippet": snippet,
+                "relevance_score": relevance_score,
+            })
+        return results
+
+    except Exception as e:
+        import traceback
+        print(f"[Vertex AI Search Precision] Error: {e}")
+        print(f"[Vertex AI Search Precision] Traceback: {traceback.format_exc()}")
+        return []
+
+
+def google_search_linkedin_v2(query: str, num: int = 5) -> List[Dict[str, str]]:
+    """
+    LinkedIn search with Vertex AI Search, falling back to PSE.
+    
+    Returns same dict format as PSE for compatibility with existing call site
+    that converts to SearchHit.
+    
+    Set LINKEDIN_USE_VERTEX_AI=true to enable Vertex AI Search.
+    """
+    use_vertex = os.environ.get("LINKEDIN_USE_VERTEX_AI", "false").lower() == "true"
+    print(f"[LinkedIn Search v2] use_vertex={use_vertex}, query={query[:100]}")
+    
+    if use_vertex:
+        results = vertex_ai_search_linkedin(query, num)
+        print(f"[LinkedIn Search v2] Vertex AI Search returned {len(results)} results")
+        if results:
+            # Mark results as from Vertex AI Search by adding a marker field
+            # We'll use this to determine source even if relevance_score is 0.0
+            for r in results:
+                r["_source"] = "vertex_ai_search"  # Internal marker
+            print(f"[LinkedIn Search v2] Returning Vertex AI Search results (first result relevance_score={results[0].get('relevance_score', 0.0) if results else 'N/A'})")
+            return results  # Already returns List[Dict] with relevance_score
+        print("[LinkedIn Search v2] Vertex AI Search returned no results, falling back to PSE")
+    
+    # Fall back to existing PSE function (returns List[Dict] without relevance_score)
+    pse_results = google_search_linkedin(query, num)
+    # Add relevance_score for consistency and mark as PSE
+    return [
+        {
+            "url": r["url"],
+            "title": r["title"],
+            "snippet": r["snippet"],
+            "relevance_score": 0.0,  # PSE doesn't provide scores
+            "_source": "pse"  # Internal marker
+        }
+        for r in pse_results
+    ]
+
+
+def google_search_precision_v2(query: str, num: int = 5) -> List[Dict[str, str]]:
+    """
+    Precision search with Vertex AI Search, falling back to PSE.
+
+    Returns same dict format as PSE for compatibility with existing call site
+    that converts to SearchHit.
+
+    Set PRECISION_USE_VERTEX_AI=true to enable Vertex AI Search.
+    """
+    use_vertex = os.environ.get("PRECISION_USE_VERTEX_AI", "false").lower() == "true"
+    if use_vertex:
+        results = vertex_ai_search_precision(query, num)
+        if results:
+            for r in results:
+                r["_source"] = "vertex_ai_search"
+            return results
+    pse_results = google_search_precision(query, num)
+    return [
+        {"url": r["url"], "title": r["title"], "snippet": r["snippet"], "relevance_score": 0.0, "_source": "pse"}
+        for r in pse_results
+    ]
+
+
+def google_search_recall_2_v2(query: str, num: int = 5) -> List[Dict[str, str]]:
+    """
+    Recall_2 search with Vertex AI Search, falling back to PSE.
+
+    Uses the same Vertex AI engine as precision (since RECALL_PSE_CX_2
+    uses the same PSE as PRECISION_PSE_CX).
+
+    Note: The query will be transformed from PSE format (intext:, etc.)
+    to natural language before sending to Vertex AI.
+
+    Returns same dict format as PSE for compatibility with existing call site.
+
+    Set PRECISION_USE_VERTEX_AI=true to enable Vertex AI Search.
+    """
+    use_vertex = os.environ.get("PRECISION_USE_VERTEX_AI", "false").lower() == "true"
+    if use_vertex:
+        results = vertex_ai_search_precision(query, num)
+        if results:
+            for r in results:
+                r["_source"] = "vertex_ai_search"
+            return results
+    pse_results = google_search_recall_2(query, num)
+    return [
+        {"url": r["url"], "title": r["title"], "snippet": r["snippet"], "relevance_score": 0.0, "_source": "pse"}
+        for r in pse_results
+    ]
 
 
 def vertex_ai_score(seed: Dict[str, Any], queries_payload: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -812,23 +1118,68 @@ def main(request):
     # Generate name variations (full name + middle+last if applicable)
     name_full, name_variation = generate_name_variations(full_name)
     if name_variation:
-        precision_query = f'intitle:"{name_full}" OR intitle:"{name_variation}"'
+        precision_query = f'"{name_full}" OR "{name_variation}"'
     else:
-        precision_query = f'intitle:"{name_full}"'
+        precision_query = f'"{name_full}"'
     if city:
         precision_query += f' {city.split(",")[0]}'
-    precision_raw = google_search_precision(precision_query, num=10)
+    precision_raw = google_search_precision_v2(precision_query, num=10)
+    has_vertex_results = any(h.get("_source") == "vertex_ai_search" for h in precision_raw if h.get("url"))
+    source_value = "vertex_ai_precision" if has_vertex_results else "google_search"
     precision_hits = [
         SearchHit(
             url=h["url"],
             title=h["title"],
             snippet=h["snippet"],
-            source="google_search",
+            source=source_value,
             query_id="precision",
             query_type="high_precision",
+            relevance_score=h.get("relevance_score", 0.0),
         )
         for h in precision_raw if h.get("url")
     ]
+
+    # Middle name LinkedIn search - if middle name is detected
+    middle_name_linkedin_hits: List[SearchHit] = []
+    middle_name_linkedin_query = ""
+
+    if name_variation:  # Middle name detected
+        print(f"[Phase1] Middle name detected: {name_variation} - performing LinkedIn search")
+        
+        # Build query with same format as precision query
+        middle_name_linkedin_query = f'"{name_full}" OR "{name_variation}"'
+        if city:
+            middle_name_linkedin_query += f' {city.split(",")[0]}'
+        
+        # Execute LinkedIn search (uses Vertex AI or PSE based on config)
+        middle_name_linkedin_raw = google_search_linkedin_v2(middle_name_linkedin_query, num=10)
+        
+        # Determine source based on _source marker (set by google_search_linkedin_v2)
+        # This is more reliable than relevance_score since Vertex AI Search may return relevance_score=0.0
+        # when model_scores is empty (as seen in logs: "Keys: []")
+        has_vertex_results = any(h.get("_source") == "vertex_ai_search" for h in middle_name_linkedin_raw if h.get("url"))
+        source_value = "vertex_ai_linkedin" if has_vertex_results else "google_search"
+        _source_markers = [h.get("_source") for h in middle_name_linkedin_raw if h.get("url")]
+        print(f"[Phase1] Middle name LinkedIn search: results_count={len(middle_name_linkedin_raw)}, _source_markers={_source_markers}, has_vertex_results={has_vertex_results}, source={source_value}")
+        
+        # Convert to SearchHit objects
+        middle_name_linkedin_hits = [
+            SearchHit(
+                url=h["url"],
+                title=h["title"],
+                snippet=h["snippet"],
+                source=source_value,  # Differentiate: "vertex_ai_linkedin" or "google_search"
+                query_id="middle_name_linkedin",
+                query_type="high_precision",
+                relevance_score=h.get("relevance_score", 0.0),  # Extract if present (may be 0.0 even for Vertex AI)
+            )
+            for h in middle_name_linkedin_raw if h.get("url")
+        ]
+        
+        # Append to precision_hits (so they're included in precision results)
+        precision_hits.extend(middle_name_linkedin_hits)
+        
+        print(f"[Phase1] Middle name LinkedIn search: {len(middle_name_linkedin_hits)} hits")
 
     # Business email searches - if email is a business domain
     business_domain_hits: List[SearchHit] = []
@@ -907,15 +1258,25 @@ def main(request):
         # Search 2: Full Name and Company Name on LinkedIn
         # Note: Site restriction removed as LINKEDIN_PSE_CX is already scoped to ca.linkedin.com
         company_name_linkedin_query = f'{full_name} {company_name}'
-        company_name_linkedin_raw = google_search_linkedin(company_name_linkedin_query, num=10)
+        company_name_linkedin_raw = google_search_linkedin_v2(company_name_linkedin_query, num=10)
+        
+        # Determine source based on _source marker (set by google_search_linkedin_v2)
+        # This is more reliable than relevance_score since Vertex AI Search may return relevance_score=0.0
+        # when model_scores is empty (as seen in logs: "Keys: []")
+        has_vertex_results = any(h.get("_source") == "vertex_ai_search" for h in company_name_linkedin_raw if h.get("url"))
+        source_value = "vertex_ai_linkedin" if has_vertex_results else "google_search"
+        _source_markers = [h.get("_source") for h in company_name_linkedin_raw if h.get("url")]
+        print(f"[Phase1] LinkedIn search: results_count={len(company_name_linkedin_raw)}, _source_markers={_source_markers}, has_vertex_results={has_vertex_results}, source={source_value}")
+        
         company_name_linkedin_hits = [
             SearchHit(
                 url=h["url"],
                 title=h["title"],
                 snippet=h["snippet"],
-                source="google_search",
+                source=source_value,  # Differentiate: "vertex_ai_linkedin" or "google_search"
                 query_id="company_name_linkedin",
                 query_type="high_precision",
+                relevance_score=h.get("relevance_score", 0.0),  # Extract if present (may be 0.0 even for Vertex AI)
             )
             for h in company_name_linkedin_raw if h.get("url")
         ]
@@ -971,16 +1332,19 @@ def main(request):
     recall_2_query = ""
     recall_2_hits: List[SearchHit] = []
     if len(prefix) >= 4:
-        recall_2_query = f'intext:{prefix} OR "{full_name}"'
-        recall_2_raw = google_search_recall_2(recall_2_query, num=10)
+        recall_2_query = f'{prefix} OR "{full_name}"'
+        recall_2_raw = google_search_recall_2_v2(recall_2_query, num=10)
+        has_vertex_results = any(h.get("_source") == "vertex_ai_search" for h in recall_2_raw if h.get("url"))
+        source_value = "vertex_ai_precision" if has_vertex_results else "google_search"
         recall_2_hits = [
             SearchHit(
                 url=h["url"],
                 title=h["title"],
                 snippet=h["snippet"],
-                source="google_search",
+                source=source_value,
                 query_id="recall_2",
                 query_type="high_recall",
+                relevance_score=h.get("relevance_score", 0.0),
             )
             for h in recall_2_raw if h.get("url")
         ]
@@ -1081,6 +1445,15 @@ def main(request):
             "type": "high_precision",
             "query": company_name_linkedin_query,
             "hits": [asdict(h) for h in company_name_linkedin_hits],
+        })
+    
+    # Add middle name LinkedIn query if it was executed
+    if middle_name_linkedin_query:
+        queries_payload.append({
+            "id": "middle_name_linkedin",
+            "type": "high_precision",
+            "query": middle_name_linkedin_query,
+            "hits": [asdict(h) for h in middle_name_linkedin_hits],
         })
 
     # -------------------------
