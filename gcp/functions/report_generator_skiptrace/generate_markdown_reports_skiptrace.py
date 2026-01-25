@@ -2651,8 +2651,27 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         section_name = query_id.replace('_', ' ').title() if query_id else query_type
         
         content += f"### {section_name}\n\n"
-        google_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
-        content += f"Source: [Google]({google_url}) ·Timestamp: {report_timestamp}\n\n"
+        # Determine source from hits (check first hit's source field, or default to google_search)
+        source = "google_search"
+        if hits and len(hits) > 0:
+            source = hits[0].get('source', 'google_search')
+            # Debug logging for LinkedIn source detection
+            if query_id == "company_name_linkedin":
+                all_sources = [h.get('source', 'MISSING') for h in hits]
+                print(f"[Report Generator] LinkedIn query: query_id={query_id}, hits_count={len(hits)}, first_hit_source={source}, all_sources={all_sources}")
+        if source == "vertex_ai_linkedin":
+            source_label = "Vertex AI Search (LinkedIn)"
+            source_url = ""
+        elif source == "google_search":
+            source_label = "Google"
+            source_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
+        else:
+            source_label = source.replace('_', ' ').title()
+            source_url = ""
+        if source_url:
+            content += f"Source: [{source_label}]({source_url}) ·Timestamp: {report_timestamp}\n\n"
+        else:
+            content += f"Source: {source_label} ·Timestamp: {report_timestamp}\n\n"
         content += "**Query**\n\n"
         content += f"`{query_text}`\n\n"
         content += "**Hits**\n\n"
@@ -4449,8 +4468,27 @@ def generate_identity_report_skiptrace(data: Dict[str, Any], name: str, output_d
         section_name = query_id.replace('_', ' ').title() if query_id else query_type
         
         content += f"### {section_name}\n\n"
-        google_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
-        content += f"Source: [Google]({google_url}) ·Timestamp: {report_timestamp}\n\n"
+        # Determine source from hits (check first hit's source field, or default to google_search)
+        source = "google_search"
+        if hits and len(hits) > 0:
+            source = hits[0].get('source', 'google_search')
+            # Debug logging for LinkedIn source detection
+            if query_id == "company_name_linkedin":
+                all_sources = [h.get('source', 'MISSING') for h in hits]
+                print(f"[Report Generator] LinkedIn query: query_id={query_id}, hits_count={len(hits)}, first_hit_source={source}, all_sources={all_sources}")
+        if source == "vertex_ai_linkedin":
+            source_label = "Vertex AI Search (LinkedIn)"
+            source_url = ""
+        elif source == "google_search":
+            source_label = "Google"
+            source_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
+        else:
+            source_label = source.replace('_', ' ').title()
+            source_url = ""
+        if source_url:
+            content += f"Source: [{source_label}]({source_url}) ·Timestamp: {report_timestamp}\n\n"
+        else:
+            content += f"Source: {source_label} ·Timestamp: {report_timestamp}\n\n"
         content += "**Query**\n\n"
         content += f"```\n{query_text}\n```\n\n"
         
