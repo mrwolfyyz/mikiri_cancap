@@ -2719,8 +2719,28 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         section_name = query_id.replace('_', ' ').title() if query_id else query_type
         
         content += f"### {section_name}\n\n"
-        google_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
-        content += f"Source: [Google]({google_url}) ·Timestamp: {report_timestamp}\n\n"
+        
+        # Determine source from hits (check first hit's source field, or default to google_search)
+        source = "google_search"
+        if hits and len(hits) > 0:
+            source = hits[0].get('source', 'google_search')
+        
+        # Map source values to display labels
+        if source == "vertex_ai_linkedin":
+            source_label = "Vertex AI Search (LinkedIn)"
+            source_url = ""  # No direct URL for Vertex AI Search
+        elif source == "google_search":
+            source_label = "Google"
+            google_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
+            source_url = google_url
+        else:
+            source_label = source.replace('_', ' ').title()
+            source_url = ""
+        
+        if source_url:
+            content += f"Source: [{source_label}]({source_url}) ·Timestamp: {report_timestamp}\n\n"
+        else:
+            content += f"Source: {source_label} ·Timestamp: {report_timestamp}\n\n"
         content += "**Query**\n\n"
         content += f"`{query_text}`\n\n"
         content += "**Hits**\n\n"
