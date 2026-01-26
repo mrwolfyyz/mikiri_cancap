@@ -508,8 +508,14 @@ resource "google_cloudfunctions2_function" "phase1_identity" {
     service_account_email = google_service_account.functions.email
 
     environment_variables = {
-      GCP_PROJECT  = var.project_id
-      GCP_LOCATION = var.region
+      GCP_PROJECT            = var.project_id
+      GCP_LOCATION           = var.region
+      LINKEDIN_ENGINE_ID     = "linkedin-search-engine"
+      LINKEDIN_USE_VERTEX_AI = "true"
+      PRECISION_ENGINE_ID    = "precision-search-engine"
+      PRECISION_USE_VERTEX_AI = "true"
+      RECALL_ENGINE_ID       = "recall-search-engine"
+      RECALL_USE_VERTEX_AI   = "true"
     }
 
     secret_environment_variables {

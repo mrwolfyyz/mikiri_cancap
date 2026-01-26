@@ -21,3 +21,13 @@ output "precision_engine_id" {
   description = "Precision Search Engine ID"
   value       = google_discovery_engine_search_engine.precision.engine_id
 }
+
+output "recall_data_store_id" {
+  description = "Recall Data Store ID"
+  value       = google_discovery_engine_data_store.recall.data_store_id
+}
+
+output "recall_engine_id" {
+  description = "Recall Search Engine ID"
+  value       = google_discovery_engine_search_engine.recall.engine_id
+}
