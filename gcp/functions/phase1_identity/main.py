@@ -1612,26 +1612,25 @@ def main(request):
         and llm_normalized
         and llm_normalized != submitted_normalized
     ):
-        print(f"[Phase1] LLM location '{llm_city}' differs from submitted '{city}' - rerunning name search")
+        print(f"[Phase1] LLM location '{llm_city}' differs from submitted '{city}' - rerunning precision search")
 
         new_city_token = llm_city.split(",")[0].strip()
-        rerun_query = (
-            f'intext:"{full_name}" '
-            f'("phone" OR "tel" OR "contact" OR "address" OR "email") {new_city_token}'
-        )
-        rerun_raw = google_search(rerun_query, num=10)
+        rerun_query = f'"{full_name}" {new_city_token}'
+        rerun_raw = google_search_precision_v2(rerun_query, num=10)
 
         rerun_hits = []
         for h in rerun_raw:
             url = h.get("url")
             if url and url not in seen:
+                source_value = h.get("_source", "pse")
                 hit = SearchHit(
                     url=url,
                     title=h.get("title", ""),
                     snippet=h.get("snippet", ""),
-                    source="google_search",
-                    query_id="name_search_rerun",
-                    query_type="context",
+                    source=source_value,
+                    query_id="precision_rerun",
+                    query_type="high_precision",
+                    relevance_score=h.get("relevance_score", 0.0),
                 )
                 rerun_hits.append(hit)
                 seen.add(url)
@@ -1639,8 +1638,8 @@ def main(request):
                 name_hits.append(hit)
 
         queries_payload.append({
-            "id": "name_search_rerun",
-            "type": "context",
+            "id": "precision_rerun",
+            "type": "high_precision",
             "query": rerun_query,
             "reason": f"LLM high-confidence location '{llm_city}' != submitted '{city}'",
             "hits": [asdict(h) for h in rerun_hits],
