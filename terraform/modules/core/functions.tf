@@ -525,12 +525,6 @@ resource "google_cloudfunctions2_function" "phase1_identity" {
       version    = "latest"
     }
     secret_environment_variables {
-      key        = "GOOGLE_SEARCH_CX"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["GOOGLE_SEARCH_CX"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
       key        = "PRECISION_PSE_CX"
       project_id = var.project_id
       secret     = google_secret_manager_secret.secrets["PRECISION_PSE_CX"].secret_id

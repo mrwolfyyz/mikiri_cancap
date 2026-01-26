@@ -29,7 +29,6 @@ from vertexai.generative_models import GenerativeModel, GenerationConfig
 # Config
 # -------------------------
 GOOGLE_SEARCH_API_KEY = os.environ.get("GOOGLE_SEARCH_API_KEY", "")
-GOOGLE_SEARCH_CX = os.environ.get("GOOGLE_SEARCH_CX", "")
 PRECISION_PSE_CX = os.environ.get("PRECISION_PSE_CX", "")
 RECALL_PSE_CX = os.environ.get("RECALL_PSE_CX", "")
 RECALL_PSE_CX_2 = os.environ.get("RECALL_PSE_CX_2", "")
@@ -221,51 +220,6 @@ def is_business_email(email: str) -> bool:
 # -------------------------
 # External API calls
 # -------------------------
-def google_search(query: str, num: int = 5) -> List[Dict[str, str]]:
-    """Call Google Custom Search API (PSE) with retry logic."""
-    if not GOOGLE_SEARCH_API_KEY:
-        print("[Google Search] No API key set")
-        return []
-    if not GOOGLE_SEARCH_CX:
-        print("[Google Search] No Search Engine ID (CX) set")
-        return []
-    
-    # Custom Search API max is 10 results per request, so we may need pagination
-    # For now, we'll request up to 10 results (the API limit)
-    num = min(num, 10)
-    
-    endpoint = "https://www.googleapis.com/customsearch/v1"
-    params = {
-        "key": GOOGLE_SEARCH_API_KEY,
-        "cx": GOOGLE_SEARCH_CX,
-        "q": query,
-        "num": num
-    }
-    
-    def _call_google_search():
-        r = requests.get(endpoint, params=params, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        results = []
-        for item in (data.get("items", []) or [])[:num]:
-            results.append({
-                "url": item.get("link", ""),
-                "title": item.get("title", ""),
-                "snippet": item.get("snippet", ""),
-            })
-        return results
-    
-    try:
-        return retry_with_backoff(
-            _call_google_search,
-            RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=30.0),
-            operation_name=f"Google Search: {query[:50]}"
-        )
-    except Exception as e:
-        print(f"[Google Search] Error after retries: {e}")
-        return []
-
-
 def google_search_precision(query: str, num: int = 5) -> List[Dict[str, str]]:
     """Call Google Custom Search API (PSE) with retry logic for precision searches."""
     if not GOOGLE_SEARCH_API_KEY:
@@ -1318,41 +1272,6 @@ def main(request):
         if domain:
             print(f"[Phase1] Business email detected: {domain} - performing additional searches")
 
-            # Search 1: Full Name and business domain name (without quotes)
-            business_domain_query = f"{full_name} {domain}"
-            business_domain_raw = google_search(business_domain_query, num=10)
-            business_domain_hits = [
-                SearchHit(
-                    url=h["url"],
-                    title=h["title"],
-                    snippet=h["snippet"],
-                    source="google_search",
-                    query_id="business_domain",
-                    query_type="high_precision",
-                )
-                for h in business_domain_raw if h.get("url")
-            ]
-            
-            # Search 2: Full Name business domain site:linkedin.com
-            business_linkedin_query = f"{full_name} {domain} site:linkedin.com/in"
-            business_linkedin_raw = google_search(business_linkedin_query, num=10)
-            business_linkedin_hits = [
-                SearchHit(
-                    url=h["url"],
-                    title=h["title"],
-                    snippet=h["snippet"],
-                    source="google_search",
-                    query_id="business_linkedin",
-                    query_type="high_precision",
-                )
-                for h in business_linkedin_raw if h.get("url")
-            ]
-
-            # Append to precision_hits (so they're included in precision results)
-            precision_hits.extend(business_domain_hits)
-            precision_hits.extend(business_linkedin_hits)
-            
-            print(f"[Phase1] Business email searches: {len(business_domain_hits)} domain hits, {len(business_linkedin_hits)} LinkedIn hits")
 
     # Company name searches - if company_name is provided
     company_name_hits: List[SearchHit] = []
@@ -1362,24 +1281,6 @@ def main(request):
 
     if company_name:
         print(f"[Phase1] Company name provided: {company_name} - performing company name searches")
-        
-        # Search 1: Full Name and Company Name (general search)
-        company_name_query = f"{full_name} {company_name}"
-        company_name_raw = google_search(company_name_query, num=10)
-        company_name_hits = [
-            SearchHit(
-                url=h["url"],
-                title=h["title"],
-                snippet=h["snippet"],
-                source="google_search",
-                query_id="company_name",
-                query_type="high_precision",
-            )
-            for h in company_name_raw if h.get("url")
-        ]
-        
-        # Append to precision_hits (so they're included in precision results)
-        precision_hits.extend(company_name_hits)
         
         # Search 2: Full Name and Company Name on LinkedIn
         # Note: Site restriction removed as LINKEDIN_PSE_CX is already scoped to ca.linkedin.com
@@ -1409,30 +1310,11 @@ def main(request):
         
         # Append to precision_hits (so they're included in precision results)
         precision_hits.extend(company_name_linkedin_hits)
-        
-        print(f"[Phase1] Company name searches: {len(company_name_hits)} hits, {len(company_name_linkedin_hits)} LinkedIn hits")
 
-    # 2. Context query - email prefix across web
-    context_query = ""
+        print(f"[Phase1] Company name LinkedIn search: {len(company_name_linkedin_hits)} LinkedIn hits")
+
+    # Context search removed - migrated away from PSE general search
     context_hits: List[SearchHit] = []
-    if len(prefix) >= 4:
-        prefix_no_dots = prefix.replace(".", "")
-        if prefix_no_dots != prefix:
-            context_query = f"intext:{prefix} OR intext:{prefix_no_dots} OR {full_name}"
-        else:
-            context_query = f"intext:{prefix} OR {full_name}"
-        context_raw = google_search(context_query, num=10)
-        context_hits = [
-            SearchHit(
-                url=h["url"],
-                title=h["title"],
-                snippet=h["snippet"],
-                source="google_search",
-                query_id="context",
-                query_type="context",
-            )
-            for h in context_raw if h.get("url")
-        ]
 
     # 3. Recall query - lifestyle sites
     # Note: Site restrictions are handled by the RECALL_PSE_CX PSE configuration
@@ -1479,27 +1361,8 @@ def main(request):
             for h in recall_2_raw if h.get("url")
         ]
 
-    # 4. Name query - contact info discovery
-    name_query = ""
+    # Name search removed - migrated away from PSE general search
     name_hits: List[SearchHit] = []
-    if full_name and city:
-        city_token = city.split(",")[0]
-        name_query = (
-            f'intext:"{full_name}" '
-            f'("phone" OR "tel" OR "contact" OR "address" OR "email") {city_token}'
-        )
-        name_raw = google_search(name_query, num=10)
-        name_hits = [
-            SearchHit(
-                url=h["url"],
-                title=h["title"],
-                snippet=h["snippet"],
-                source="google_search",
-                query_id="name_search",
-                query_type="context",
-            )
-            for h in name_raw if h.get("url")
-        ]
 
     # Deduplicate hits
     seen = set()
@@ -1518,12 +1381,6 @@ def main(request):
             "hits": [asdict(h) for h in precision_hits],
         },
         {
-            "id": "context",
-            "type": "context",
-            "query": context_query,
-            "hits": [asdict(h) for h in context_hits],
-        },
-        {
             "id": "recall",
             "type": "high_recall",
             "query": recall_query,
@@ -1535,40 +1392,9 @@ def main(request):
             "query": recall_2_query,
             "hits": [asdict(h) for h in recall_2_hits],
         },
-        {
-            "id": "name_search",
-            "type": "context",
-            "query": name_query,
-            "hits": [asdict(h) for h in name_hits],
-        },
     ]
-    
-    # Add business email queries if they were executed
-    if business_domain_query:
-        queries_payload.append({
-            "id": "business_domain",
-            "type": "high_precision",
-            "query": business_domain_query,
-            "hits": [asdict(h) for h in business_domain_hits],
-        })
-    
-    if business_linkedin_query:
-        queries_payload.append({
-            "id": "business_linkedin",
-            "type": "high_precision",
-            "query": business_linkedin_query,
-            "hits": [asdict(h) for h in business_linkedin_hits],
-        })
-    
-    # Add company name queries if they were executed
-    if company_name_query:
-        queries_payload.append({
-            "id": "company_name",
-            "type": "high_precision",
-            "query": company_name_query,
-            "hits": [asdict(h) for h in company_name_hits],
-        })
-    
+
+    # Add company name LinkedIn query if it was executed
     if company_name_linkedin_query:
         queries_payload.append({
             "id": "company_name_linkedin",
