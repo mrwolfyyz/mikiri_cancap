@@ -97,7 +97,6 @@ variable "secret_names" {
   type        = list(string)
   default = [
     "GOOGLE_SEARCH_API_KEY",
-    "GOOGLE_SEARCH_CX",
     "PRECISION_PSE_CX",
     "RECALL_PSE_CX",
     "RECALL_PSE_CX_2",
