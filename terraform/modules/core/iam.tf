@@ -47,6 +47,13 @@ resource "google_project_iam_member" "functions_workflows_invoker" {
   member  = "serviceAccount:${google_service_account.functions.email}"
 }
 
+# Functions SA needs Discovery Engine access for Vertex AI Search
+resource "google_project_iam_member" "functions_discoveryengine_user" {
+  project = var.project_id
+  role    = "roles/discoveryengine.user"
+  member  = "serviceAccount:${google_service_account.functions.email}"
+}
+
 # Functions SA needs Google Drive access (for report generators)
 # NOTE: roles/drive.file is NOT a project-level IAM role - it's a Drive API scope.
 # Drive access must be configured via OAuth scopes or domain-wide delegation, not project IAM.

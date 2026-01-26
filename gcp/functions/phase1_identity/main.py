@@ -356,6 +356,44 @@ def google_search_recall(query: str, num: int = 5) -> List[Dict[str, str]]:
         return []
 
 
+def google_search_recall_v2(query: str, num: int = 5) -> List[Dict[str, str]]:
+    """
+    Recall search with Vertex AI Search, falling back to PSE.
+
+    Returns same dict format as PSE for compatibility with existing call site
+    that converts to SearchHit.
+
+    Set RECALL_USE_VERTEX_AI=true to enable Vertex AI Search.
+    """
+    use_vertex = os.environ.get("RECALL_USE_VERTEX_AI", "false").lower() == "true"
+    print(f"[Recall Search v2] use_vertex={use_vertex}, query={query[:100]}")
+
+    if use_vertex:
+        results = vertex_ai_search_recall(query, num)
+        print(f"[Recall Search v2] Vertex AI Search returned {len(results)} results")
+        if results:
+            # Mark results as from Vertex AI Search
+            for r in results:
+                r["_source"] = "vertex_ai_recall"  # Internal marker
+            print(f"[Recall Search v2] Returning Vertex AI Search results")
+            return results
+        print("[Recall Search v2] Vertex AI Search returned no results, falling back to PSE")
+
+    # Fall back to existing PSE function
+    pse_results = google_search_recall(query, num)
+    # Add relevance_score for consistency and mark as PSE
+    return [
+        {
+            "url": r["url"],
+            "title": r["title"],
+            "snippet": r["snippet"],
+            "relevance_score": 0.0,  # PSE doesn't provide scores
+            "_source": "pse"  # Internal marker
+        }
+        for r in pse_results
+    ]
+
+
 def google_search_recall_2(query: str, num: int = 5) -> List[Dict[str, str]]:
     """Call Google Custom Search API (PSE) with retry logic for additional recall searches."""
     if not GOOGLE_SEARCH_API_KEY:
@@ -658,6 +696,94 @@ def vertex_ai_search_precision(query: str, num: int = 5) -> List[Dict[str, str]]
         import traceback
         print(f"[Vertex AI Search Precision] Error: {e}")
         print(f"[Vertex AI Search Precision] Traceback: {traceback.format_exc()}")
+        return []
+
+
+def vertex_ai_search_recall(query: str, num: int = 5) -> List[Dict[str, str]]:
+    """
+    Search lifestyle/hobby sites using Vertex AI Search.
+
+    Note: The query parameter may contain PSE operators (intitle:, intext:).
+    These will be transformed to natural language before sending to Vertex AI.
+
+    Returns same interface as google_search_recall() for drop-in replacement.
+    Conversion to SearchHit happens at call site (same as PSE).
+
+    Args:
+        query: PSE-style query (will be transformed) or natural language query
+        num: Maximum number of results (default 5, max 25 for basic indexing)
+
+    Returns:
+        List of dicts with keys: url, title, snippet, relevance_score
+    """
+    # Transform PSE query to natural language if needed
+    if 'intitle:' in query or 'intext:' in query:
+        query_nl = transform_pse_query_to_natural_language(query)
+    else:
+        query_nl = query
+
+    num = min(num, 25)
+    engine_id = os.environ.get("RECALL_ENGINE_ID", "recall-search-engine")
+
+    try:
+        from google.cloud import discoveryengine_v1 as discoveryengine
+
+        client = discoveryengine.SearchServiceClient()
+        serving_config = (
+            f"projects/{GCP_PROJECT}/locations/global/collections/default_collection"
+            f"/engines/{engine_id}/servingConfigs/default_search"
+        )
+
+        content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
+            snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
+                return_snippet=True
+            )
+        )
+
+        relevance_score_spec = discoveryengine.SearchRequest.RelevanceScoreSpec(
+            return_relevance_score=True
+        )
+
+        request = discoveryengine.SearchRequest(
+            serving_config=serving_config,
+            query=query_nl,
+            page_size=num,
+            content_search_spec=content_search_spec,
+            relevance_score_spec=relevance_score_spec,
+        )
+
+        print(f"[Vertex AI Search Recall] Executing search: query={query_nl[:80]}..., serving_config={serving_config}")
+        response = client.search(request)
+        print(f"[Vertex AI Search Recall] Search completed: {len(response.results)} results returned")
+
+        results = []
+        for result in response.results:
+            doc = result.document
+            derived = doc.derived_struct_data
+            url = derived.get("link", "")
+            title = derived.get("title", "")
+
+            snippet = ""
+            snippets = derived.get("snippets", [])
+            if snippets and len(snippets) > 0:
+                snippet = snippets[0].get("snippet", "")
+
+            relevance_score = 0.0
+
+            results.append({
+                "url": url,
+                "title": title,
+                "snippet": snippet,
+                "relevance_score": relevance_score,
+            })
+
+        print(f"[Vertex AI Search Recall] Returning {len(results)} results")
+        return results
+
+    except Exception as e:
+        import traceback
+        print(f"[Vertex AI Search Recall] Error: {e}")
+        print(f"[Vertex AI Search Recall] Traceback: {traceback.format_exc()}")
         return []
 
 
@@ -1314,15 +1440,19 @@ def main(request):
     recall_hits: List[SearchHit] = []
     if len(prefix) >= 4:
         recall_query = f'intext:{prefix} OR "{full_name}"'
-        recall_raw = google_search_recall(recall_query, num=10)
+        recall_raw = google_search_recall_v2(recall_query, num=10)
+        # Detect if results came from Vertex AI
+        has_vertex_results = any(h.get("_source") == "vertex_ai_recall" for h in recall_raw if h.get("url"))
+        source_value = "vertex_ai_recall" if has_vertex_results else "google_search"
         recall_hits = [
             SearchHit(
                 url=h["url"],
                 title=h["title"],
                 snippet=h["snippet"],
-                source="google_search",
+                source=source_value,
                 query_id="recall",
                 query_type="high_recall",
+                relevance_score=h.get("relevance_score", 0.0),
             )
             for h in recall_raw if h.get("url")
         ]
