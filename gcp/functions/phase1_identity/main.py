@@ -80,7 +80,7 @@ class SearchHit:
     source: str
     query_id: str
     query_type: str
-    relevance_score: float = 0.0  # 0.0-1.0, default 0.0 for PSE results
+    relevance_score: float = 0.0  # 0.0-1.0, relevance score from search results
 
 
 # -------------------------
@@ -229,7 +229,7 @@ def vertex_ai_search_linkedin(query: str, num: int = 5) -> List[Dict[str, str]]:
     Search LinkedIn profiles using Vertex AI Search.
     
     Returns same interface as google_search_linkedin() for drop-in replacement.
-    Conversion to SearchHit happens at call site (same as PSE).
+    Conversion to SearchHit happens at call site.
     
     Args:
         query: Natural language search query (e.g., "John Smith CanCap Group")
@@ -282,7 +282,7 @@ def vertex_ai_search_linkedin(query: str, num: int = 5) -> List[Dict[str, str]]:
         response = client.search(request)
         print(f"[Vertex AI Search LinkedIn] Search completed: {len(response.results)} results returned")
         
-        # Transform results to same format as PSE (List[Dict])
+        # Transform results to standard format (List[Dict])
         results = []
         for idx, result in enumerate(response.results):
             # Extract fields from derivedStructData
@@ -297,12 +297,12 @@ def vertex_ai_search_linkedin(query: str, num: int = 5) -> List[Dict[str, str]]:
             if snippets and len(snippets) > 0:
                 snippet = snippets[0].get("snippet", "")
             
-            # Extract relevance score (additional field, not in PSE)
+            # Extract relevance score from Vertex AI Search
             # Note: model_scores and rank_signals are empty for basic website indexing
             # So relevance_score will always be 0.0
             relevance_score = 0.0
             
-            # Return same dict format as PSE, plus relevance_score
+            # Return standard dict format with relevance_score
             results.append({
                 "url": url,
                 "title": title,
@@ -322,14 +322,14 @@ def vertex_ai_search_linkedin(query: str, num: int = 5) -> List[Dict[str, str]]:
 
 def transform_pse_query_to_natural_language(pse_query: str) -> str:
     """
-    Convert PSE-style query operators to natural language for Vertex AI Search.
+    Convert search query operators to natural language for Vertex AI Search.
 
-    Vertex AI Search doesn't support PSE operators like intitle:, intext:, etc.
+    Vertex AI Search doesn't support query operators like intitle:, intext:, etc.
     This function removes those operators and converts to natural language.
 
     Handles edge cases:
     - Quoted and unquoted content after operators
-    - Nested quotes (though PSE queries typically don't have these)
+    - Nested quotes
     - Escape characters
     - Multiple operators in same query
 
@@ -339,7 +339,7 @@ def transform_pse_query_to_natural_language(pse_query: str) -> str:
     - 'intitle:John intitle:"Michael Smith"' -> 'John Michael Smith'
 
     Args:
-        pse_query: PSE-style query with operators (intitle:, intext:, etc.)
+        pse_query: Query with operators (intitle:, intext:, etc.)
 
     Returns:
         Natural language query suitable for Vertex AI Search
@@ -364,21 +364,21 @@ def vertex_ai_search_precision(query: str, num: int = 5) -> List[Dict[str, str]]
     """
     Search social platforms using Vertex AI Search.
 
-    Note: The query parameter may contain PSE operators (intitle:, intext:).
+    Note: The query parameter may contain search operators (intitle:, intext:).
     These will be transformed to natural language before sending to Vertex AI.
 
     Returns same interface as google_search_precision() for drop-in replacement.
-    Conversion to SearchHit happens at call site (same as PSE).
+    Conversion to SearchHit happens at call site.
 
     Args:
-        query: PSE-style query (will be transformed) or natural language query
+        query: Query with operators (will be transformed) or natural language query
         num: Maximum number of results (default 5, max 25 for basic indexing)
 
     Returns:
         List of dicts with keys: url, title, snippet, relevance_score
     """
-    # Only transform if query contains PSE operators (intitle:, intext:)
-    # If no PSE operators, use query as-is to preserve quotes and other formatting
+    # Only transform if query contains search operators (intitle:, intext:)
+    # If no operators, use query as-is to preserve quotes and other formatting
     if 'intitle:' in query or 'intext:' in query:
         query_nl = transform_pse_query_to_natural_language(query)
     else:
@@ -443,20 +443,20 @@ def vertex_ai_search_recall(query: str, num: int = 5) -> List[Dict[str, str]]:
     """
     Search lifestyle/hobby sites using Vertex AI Search.
 
-    Note: The query parameter may contain PSE operators (intitle:, intext:).
+    Note: The query parameter may contain search operators (intitle:, intext:).
     These will be transformed to natural language before sending to Vertex AI.
 
     Returns same interface as google_search_recall() for drop-in replacement.
-    Conversion to SearchHit happens at call site (same as PSE).
+    Conversion to SearchHit happens at call site.
 
     Args:
-        query: PSE-style query (will be transformed) or natural language query
+        query: Query with operators (will be transformed) or natural language query
         num: Maximum number of results (default 5, max 25 for basic indexing)
 
     Returns:
         List of dicts with keys: url, title, snippet, relevance_score
     """
-    # Transform PSE query to natural language if needed
+    # Transform query to natural language if needed
     if 'intitle:' in query or 'intext:' in query:
         query_nl = transform_pse_query_to_natural_language(query)
     else:
@@ -919,7 +919,7 @@ def main(request):
     # -------------------------
     
     # 1. Precision query - social platforms with full name
-    # Note: Site restrictions are handled by the PRECISION_PSE_CX PSE configuration
+    # Note: Site restrictions are handled by the Vertex AI precision search engine configuration
     # Generate name variations (full name + middle+last if applicable)
     name_full, name_variation = generate_name_variations(full_name)
     if name_variation:
@@ -956,7 +956,7 @@ def main(request):
         if city:
             middle_name_linkedin_query += f' {city.split(",")[0]}'
         
-        # Execute LinkedIn search (uses Vertex AI or PSE based on config)
+        # Execute LinkedIn search using Vertex AI Search
         middle_name_linkedin_raw = google_search_linkedin_v2(middle_name_linkedin_query, num=10)
         
         # Determine source based on _source marker (set by google_search_linkedin_v2)
@@ -1008,7 +1008,7 @@ def main(request):
         print(f"[Phase1] Company name provided: {company_name} - performing company name searches")
         
         # Search 2: Full Name and Company Name on LinkedIn
-        # Note: Site restriction removed as LINKEDIN_PSE_CX is already scoped to ca.linkedin.com
+        # Note: LinkedIn search engine is scoped to linkedin.com profiles
         company_name_linkedin_query = f'{full_name} {company_name}'
         company_name_linkedin_raw = google_search_linkedin_v2(company_name_linkedin_query, num=10)
         
@@ -1038,11 +1038,11 @@ def main(request):
 
         print(f"[Phase1] Company name LinkedIn search: {len(company_name_linkedin_hits)} LinkedIn hits")
 
-    # Context search removed - migrated away from PSE general search
+    # Context search removed - no longer used
     context_hits: List[SearchHit] = []
 
     # 3. Recall query - lifestyle sites
-    # Note: Site restrictions are handled by the RECALL_PSE_CX PSE configuration
+    # Note: Site restrictions are handled by the Vertex AI recall search engine configuration
     recall_query = ""
     recall_hits: List[SearchHit] = []
     if len(prefix) >= 4:
@@ -1064,8 +1064,8 @@ def main(request):
             for h in recall_raw if h.get("url")
         ]
 
-    # 3b. Additional recall query - using second PSE
-    # Note: Site restrictions are handled by the RECALL_PSE_CX_2 PSE configuration
+    # 3b. Additional recall query - using precision search engine for additional coverage
+    # Note: Site restrictions are handled by the Vertex AI precision search engine configuration
     recall_2_query = ""
     recall_2_hits: List[SearchHit] = []
     if len(prefix) >= 4:
@@ -1086,7 +1086,7 @@ def main(request):
             for h in recall_2_raw if h.get("url")
         ]
 
-    # Name search removed - migrated away from PSE general search
+    # Name search removed - no longer used
     name_hits: List[SearchHit] = []
 
     # Deduplicate hits
@@ -1173,7 +1173,7 @@ def main(request):
         for h in rerun_raw:
             url = h.get("url")
             if url and url not in seen:
-                source_value = h.get("_source", "pse")
+                source_value = h.get("_source", "google_search")
                 hit = SearchHit(
                     url=url,
                     title=h.get("title", ""),

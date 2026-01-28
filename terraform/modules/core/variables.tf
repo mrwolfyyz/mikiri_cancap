@@ -96,8 +96,6 @@ variable "secret_names" {
   description = "List of secret names to create in Secret Manager"
   type        = list(string)
   default = [
-    "REVIEWS_PSE_CX",
-    "COMPLAINTS_PSE_CX",
     "HIBP_API_KEY",
   ]
 }

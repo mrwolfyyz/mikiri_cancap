@@ -21,7 +21,7 @@ locals {
 
     # External services
     "drive.googleapis.com",               # Google Drive API (for report storage)
-    "customsearch.googleapis.com",        # Google Custom Search (PSE)
+    "customsearch.googleapis.com",        # Google Custom Search API
 
     # Firebase
     "firebase.googleapis.com",            # Firebase

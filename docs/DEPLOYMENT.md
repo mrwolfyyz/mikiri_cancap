@@ -24,8 +24,7 @@ You must complete [PREREQUISITES.md](./PREREQUISITES.md) first, including:
 - ✅ Terraform state bucket created
 - ✅ Local tools installed (gcloud, terraform, firebase-tools)
 - ✅ Tools authenticated (`gcloud auth login`, `gcloud auth application-default login`, `firebase login`)
-- ✅ API keys ready (Google Search, HIBP)
-- ✅ All PSEs created (6 PSEs with CX IDs noted)
+- ✅ API key ready (HIBP)
 - ✅ Verification Checklist completed
 
 **Once you have completed the Verification Checklist in PREREQUISITES.md, proceed to Initial Setup below.**
@@ -288,24 +287,14 @@ Terraform creates empty secrets. Add the actual values:
 # Set your project ID (or add --project=PROJECT_ID to each command)
 export PROJECT_ID="your-project-id"
 
-# Add Google Search API key
-echo -n "YOUR_API_KEY" | gcloud secrets versions add GOOGLE_SEARCH_API_KEY --data-file=- --project=$PROJECT_ID
-
-# Add other secrets similarly
-echo -n "YOUR_CX" | gcloud secrets versions add GOOGLE_SEARCH_CX --data-file=- --project=$PROJECT_ID
-echo -n "YOUR_CX" | gcloud secrets versions add PRECISION_PSE_CX --data-file=- --project=$PROJECT_ID
-echo -n "YOUR_CX" | gcloud secrets versions add RECALL_PSE_CX --data-file=- --project=$PROJECT_ID
-echo -n "YOUR_CX" | gcloud secrets versions add RECALL_PSE_CX_2 --data-file=- --project=$PROJECT_ID
-echo -n "YOUR_CX" | gcloud secrets versions add LINKEDIN_PSE_CX --data-file=- --project=$PROJECT_ID
-echo -n "YOUR_CX" | gcloud secrets versions add REVIEWS_PSE_CX --data-file=- --project=$PROJECT_ID
-echo -n "YOUR_CX" | gcloud secrets versions add COMPLAINTS_PSE_CX --data-file=- --project=$PROJECT_ID
+# Add HIBP API key
 echo -n "YOUR_API_KEY" | gcloud secrets versions add HIBP_API_KEY --data-file=- --project=$PROJECT_ID
 ```
 
-**Verify secrets were added**:
+**Verify secret was added**:
 
 ```bash
-gcloud secrets list --project=$PROJECT_ID --filter="name~GOOGLE_SEARCH OR name~PSE OR name~HIBP"
+gcloud secrets list --project=$PROJECT_ID --filter="name~HIBP"
 ```
 
 ### Step 5: Configure Firebase for Hosting

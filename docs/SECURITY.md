@@ -29,12 +29,7 @@ Mikiri was built with Privacy by Design principles from the beginning:
 - Automatic deletion after retention period
 - Purpose: Keep data only as long as needed for the feedback loop
 
-**4. Centralized, Auditable Searches**
-- All searches through 6 Programmable Search Engines (PSEs) in your GCP project
-- Search logs accessible to you
-- More auditable than employees manually Googling borrowers
-
-**5. Data Minimization**
+**4. Data Minimization**
 - Only collect what's necessary for investigation
 - Email is optional (auto-generated from name if not provided)
 - No unnecessary data collection
@@ -54,14 +49,13 @@ Mikiri was built with Privacy by Design principles from the beginning:
 └─────────────────────────────────────────────────────────────┘
 
 External APIs (minimal):
-• Google Search API - via YOUR PSEs in YOUR project
 • HIBP API - email breach checks only
 • Vertex AI - Google-hosted LLM in YOUR project
+• Gemini 2.5 Flash - Google Search grounding for address verification
 ```
 
 All borrower data stays in your GCP environment except:
 - Email addresses sent to HIBP for breach checking
-- Search queries (names, cities) sent to Google Search API via your PSEs
 - Investigation data sent to Vertex AI (stays within your GCP project)
 
 ---
@@ -93,18 +87,12 @@ All borrower data stays in your GCP environment except:
 
 ### What Leaves Your Environment
 
-**1. Google Custom Search API (via YOUR PSEs)**
-- **Data Sent**: Search queries containing names, cities, email prefixes, company names
-- **Data Received**: Public web search results (titles, snippets, URLs)
-- **Your Control**: 6 PSEs in your GCP project, you have access to search logs
-- **Privacy Benefit**: More auditable than employees manually Googling
-
-**2. Have I Been Pwned (HIBP) API**
+**1. Have I Been Pwned (HIBP) API**
 - **Data Sent**: Email addresses only
 - **Data Received**: Breach names and dates
 - **Industry Standard**: Used by password managers and enterprises globally
 
-**3. Vertex AI (Gemini)**
+**2. Vertex AI (Gemini)**
 - **Data Sent**: Investigation data for AI analysis
 - **Data Received**: Analysis and summaries
 - **Location**: Runs in YOUR GCP project, billed to you
@@ -115,10 +103,6 @@ All borrower data stays in your GCP environment except:
 ## Secrets Management
 
 All API keys stored in **Google Secret Manager**:
-- `GOOGLE_SEARCH_API_KEY` - Google Custom Search API key
-- `GOOGLE_SEARCH_CX` - Base search engine ID
-- `PRECISION_PSE_CX`, `RECALL_PSE_CX`, `RECALL_PSE_CX_2` - PSE IDs
-- `LINKEDIN_PSE_CX`, `REVIEWS_PSE_CX`, `COMPLAINTS_PSE_CX` - PSE IDs  
 - `HIBP_API_KEY` - Have I Been Pwned API key
 
 **IAM Controls**:
@@ -289,14 +273,11 @@ Because everything runs in your GCP environment, **you have full control**:
 
 ## Common Questions
 
-**Q: What PII leaves our environment?**  
-A: Only email addresses (to HIBP) and search queries (to Google via your PSEs). Vertex AI processing stays within your GCP project.
+**Q: What PII leaves our environment?**
+A: Only email addresses (to HIBP for breach checking). Vertex AI processing stays within your GCP project.
 
-**Q: Can we audit who ran which investigation?**  
+**Q: Can we audit who ran which investigation?**
 A: Not in beta (anonymous auth). For production, specify your preferred identity provider (Google Workspace, Azure AD, etc.) and we'll implement it via Firebase in ~1 hour.
-
-**Q: Are searches being sent to Google?**  
-A: Yes, but through YOUR Programmable Search Engines in YOUR GCP project. You have access to search logs. This is more auditable than employees manually Googling borrowers.
 
 **Q: How do we delete borrower data?**  
 A: Firestore documents can be deleted via console or API at any time. No vendor coordination required. We can implement automated retention policies based on your compliance requirements.

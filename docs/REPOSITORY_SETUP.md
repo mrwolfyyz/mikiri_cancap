@@ -83,7 +83,6 @@ The repository includes:
 - ✅ Complete documentation (DEPLOYMENT.md, PREREQUISITES.md, TROUBLESHOOTING.md)
 - ✅ Deployment and validation scripts
 - ✅ Chrome extension code
-- ✅ PSE configuration guides
 - ✅ `.gitignore` configured to exclude secrets and build artifacts
 
 ## What's Excluded
