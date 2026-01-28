@@ -519,36 +519,6 @@ resource "google_cloudfunctions2_function" "phase1_identity" {
     }
 
     secret_environment_variables {
-      key        = "GOOGLE_SEARCH_API_KEY"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["GOOGLE_SEARCH_API_KEY"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
-      key        = "PRECISION_PSE_CX"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["PRECISION_PSE_CX"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
-      key        = "RECALL_PSE_CX"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["RECALL_PSE_CX"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
-      key        = "RECALL_PSE_CX_2"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["RECALL_PSE_CX_2"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
-      key        = "LINKEDIN_PSE_CX"
-      project_id = var.project_id
-      secret     = google_secret_manager_secret.secrets["LINKEDIN_PSE_CX"].secret_id
-      version    = "latest"
-    }
-    secret_environment_variables {
       key        = "HIBP_API_KEY"
       project_id = var.project_id
       secret     = google_secret_manager_secret.secrets["HIBP_API_KEY"].secret_id

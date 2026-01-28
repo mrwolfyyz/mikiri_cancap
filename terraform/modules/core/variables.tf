@@ -96,11 +96,6 @@ variable "secret_names" {
   description = "List of secret names to create in Secret Manager"
   type        = list(string)
   default = [
-    "GOOGLE_SEARCH_API_KEY",
-    "PRECISION_PSE_CX",
-    "RECALL_PSE_CX",
-    "RECALL_PSE_CX_2",
-    "LINKEDIN_PSE_CX",
     "REVIEWS_PSE_CX",
     "COMPLAINTS_PSE_CX",
     "HIBP_API_KEY",
