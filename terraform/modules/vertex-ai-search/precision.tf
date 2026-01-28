@@ -1,8 +1,8 @@
 # =============================================================================
-# Vertex AI Search - Precision PSE (Social Platforms)
+# Vertex AI Search - Precision Search (Social Platforms)
 # =============================================================================
 # Creates Discovery Engine data store, target sites, and search engine for
-# precision PSE migration. Uses basic website indexing (not advanced site search)
+# social platform searches. Uses basic website indexing (not advanced site search)
 # to index social platforms (Instagram, Twitter, Facebook, GitHub, etc.).
 # Target sites created sequentially with depends_on to avoid API rate limits.
 # =============================================================================

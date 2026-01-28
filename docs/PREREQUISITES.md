@@ -7,8 +7,7 @@ This document outlines all prerequisites needed before deploying the Skip Trace 
 1. [GCP Setup](#gcp-setup)
 2. [Local Tools](#local-tools)
 3. [API Keys & Services](#api-keys--services)
-4. [Programmable Search Engines](#programmable-search-engines)
-5. [Verification Checklist](#verification-checklist)
+4. [Verification Checklist](#verification-checklist)
 
 ---
 
@@ -97,7 +96,6 @@ gcloud services enable \
   eventarc.googleapis.com \
   cloudbuild.googleapis.com \
   drive.googleapis.com \
-  customsearch.googleapis.com \
   firebase.googleapis.com \
   firebasehosting.googleapis.com \
   identitytoolkit.googleapis.com \
@@ -224,18 +222,7 @@ source venv/bin/activate
 
 ## API Keys & Services
 
-### 1. Google Custom Search API
-
-Required for web search functionality.
-
-1. Go to [Google Cloud Console > APIs & Services](https://console.cloud.google.com/apis/credentials)
-2. Click "Create Credentials" > "API Key"
-3. Restrict the key to "Custom Search API" only
-4. **Store the API key securely** - you'll add it to Secret Manager in the 'Add Secret Values' step in DEPLOYMENT.md
-
-**Note**: Keep your API key in a secure location temporarily (e.g., password manager, encrypted file). You'll use it when adding secrets after Terraform deployment.
-
-### 2. Have I Been Pwned (HIBP) API
+### 1. Have I Been Pwned (HIBP) API
 
 Required for breach detection functionality.
 
@@ -245,7 +232,7 @@ Required for breach detection functionality.
 
 **Note**: Keep your API key in a secure location temporarily. You'll use it when adding secrets after Terraform deployment.
 
-### 3. Google Vertex AI
+### 2. Google Vertex AI
 
 Required for AI-powered analysis.
 
@@ -255,7 +242,7 @@ Required for AI-powered analysis.
    - Look for "Generative Language API" quotas
    - Default quotas are usually sufficient for development/testing
 
-### 4. Google Drive API (Post-Deployment Setup)
+### 3. Google Drive API (Post-Deployment Setup)
 
 **Note**: Drive configuration is **not** part of prerequisites. After deployment, you'll configure Drive access through the web interface.
 
@@ -267,42 +254,6 @@ Required for AI-powered analysis.
    - Configure the folder URL
 
 **Why this is post-deployment**: Google Drive access requires manual folder sharing with the service account, which can only be done after the service account is created by Terraform.
-
----
-
-## Programmable Search Engines
-
-The platform uses several Google Programmable Search Engines (PSE) for specialized searches.
-
-### Required PSEs
-
-**Total**: 6 unique PSEs (7 environment variables - RECALL_PSE_CX_2 reuses PRECISION_PSE_CX)
-
-**IMPORTANT**: Follow the detailed step-by-step guides in `pse-configurations/` directory. The table below is a quick reference only.
-
-| PSE Name | Purpose | Environment Variable |
-|----------|---------|---------------------|
-| Base Search | General web search | `GOOGLE_SEARCH_CX` |
-| Precision PSE | Social platform search | `PRECISION_PSE_CX` (also used for `RECALL_PSE_CX_2`) |
-| Recall PSE | Lifestyle/hobby sites | `RECALL_PSE_CX` |
-| LinkedIn PSE | LinkedIn profiles only | `LINKEDIN_PSE_CX` |
-| Reviews PSE | Business reviews | `REVIEWS_PSE_CX` |
-| Complaints PSE | Business complaints | `COMPLAINTS_PSE_CX` |
-
-**Note**: `RECALL_PSE_CX_2` uses the **same CX value** as `PRECISION_PSE_CX` (they're the same PSE).
-
-### Creating PSEs
-
-**Follow the step-by-step guides in `pse-configurations/` directory:**
-
-- [Base Search Engine](pse-configurations/base-search.md) - `GOOGLE_SEARCH_CX`
-- [Precision Search Engine](pse-configurations/precision-search.md) - `PRECISION_PSE_CX` (also `RECALL_PSE_CX_2`)
-- [Recall Search Engine](pse-configurations/recall-search-1.md) - `RECALL_PSE_CX`
-- [LinkedIn Search Engine](pse-configurations/linkedin-search.md) - `LINKEDIN_PSE_CX`
-- [Reviews Search Engine](pse-configurations/reviews-search.md) - `REVIEWS_PSE_CX`
-- [Complaints Search Engine](pse-configurations/complaints-search.md) - `COMPLAINTS_PSE_CX`
-
-**After creating each PSE**, copy the Search Engine ID (CX) and store it securely. You'll add all CX values to Secret Manager in the 'Add Secret Values' step in DEPLOYMENT.md.
 
 ---
 
@@ -395,69 +346,11 @@ Run through this checklist before deployment. **Verify each item with the comman
   ```
 
 ### API Keys Ready
-- [ ] **Google Custom Search API key created**
-  ```bash
-  # Store your API key temporarily (you'll add it to Secret Manager after terraform apply)
-  # You can keep it in a secure note or encrypted file
-  echo "API key created and stored securely"
-  ```
-  **Note**: API keys will be added to Secret Manager in the 'Add Secret Values' step in DEPLOYMENT.md.
-
 - [ ] **HIBP API key purchased**
   ```bash
   # Same as above - store securely for later use
   echo "HIBP API key purchased and stored securely"
   ```
-
-- [ ] **All PSE CX values noted**
-  ```bash
-  # Store all 7 CX values (including RECALL_PSE_CX_2)
-  # Example storage method:
-  cat > /tmp/pse-cx-values.txt <<EOF
-  GOOGLE_SEARCH_CX=your-cx-here
-  PRECISION_PSE_CX=your-cx-here
-  RECALL_PSE_CX=your-cx-here
-  RECALL_PSE_CX_2=your-cx-here  # Same as PRECISION_PSE_CX
-  LINKEDIN_PSE_CX=your-cx-here
-  REVIEWS_PSE_CX=your-cx-here
-  COMPLAINTS_PSE_CX=your-cx-here
-  EOF
-  ```
-  **Note**: These will be added to Secret Manager in the 'Add Secret Values' step in DEPLOYMENT.md.
-
-### PSEs Created
-- [ ] **Precision PSE (CX: ____________)**
-  ```bash
-  # Verify by testing search: https://cse.google.com/cse?cx=YOUR_CX
-  ```
-
-- [ ] **Recall PSE (CX: ____________)**
-  ```bash
-  # Verify by testing search: https://cse.google.com/cse?cx=YOUR_CX
-  ```
-
-- [ ] **Recall PSE 2 (CX: ____________)**
-  ```bash
-  # Note: RECALL_PSE_CX_2 uses the SAME CX as PRECISION_PSE_CX
-  # Verify this CX matches PRECISION_PSE_CX above
-  ```
-
-- [ ] **LinkedIn PSE (CX: ____________)**
-  ```bash
-  # Verify by testing search: https://cse.google.com/cse?cx=YOUR_CX
-  ```
-
-- [ ] **Reviews PSE (CX: ____________)**
-  ```bash
-  # Verify by testing search: https://cse.google.com/cse?cx=YOUR_CX
-  ```
-
-- [ ] **Complaints PSE (CX: ____________)**
-  ```bash
-  # Verify by testing search: https://cse.google.com/cse?cx=YOUR_CX
-  ```
-
-**Important**: RECALL_PSE_CX_2 should be the **same value** as PRECISION_PSE_CX (they use the same PSE).
 
 ---
 

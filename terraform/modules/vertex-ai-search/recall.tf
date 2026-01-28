@@ -1,8 +1,8 @@
 # =============================================================================
-# Vertex AI Search - Recall PSE (Lifestyle and Hobby Sites)
+# Vertex AI Search - Recall Search (Lifestyle and Hobby Sites)
 # =============================================================================
 # Creates Discovery Engine data store, target sites, and search engine for
-# recall PSE migration. Uses basic website indexing (not advanced site search)
+# lifestyle and hobby site searches. Uses basic website indexing (not advanced site search)
 # to index lifestyle/hobby sites (AllTrails, Chess.com, Goodreads, Flickr, etc.).
 # Target sites created sequentially with depends_on to avoid API rate limits.
 # =============================================================================

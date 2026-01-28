@@ -75,33 +75,11 @@ Following PREREQUISITES.md Verification Checklist section (lines 225-253).
 
 ### API Keys Ready
 
-#### [ ] Google Custom Search API key created
-- **Status**: ⚠️ Not applicable (manual step)
-- **Gap**: No guidance on how to store/verify API key before deployment
-- **Action Needed**: Clarify where API keys should be stored temporarily (they go to Secret Manager after terraform apply)
-
 #### [ ] HIBP API key purchased
 - **Status**: ⚠️ Not applicable (manual step)
-- **Gap**: Same as above
+- **Gap**: No guidance on how to store/verify API key before deployment
+- **Action Needed**: Clarify where API key should be stored temporarily (goes to Secret Manager after terraform apply)
 
-#### [ ] All PSE CX values noted
-- **Status**: ⚠️ Not applicable (manual step)
-- **Gap**: No guidance on where/how to store 7 CX values (including RECALL_PSE_CX_2)
-- **Action Needed**: Suggest creating a temporary file or note-taking method
-
-### PSEs Created
-
-All 6 PSEs:
-- [ ] Precision PSE (CX: ____________)
-- [ ] Recall PSE (CX: ____________)  
-- [ ] Recall PSE 2 (CX: ____________)
-- [ ] LinkedIn PSE (CX: ____________)
-- [ ] Reviews PSE (CX: ____________)
-- [ ] Complaints PSE (CX: ____________)
-
-- **Status**: ⚠️ Not applicable (manual step)
-- **Gap**: Checklist says "Recall PSE 2" but PRECISION_PSE_CX doc says RECALL_PSE_CX_2 uses same CX as PRECISION_PSE_CX
-- **Action Needed**: Clarify in checklist that RECALL_PSE_CX_2 = PRECISION_PSE_CX
 
 ---
 

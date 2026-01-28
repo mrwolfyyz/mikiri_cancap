@@ -143,7 +143,6 @@ skip-trace-origination/
 │   └── workflows/            # Cloud Workflow templates
 │       ├── investigate-skiptrace.yaml.tpl
 │       └── investigate-origination.yaml.tpl
-├── pse-configurations/       # Programmable Search Engine setup guides
 ├── scripts/                  # Deployment and utility scripts
 │   ├── prepare-functions.sh
 │   ├── validate-deployment.sh
@@ -163,11 +162,11 @@ skip-trace-origination/
 
 **Complete deployment requires following the documentation in this exact order:**
 
-1. **[docs/PREREQUISITES.md](docs/PREREQUISITES.md)** - Set up GCP project, APIs, PSEs, and required tools
+1. **[docs/PREREQUISITES.md](docs/PREREQUISITES.md)** - Set up GCP project, APIs, and required tools
 2. **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** - Deploy infrastructure, secrets, and frontends
 3. **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Reference for common issues
 
-The prerequisites include creating 6 Programmable Search Engines with specific configurations. Missing or incorrectly configured PSEs will cause investigation failures. Allow 2-3 hours for first-time deployment.
+Allow 2-3 hours for first-time deployment.
 
 **Deployment validation**: After completing deployment, run `./scripts/validate-deployment.sh PROJECT_ID REGION` to verify all components are correctly configured.
 

@@ -8,13 +8,12 @@
 
 ## Completed Prerequisites
 
-✅ GCP Project created with billing enabled  
-✅ Terraform state bucket created: `gs://cancap-skip-trace-prod-terraform-state`  
-✅ Required APIs enabled  
-✅ All tools installed and authenticated (gcloud, Terraform, Firebase CLI)  
-✅ Application Default Credentials configured with quota project set  
-✅ API keys ready (Google Custom Search, HIBP)  
-✅ All 6 PSEs created (CX values stored securely)
+✅ GCP Project created with billing enabled
+✅ Terraform state bucket created: `gs://cancap-skip-trace-prod-terraform-state`
+✅ Required APIs enabled
+✅ All tools installed and authenticated (gcloud, Terraform, Firebase CLI)
+✅ Application Default Credentials configured with quota project set
+✅ API key ready (HIBP)
 
 ---
 
@@ -34,6 +33,4 @@
 - **Environment:** Use `terraform/environments/prod` directory
 
 **Secrets to add during deployment (Step 4):**
-- `GOOGLE_SEARCH_API_KEY`
 - `HIBP_API_KEY`
-- All 7 PSE CX values (remember `RECALL_PSE_CX_2` = `PRECISION_PSE_CX`)
