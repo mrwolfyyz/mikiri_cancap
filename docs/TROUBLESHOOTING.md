@@ -101,6 +101,75 @@ terraform force-unlock LOCK_ID
 
 ---
 
+### Error: "oauth2: invalid_grant - reauth related error"
+
+**Symptom:**
+```
+Error: oauth2: "invalid_grant" "reauth related error (invalid_rapt)"
+```
+
+**Root Cause:**
+
+Application Default Credentials (ADC) are not properly configured for Terraform. This commonly occurs when:
+1. ADC credentials have expired or become invalid
+2. Quota project is not set in ADC
+3. Authentication commands were run in the wrong order
+4. Project was changed but ADC wasn't updated
+
+**Solution:**
+
+Run authentication commands in EXACT order:
+
+```bash
+# 1. Set project FIRST (before any authentication)
+gcloud config set project mikiri-demo-test
+
+# 2. Login with user account (opens browser)
+gcloud auth login
+
+# 3. Set up Application Default Credentials
+gcloud auth application-default login
+
+# 4. Set quota project (CRITICAL - not automatic)
+gcloud auth application-default set-quota-project mikiri-demo-test
+```
+
+**Verification:**
+
+```bash
+# Verify active account
+gcloud auth list
+
+# Verify project is set
+gcloud config get-value project
+
+# Verify quota project in ADC
+cat ~/.config/gcloud/application_default_credentials.json | jq .quota_project_id
+# Should show: "mikiri-demo-test"
+
+# Test GCS access (Terraform backend)
+gsutil ls -b gs://mikiri-demo-test-terraform-state
+```
+
+**Pre-Deployment Check:**
+
+To prevent authentication issues, run this check before any Terraform operations:
+
+```bash
+./scripts/check-terraform-auth.sh
+```
+
+This script validates:
+- Project is set correctly
+- User is authenticated
+- ADC credentials exist
+- Quota project matches target project
+- Terraform state bucket is accessible
+
+**Note**: The quota project must be manually set with `gcloud auth application-default set-quota-project` - it is NOT inherited from `billing_project` in Terraform provider blocks. This is a prerequisite for Terraform operations.
+
+---
+
 ### Error: "Application Default Credentials quota project not set"
 
 **Symptom:**
