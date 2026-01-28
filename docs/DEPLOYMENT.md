@@ -80,6 +80,24 @@ source .env
 
 Before proceeding, verify that you've completed authentication (this should already be done if you followed PREREQUISITES.md):
 
+**Recommended: Use the authentication check script**
+
+```bash
+# Run authentication check script (validates all auth requirements)
+./scripts/check-terraform-auth.sh mikiri-demo-test
+```
+
+This script verifies:
+- Project is set correctly
+- User is authenticated
+- Application Default Credentials exist
+- Quota project is configured
+- Terraform state bucket is accessible
+
+If the script passes, you're ready to proceed. If it fails, follow the instructions it provides.
+
+**Manual verification (alternative to script):**
+
 ```bash
 # Verify gcloud authentication
 gcloud auth list
@@ -89,7 +107,7 @@ gcloud auth application-default print-access-token > /dev/null && echo "✓ Appl
 
 # Verify quota project is set (required for Identity Platform API)
 # IMPORTANT: You must set this manually - it's required before terraform apply
-gcloud auth application-default set-quota-project PROJECT_ID
+gcloud auth application-default set-quota-project mikiri-demo-test
 
 # Verify OAuth client project matches target project (required for Identity Platform API)
 # This prevents "quota project" errors due to OAuth client mismatch
@@ -199,7 +217,13 @@ Run the preparation script to copy shared utilities:
 
 ### Step 2: Initialize Terraform
 
+**Before running Terraform, verify authentication is correct:**
+
 ```bash
+# Recommended: Run authentication check script
+./scripts/check-terraform-auth.sh mikiri-demo-test
+
+# If authentication check passes, proceed with Terraform
 cd terraform/environments/dev  # or prod
 
 # Initialize Terraform
@@ -208,6 +232,8 @@ terraform init
 # Review the plan
 terraform plan
 ```
+
+**Important**: If the authentication check fails, follow the instructions it provides before proceeding with Terraform commands. This prevents `oauth2: "invalid_grant"` errors. See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md#error-oauth2-invalid_grant---reauth-related-error) for details.
 
 ### Step 3: Apply Terraform
 

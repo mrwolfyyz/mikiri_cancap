@@ -158,10 +158,6 @@ echo ""
 echo "Checking Secrets..."
 
 SECRETS=(
-  "GOOGLE_SEARCH_API_KEY"
-  "GOOGLE_SEARCH_CX"
-  "PRECISION_PSE_CX"
-  "RECALL_PSE_CX"
   "HIBP_API_KEY"
 )
 
