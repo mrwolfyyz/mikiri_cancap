@@ -2,7 +2,7 @@
 Phase 1: Identity Resolution Cloud Function
 
 Performs:
-- Google Custom Search API (PSE) searches (precision, context, recall, name)
+- Vertex AI Search queries (precision, recall, LinkedIn)
 - Vertex AI Gemini LLM identity resolution
 - Location-based name search rerun (if LLM finds different city)
 - HIBP breach lookup
@@ -28,11 +28,6 @@ from vertexai.generative_models import GenerativeModel, GenerationConfig
 # -------------------------
 # Config
 # -------------------------
-GOOGLE_SEARCH_API_KEY = os.environ.get("GOOGLE_SEARCH_API_KEY", "")
-PRECISION_PSE_CX = os.environ.get("PRECISION_PSE_CX", "")
-RECALL_PSE_CX = os.environ.get("RECALL_PSE_CX", "")
-RECALL_PSE_CX_2 = os.environ.get("RECALL_PSE_CX_2", "")
-LINKEDIN_PSE_CX = os.environ.get("LINKEDIN_PSE_CX", "")
 GCP_PROJECT = os.environ.get("GCP_PROJECT", os.environ.get("GOOGLE_CLOUD_PROJECT", ""))
 # Use 'global' endpoint for Gemini models - routes to any supported region
 GCP_LOCATION = os.environ.get("GCP_LOCATION", "global")
@@ -220,222 +215,13 @@ def is_business_email(email: str) -> bool:
 # -------------------------
 # External API calls
 # -------------------------
-def google_search_precision(query: str, num: int = 5) -> List[Dict[str, str]]:
-    """Call Google Custom Search API (PSE) with retry logic for precision searches."""
-    if not GOOGLE_SEARCH_API_KEY:
-        print("[Google Search Precision] No API key set")
-        return []
-    if not PRECISION_PSE_CX:
-        print("[Google Search Precision] No Precision Search Engine ID (CX) set")
-        return []
-    
-    # Custom Search API max is 10 results per request, so we may need pagination
-    # For now, we'll request up to 10 results (the API limit)
-    num = min(num, 10)
-    
-    endpoint = "https://www.googleapis.com/customsearch/v1"
-    params = {
-        "key": GOOGLE_SEARCH_API_KEY,
-        "cx": PRECISION_PSE_CX,
-        "q": query,
-        "num": num
-    }
-    
-    def _call_google_search():
-        r = requests.get(endpoint, params=params, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        results = []
-        for item in (data.get("items", []) or [])[:num]:
-            results.append({
-                "url": item.get("link", ""),
-                "title": item.get("title", ""),
-                "snippet": item.get("snippet", ""),
-            })
-        return results
-    
-    try:
-        return retry_with_backoff(
-            _call_google_search,
-            RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=30.0),
-            operation_name=f"Google Search Precision: {query[:50]}"
-        )
-    except Exception as e:
-        print(f"[Google Search Precision] Error after retries: {e}")
-        return []
-
-
-def google_search_recall(query: str, num: int = 5) -> List[Dict[str, str]]:
-    """Call Google Custom Search API (PSE) with retry logic for recall searches."""
-    if not GOOGLE_SEARCH_API_KEY:
-        print("[Google Search Recall] No API key set")
-        return []
-    if not RECALL_PSE_CX:
-        print("[Google Search Recall] No Recall Search Engine ID (CX) set")
-        return []
-    
-    # Custom Search API max is 10 results per request, so we may need pagination
-    # For now, we'll request up to 10 results (the API limit)
-    num = min(num, 10)
-    
-    endpoint = "https://www.googleapis.com/customsearch/v1"
-    params = {
-        "key": GOOGLE_SEARCH_API_KEY,
-        "cx": RECALL_PSE_CX,
-        "q": query,
-        "num": num
-    }
-    
-    def _call_google_search():
-        r = requests.get(endpoint, params=params, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        results = []
-        for item in (data.get("items", []) or [])[:num]:
-            results.append({
-                "url": item.get("link", ""),
-                "title": item.get("title", ""),
-                "snippet": item.get("snippet", ""),
-            })
-        return results
-    
-    try:
-        return retry_with_backoff(
-            _call_google_search,
-            RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=30.0),
-            operation_name=f"Google Search Recall: {query[:50]}"
-        )
-    except Exception as e:
-        print(f"[Google Search Recall] Error after retries: {e}")
-        return []
-
-
 def google_search_recall_v2(query: str, num: int = 5) -> List[Dict[str, str]]:
     """
-    Recall search with Vertex AI Search, falling back to PSE.
+    Recall search using Vertex AI Search.
 
-    Returns same dict format as PSE for compatibility with existing call site
-    that converts to SearchHit.
-
-    Set RECALL_USE_VERTEX_AI=true to enable Vertex AI Search.
+    Returns dict format compatible with existing call site that converts to SearchHit.
     """
-    use_vertex = os.environ.get("RECALL_USE_VERTEX_AI", "false").lower() == "true"
-    print(f"[Recall Search v2] use_vertex={use_vertex}, query={query[:100]}")
-
-    if use_vertex:
-        results = vertex_ai_search_recall(query, num)
-        print(f"[Recall Search v2] Vertex AI Search returned {len(results)} results")
-        if results:
-            # Mark results as from Vertex AI Search
-            for r in results:
-                r["_source"] = "vertex_ai_recall"  # Internal marker
-            print(f"[Recall Search v2] Returning Vertex AI Search results")
-            return results
-        print("[Recall Search v2] Vertex AI Search returned no results, falling back to PSE")
-
-    # Fall back to existing PSE function
-    pse_results = google_search_recall(query, num)
-    # Add relevance_score for consistency and mark as PSE
-    return [
-        {
-            "url": r["url"],
-            "title": r["title"],
-            "snippet": r["snippet"],
-            "relevance_score": 0.0,  # PSE doesn't provide scores
-            "_source": "pse"  # Internal marker
-        }
-        for r in pse_results
-    ]
-
-
-def google_search_recall_2(query: str, num: int = 5) -> List[Dict[str, str]]:
-    """Call Google Custom Search API (PSE) with retry logic for additional recall searches."""
-    if not GOOGLE_SEARCH_API_KEY:
-        print("[Google Search Recall 2] No API key set")
-        return []
-    if not RECALL_PSE_CX_2:
-        print("[Google Search Recall 2] No Recall Search Engine ID (CX) set")
-        return []
-    
-    # Custom Search API max is 10 results per request, so we may need pagination
-    # For now, we'll request up to 10 results (the API limit)
-    num = min(num, 10)
-    
-    endpoint = "https://www.googleapis.com/customsearch/v1"
-    params = {
-        "key": GOOGLE_SEARCH_API_KEY,
-        "cx": RECALL_PSE_CX_2,
-        "q": query,
-        "num": num
-    }
-    
-    def _call_google_search():
-        r = requests.get(endpoint, params=params, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        results = []
-        for item in (data.get("items", []) or [])[:num]:
-            results.append({
-                "url": item.get("link", ""),
-                "title": item.get("title", ""),
-                "snippet": item.get("snippet", ""),
-            })
-        return results
-    
-    try:
-        return retry_with_backoff(
-            _call_google_search,
-            RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=30.0),
-            operation_name=f"Google Search Recall 2: {query[:50]}"
-        )
-    except Exception as e:
-        print(f"[Google Search Recall 2] Error after retries: {e}")
-        return []
-
-
-def google_search_linkedin(query: str, num: int = 5) -> List[Dict[str, str]]:
-    """Call Google Custom Search API (PSE) with retry logic for LinkedIn searches."""
-    if not GOOGLE_SEARCH_API_KEY:
-        print("[Google Search LinkedIn] No API key set")
-        return []
-    if not LINKEDIN_PSE_CX:
-        print("[Google Search LinkedIn] No LinkedIn Search Engine ID (CX) set")
-        return []
-    
-    # Custom Search API max is 10 results per request, so we may need pagination
-    # For now, we'll request up to 10 results (the API limit)
-    num = min(num, 10)
-    
-    endpoint = "https://www.googleapis.com/customsearch/v1"
-    params = {
-        "key": GOOGLE_SEARCH_API_KEY,
-        "cx": LINKEDIN_PSE_CX,
-        "q": query,
-        "num": num
-    }
-    
-    def _call_google_search():
-        r = requests.get(endpoint, params=params, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        results = []
-        for item in (data.get("items", []) or [])[:num]:
-            results.append({
-                "url": item.get("link", ""),
-                "title": item.get("title", ""),
-                "snippet": item.get("snippet", ""),
-            })
-        return results
-    
-    try:
-        return retry_with_backoff(
-            _call_google_search,
-            RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=30.0),
-            operation_name=f"Google Search LinkedIn: {query[:50]}"
-        )
-    except Exception as e:
-        print(f"[Google Search LinkedIn] Error after retries: {e}")
-        return []
+    return vertex_ai_search_recall(query, num)
 
 
 def vertex_ai_search_linkedin(query: str, num: int = 5) -> List[Dict[str, str]]:
@@ -743,92 +529,31 @@ def vertex_ai_search_recall(query: str, num: int = 5) -> List[Dict[str, str]]:
 
 def google_search_linkedin_v2(query: str, num: int = 5) -> List[Dict[str, str]]:
     """
-    LinkedIn search with Vertex AI Search, falling back to PSE.
-    
-    Returns same dict format as PSE for compatibility with existing call site
-    that converts to SearchHit.
-    
-    Set LINKEDIN_USE_VERTEX_AI=true to enable Vertex AI Search.
+    LinkedIn search using Vertex AI Search.
+
+    Returns dict format compatible with existing call site that converts to SearchHit.
     """
-    use_vertex = os.environ.get("LINKEDIN_USE_VERTEX_AI", "false").lower() == "true"
-    print(f"[LinkedIn Search v2] use_vertex={use_vertex}, query={query[:100]}")
-    
-    if use_vertex:
-        results = vertex_ai_search_linkedin(query, num)
-        print(f"[LinkedIn Search v2] Vertex AI Search returned {len(results)} results")
-        if results:
-            # Mark results as from Vertex AI Search by adding a marker field
-            # We'll use this to determine source even if relevance_score is 0.0
-            for r in results:
-                r["_source"] = "vertex_ai_search"  # Internal marker
-            print(f"[LinkedIn Search v2] Returning Vertex AI Search results (first result relevance_score={results[0].get('relevance_score', 0.0) if results else 'N/A'})")
-            return results  # Already returns List[Dict] with relevance_score
-        print("[LinkedIn Search v2] Vertex AI Search returned no results, falling back to PSE")
-    
-    # Fall back to existing PSE function (returns List[Dict] without relevance_score)
-    pse_results = google_search_linkedin(query, num)
-    # Add relevance_score for consistency and mark as PSE
-    return [
-        {
-            "url": r["url"],
-            "title": r["title"],
-            "snippet": r["snippet"],
-            "relevance_score": 0.0,  # PSE doesn't provide scores
-            "_source": "pse"  # Internal marker
-        }
-        for r in pse_results
-    ]
+    return vertex_ai_search_linkedin(query, num)
 
 
 def google_search_precision_v2(query: str, num: int = 5) -> List[Dict[str, str]]:
     """
-    Precision search with Vertex AI Search, falling back to PSE.
+    Precision search using Vertex AI Search.
 
-    Returns same dict format as PSE for compatibility with existing call site
-    that converts to SearchHit.
-
-    Set PRECISION_USE_VERTEX_AI=true to enable Vertex AI Search.
+    Returns dict format compatible with existing call site that converts to SearchHit.
     """
-    use_vertex = os.environ.get("PRECISION_USE_VERTEX_AI", "false").lower() == "true"
-    if use_vertex:
-        results = vertex_ai_search_precision(query, num)
-        if results:
-            for r in results:
-                r["_source"] = "vertex_ai_search"
-            return results
-    pse_results = google_search_precision(query, num)
-    return [
-        {"url": r["url"], "title": r["title"], "snippet": r["snippet"], "relevance_score": 0.0, "_source": "pse"}
-        for r in pse_results
-    ]
+    return vertex_ai_search_precision(query, num)
 
 
 def google_search_recall_2_v2(query: str, num: int = 5) -> List[Dict[str, str]]:
     """
-    Recall_2 search with Vertex AI Search, falling back to PSE.
+    Recall_2 search using Vertex AI Search.
 
-    Uses the same Vertex AI engine as precision (since RECALL_PSE_CX_2
-    uses the same PSE as PRECISION_PSE_CX).
+    Uses the same Vertex AI engine as precision (precision-search-engine).
 
-    Note: The query will be transformed from PSE format (intext:, etc.)
-    to natural language before sending to Vertex AI.
-
-    Returns same dict format as PSE for compatibility with existing call site.
-
-    Set PRECISION_USE_VERTEX_AI=true to enable Vertex AI Search.
+    Returns dict format compatible with existing call site that converts to SearchHit.
     """
-    use_vertex = os.environ.get("PRECISION_USE_VERTEX_AI", "false").lower() == "true"
-    if use_vertex:
-        results = vertex_ai_search_precision(query, num)
-        if results:
-            for r in results:
-                r["_source"] = "vertex_ai_search"
-            return results
-    pse_results = google_search_recall_2(query, num)
-    return [
-        {"url": r["url"], "title": r["title"], "snippet": r["snippet"], "relevance_score": 0.0, "_source": "pse"}
-        for r in pse_results
-    ]
+    return vertex_ai_search_precision(query, num)
 
 
 def vertex_ai_score(seed: Dict[str, Any], queries_payload: List[Dict[str, Any]]) -> Dict[str, Any]:
