@@ -2556,8 +2556,9 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
                         'lat': geocode_result['lat'],
                         'lon': geocode_result['lon']
                     }
-            
-            street_view_url = generate_street_view_url(raw_addr, cached_coords=cached_coords)
+
+            # Never geocode inline during report generation - only use cached coordinates or fall back to search URL
+            street_view_url = generate_street_view_url(raw_addr, geocode=False, cached_coords=cached_coords)
             content += f"{i}. **{raw_addr}**  \n"
             content += f"   - [📍 View Property]({street_view_url})  \n"
             if a.get("source_url"):
@@ -4410,51 +4411,46 @@ def generate_identity_report_skiptrace(data: Dict[str, Any], name: str, output_d
         
         content += "---\n\n"
     
-    # Possible Address(es) section (using enrichment_data addresses if available)
-    addresses_list = []
-    if enrichment_data and enrichment_data.get('addresses'):
-        # Extract addresses from enrichment data (geocoding result)
-        addresses_dict = enrichment_data['addresses']
-        for addr_key, addr_data in addresses_dict.items():
-            if isinstance(addr_data, dict):
-                addr_raw = addr_data.get('address_raw', addr_key)
-                source_url = addr_data.get('source_url', '')
-                snippet = addr_data.get('snippet', '')
-                coords = addr_data.get('coordinates', {})
-                
-                addresses_list.append({
-                    'address_raw': addr_raw,
-                    'source_url': source_url,
-                    'snippet': snippet,
-                    'coordinates': coords
-                })
-    
-    # Also extract addresses from queries using LLM if not already extracted
-    if not addresses_list:
-        addresses_list = contact_info.get('addresses', [])
-    
-    if addresses_list:
+    # Possible Address(es) section
+    # Get addresses from contact_info (has source_url and snippet)
+    # Use enrichment_data only for geocoding coordinates
+    addresses = contact_info.get('addresses', [])
+
+    if addresses:
         content += "## Address(es) of interest\n\n"
         content += "> [!info]\n"
         content += "> Automatically detected addresses from open-web sources.\n\n"
-        
-        for i, addr in enumerate(addresses_list, start=1):
-            content += f"{i}. **{addr.get('address_raw', 'Unknown address')}**  \n"
-            if addr.get("source_url"):
-                content += f"   - **Source:** {addr['source_url']}  \n"
-            if addr.get("snippet"):
+
+        # Get geocoding data from enrichment if available
+        geocoding_data = {}
+        if enrichment_data and enrichment_data.get('addresses'):
+            geocoding_data = enrichment_data['addresses']
+
+        for i, a in enumerate(addresses, start=1):
+            raw_addr = a['address_raw']
+            content += f"{i}. **{raw_addr}**  \n"
+
+            # Use cached coordinates if available
+            cached_coords = None
+            if raw_addr in geocoding_data:
+                geocode_result = geocoding_data[raw_addr]
+                if geocode_result.get('lat') and geocode_result.get('lon'):
+                    cached_coords = {
+                        'lat': geocode_result['lat'],
+                        'lon': geocode_result['lon']
+                    }
+
+            # Never geocode inline during report generation - only use cached coordinates or fall back to search URL
+            street_view_url = generate_street_view_url(raw_addr, geocode=False, cached_coords=cached_coords)
+            content += f"   - [📍 View Property]({street_view_url})  \n"
+
+            if a.get("source_url"):
+                content += f"   - **Source:** {a['source_url']}  \n"
+            if a.get("snippet"):
                 content += "   - **Snippet:**  \n"
-                content += f"     > {addr['snippet']}\n"
-            if addr.get("coordinates") and addr['coordinates'].get('lat') and addr['coordinates'].get('lon'):
-                coords = addr['coordinates']
-                street_view_url = generate_street_view_url(
-                    addr.get('address_raw', ''),
-                    geocode=False,
-                    cached_coords=coords
-                )
-                content += f"   - **Street View:** [View on Google Maps]({street_view_url})  \n"
+                content += f"     > {a['snippet']}\n"
             content += "\n"
-        
+
         content += "---\n\n"
     
     # Sources section
