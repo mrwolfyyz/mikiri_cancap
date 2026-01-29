@@ -318,6 +318,32 @@ resource "google_discovery_engine_target_site" "recall_zola" {
   ]
 }
 
+resource "google_discovery_engine_target_site" "recall_pinterest" {
+  project              = var.project_id
+  location             = "global"
+  data_store_id        = google_discovery_engine_data_store.recall.data_store_id
+  provided_uri_pattern = "ca.pinterest.com/*"
+  type                 = "INCLUDE"
+  exact_match          = false
+
+  depends_on = [
+    google_discovery_engine_target_site.recall_zola
+  ]
+}
+
+resource "google_discovery_engine_target_site" "recall_linkedin_posts" {
+  project              = var.project_id
+  location             = "global"
+  data_store_id        = google_discovery_engine_data_store.recall.data_store_id
+  provided_uri_pattern = "www.linkedin.com/posts/*"
+  type                 = "INCLUDE"
+  exact_match          = false
+
+  depends_on = [
+    google_discovery_engine_target_site.recall_pinterest
+  ]
+}
+
 # -----------------------------------------------------------------------------
 # Search Engine
 # -----------------------------------------------------------------------------
@@ -337,6 +363,6 @@ resource "google_discovery_engine_search_engine" "recall" {
   }
 
   depends_on = [
-    google_discovery_engine_target_site.recall_zola
+    google_discovery_engine_target_site.recall_linkedin_posts
   ]
 }
