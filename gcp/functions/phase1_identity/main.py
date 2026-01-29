@@ -1038,6 +1038,33 @@ def main(request):
 
         print(f"[Phase1] Company name LinkedIn search: {len(company_name_linkedin_hits)} LinkedIn hits")
 
+        # If company name search returned no results and city is provided, try city search
+        if len(company_name_linkedin_hits) == 0 and city:
+            print(f"[Phase1] Company name LinkedIn search returned 0 results - trying city search: {city}")
+            city_linkedin_query = f'"{full_name}" {city.split(",")[0]}'
+            city_linkedin_raw = google_search_linkedin_v2(city_linkedin_query, num=10)
+
+            has_vertex_results = any(h.get("_source") == "vertex_ai_search" for h in city_linkedin_raw if h.get("url"))
+            source_value = "vertex_ai_linkedin" if has_vertex_results else "google_search"
+            _source_markers = [h.get("_source") for h in city_linkedin_raw if h.get("url")]
+            print(f"[Phase1] City LinkedIn search: results_count={len(city_linkedin_raw)}, _source_markers={_source_markers}, has_vertex_results={has_vertex_results}, source={source_value}")
+
+            city_linkedin_hits = [
+                SearchHit(
+                    url=h["url"],
+                    title=h["title"],
+                    snippet=h["snippet"],
+                    source=source_value,
+                    query_id="city_linkedin",
+                    query_type="high_precision",
+                    relevance_score=h.get("relevance_score", 0.0),
+                )
+                for h in city_linkedin_raw if h.get("url")
+            ]
+
+            precision_hits.extend(city_linkedin_hits)
+            print(f"[Phase1] City LinkedIn search: {len(city_linkedin_hits)} LinkedIn hits")
+
     # Context search removed - no longer used
     context_hits: List[SearchHit] = []
 
