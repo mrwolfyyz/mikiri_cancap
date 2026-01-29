@@ -1009,7 +1009,7 @@ def main(request):
         
         # Search 2: Full Name and Company Name on LinkedIn
         # Note: LinkedIn search engine is scoped to linkedin.com profiles
-        company_name_linkedin_query = f'{full_name} {company_name}'
+        company_name_linkedin_query = f'"{full_name}" {company_name}'
         company_name_linkedin_raw = google_search_linkedin_v2(company_name_linkedin_query, num=10)
         
         # Determine source based on _source marker (set by google_search_linkedin_v2)
@@ -1046,7 +1046,7 @@ def main(request):
     recall_query = ""
     recall_hits: List[SearchHit] = []
     if len(prefix) >= 4:
-        recall_query = f'intext:{prefix} OR "{full_name}"'
+        recall_query = f'"{full_name}"'
         recall_raw = google_search_recall_v2(recall_query, num=10)
         # Detect if results came from Vertex AI
         has_vertex_results = any(h.get("_source") == "vertex_ai_recall" for h in recall_raw if h.get("url"))
