@@ -93,16 +93,19 @@ main:
               body: null
           - geocoding_identity_result:
               body: null
+          - contact_extraction_result:
+              body: null
           - phase2_errors:
               domain_enrichment: null
               geocoding_identity: null
+              contact_extraction: null
           # Extract company_domain from company_domain_lookup result if available
           - company_domain: $${default(map.get(map.get(company_domain_result, "body"), "domain"), "")}
 
-    # Phase 2: Parallel execution of domain enrichment and identity geocoding
+    # Phase 2: Parallel execution of domain enrichment, identity geocoding, and contact extraction
     - phase2_parallel:
         parallel:
-          shared: [identity_result, domain_enrichment_result, geocoding_identity_result, phase2_errors, company_domain]
+          shared: [identity_result, domain_enrichment_result, geocoding_identity_result, contact_extraction_result, phase2_errors, company_domain, job_id]
           branches:
             - domain_enrichment_branch:
                 steps:
@@ -160,6 +163,34 @@ main:
                                     body: null
                                 - phase2_errors.geocoding_identity: $${string(e.message)}
 
+            - contact_extraction_branch:
+                steps:
+                  - call_contact_extraction:
+                      try:
+                        call: http.post
+                        args:
+                          url: "${contact_extraction_url}"
+                          auth:
+                            type: OIDC
+                          body:
+                            job_id: $${job_id}
+                            identity: $${identity_result.body}
+                          timeout: 300
+                        result: contact_extraction_result
+                      retry:
+                        max_attempts: 3
+                        interval: 2s
+                        max_interval: 60s
+                        multiplier: 2.0
+                      except:
+                        as: e
+                        steps:
+                          - set_contact_extraction_error:
+                              assign:
+                                - contact_extraction_result:
+                                    body: null
+                                - phase2_errors.contact_extraction: $${string(e.message)}
+
     # Build result structure directly (no aggregator needed)
     - build_enrichment:
         assign:
@@ -167,47 +198,49 @@ main:
           - empty_dict: {}
           - domain_enrichment_body: $${default(map.get(domain_enrichment_result, "body"), empty_dict)}
           - geocoding_identity_body: $${default(map.get(geocoding_identity_result, "body"), empty_dict)}
-          # Build enrichment object
+          - contact_extraction_body: $${default(map.get(contact_extraction_result, "body"), empty_dict)}
+          # Build enrichment object with explicit default structures
+          - default_contacts:
+              phones: []
+              emails: []
+              addresses: []
           - enrichment:
               domains: $${default(map.get(domain_enrichment_body, "domains"), empty_dict)}
               addresses: $${default(map.get(geocoding_identity_body, "addresses"), empty_dict)}
+              contacts: $${default(map.get(contact_extraction_body, "contacts"), default_contacts)}
 
     - sanitize_errors:
         assign:
           - sanitized_errors:
               domain_enrichment: $${string(default(phase2_errors.domain_enrichment, ""))}
               geocoding_identity: $${string(default(phase2_errors.geocoding_identity, ""))}
+              contact_extraction: $${string(default(phase2_errors.contact_extraction, ""))}
 
     - filter_errors:
+        assign:
+          - final_errors: {}
+          - has_partial_failure: false
+
+    - add_domain_error:
         switch:
-          - condition: $${sanitized_errors.domain_enrichment != "" and sanitized_errors.geocoding_identity != ""}
-            steps:
-              - set_both_errors:
-                  assign:
-                    - final_errors:
-                        domain_enrichment: $${sanitized_errors.domain_enrichment}
-                        geocoding_identity: $${sanitized_errors.geocoding_identity}
-                    - has_partial_failure: true
           - condition: $${sanitized_errors.domain_enrichment != ""}
-            steps:
-              - set_domain_error:
-                  assign:
-                    - final_errors:
-                        domain_enrichment: $${sanitized_errors.domain_enrichment}
-                    - has_partial_failure: true
+            assign:
+              - final_errors.domain_enrichment: $${sanitized_errors.domain_enrichment}
+              - has_partial_failure: true
+
+    - add_geocoding_error:
+        switch:
           - condition: $${sanitized_errors.geocoding_identity != ""}
-            steps:
-              - set_geocoding_error:
-                  assign:
-                    - final_errors:
-                        geocoding_identity: $${sanitized_errors.geocoding_identity}
-                    - has_partial_failure: true
-          - condition: $${true}
-            steps:
-              - set_no_errors:
-                  assign:
-                    - final_errors: {}
-                    - has_partial_failure: false
+            assign:
+              - final_errors.geocoding_identity: $${sanitized_errors.geocoding_identity}
+              - has_partial_failure: true
+
+    - add_contact_extraction_error:
+        switch:
+          - condition: $${sanitized_errors.contact_extraction != ""}
+            assign:
+              - final_errors.contact_extraction: $${sanitized_errors.contact_extraction}
+              - has_partial_failure: true
 
     - build_result_summary:
         assign:

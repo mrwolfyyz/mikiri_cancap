@@ -126,6 +126,12 @@ data "archive_file" "address_verification" {
   output_path = "${path.module}/../../../.build/address_verification.zip"
 }
 
+data "archive_file" "contact_extraction" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../gcp/functions/contact_extraction"
+  output_path = "${path.module}/../../../.build/contact_extraction.zip"
+}
+
 # -----------------------------------------------------------------------------
 # Upload Source Archives to GCS
 # -----------------------------------------------------------------------------
@@ -194,6 +200,12 @@ resource "google_storage_bucket_object" "address_verification" {
   name   = "address_verification-${data.archive_file.address_verification.output_md5}.zip"
   bucket = google_storage_bucket.function_source.name
   source = data.archive_file.address_verification.output_path
+}
+
+resource "google_storage_bucket_object" "contact_extraction" {
+  name   = "contact_extraction-${data.archive_file.contact_extraction.output_md5}.zip"
+  bucket = google_storage_bucket.function_source.name
+  source = data.archive_file.contact_extraction.output_path
 }
 
 # =============================================================================
@@ -821,6 +833,72 @@ resource "google_cloud_run_service_iam_member" "workflow_invoke_aggregator" {
   project  = var.project_id
   location = var.region
   service  = google_cloudfunctions2_function.aggregator.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.workflow.email}"
+}
+
+# -----------------------------------------------------------------------------
+# Contact Extraction
+# -----------------------------------------------------------------------------
+
+resource "google_cloudfunctions2_function" "contact_extraction" {
+  project  = var.project_id
+  name     = "contact-extraction"
+  location = var.region
+
+  build_config {
+    runtime     = "python311"
+    entry_point = "main"
+    source {
+      storage_source {
+        bucket = google_storage_bucket.function_source.name
+        object = google_storage_bucket_object.contact_extraction.name
+      }
+    }
+  }
+
+  service_config {
+    max_instance_count    = var.function_max_instances["contact_extraction"]
+    min_instance_count    = 0
+    available_memory      = var.function_memory["contact_extraction"]
+    timeout_seconds       = var.function_timeout["contact_extraction"]
+    service_account_email = google_service_account.functions.email
+
+    environment_variables = {
+      GCP_PROJECT  = var.project_id
+      GCP_LOCATION = "global"  # Use global endpoint for Gemini
+    }
+  }
+
+  labels = local.common_labels
+
+  # Cloud Build dependencies required for all function deployments
+  # Includes both Cloud Build SA and Compute SA permissions (required as of 2024 default change)
+  depends_on = [
+    google_project_service.apis["cloudfunctions.googleapis.com"],
+    google_project_service.apis["run.googleapis.com"],
+    google_project_service.apis["cloudbuild.googleapis.com"],
+    time_sleep.api_propagation,
+    # Cloud Build SA permissions (for explicit Cloud Build triggers)
+    google_project_iam_member.cloudbuild_functions_developer,
+    google_project_iam_member.cloudbuild_run_admin,
+    google_project_iam_member.cloudbuild_service_account_user,
+    google_storage_bucket_iam_member.cloudbuild_object_admin,
+    # Compute SA permissions (for Functions Gen2 internal builds - default as of 2024)
+    google_project_iam_member.compute_functions_developer,
+    google_project_iam_member.compute_run_admin,
+    google_project_iam_member.compute_service_account_user,
+    google_project_iam_member.compute_storage_viewer,
+    google_project_iam_member.compute_artifactregistry_writer,
+    google_storage_bucket_iam_member.compute_object_admin,
+  ]
+}
+
+# Grant workflow SA permission to invoke
+resource "google_cloud_run_service_iam_member" "workflow_invoke_contact_extraction" {
+  project  = var.project_id
+  location = var.region
+  service  = google_cloudfunctions2_function.contact_extraction.name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.workflow.email}"
 }

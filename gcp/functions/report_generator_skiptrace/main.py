@@ -279,7 +279,8 @@ def on_job_updated(event: CloudEvent) -> None:
             enrichment = firestore_result.get('enrichment', {})
             enrichment_data = {
                 'domains': enrichment.get('domains', {}),
-                'addresses': enrichment.get('addresses', {})
+                'addresses': enrichment.get('addresses', {}),
+                'contacts': enrichment.get('contacts', {"phones": [], "emails": [], "addresses": []})
             }
         
         # Extract borrower name from transformed data

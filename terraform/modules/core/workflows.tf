@@ -23,6 +23,7 @@ resource "google_workflows_workflow" "skiptrace" {
     phase1_identity_url       = google_cloudfunctions2_function.phase1_identity.service_config[0].uri
     domain_enrichment_url     = google_cloudfunctions2_function.domain_enrichment.service_config[0].uri
     address_geocoding_url     = google_cloudfunctions2_function.address_geocoding.service_config[0].uri
+    contact_extraction_url    = google_cloudfunctions2_function.contact_extraction.service_config[0].uri
   })
 
   labels = local.common_labels
@@ -34,11 +35,13 @@ resource "google_workflows_workflow" "skiptrace" {
     google_cloudfunctions2_function.phase1_identity,
     google_cloudfunctions2_function.domain_enrichment,
     google_cloudfunctions2_function.address_geocoding,
+    google_cloudfunctions2_function.contact_extraction,
     # Ensure workflow SA has invoker permissions before workflow is created
     google_cloud_run_service_iam_member.workflow_invoke_phase1_identity,
     google_cloud_run_service_iam_member.workflow_invoke_domain_enrichment,
     google_cloud_run_service_iam_member.workflow_invoke_address_geocoding,
     google_cloud_run_service_iam_member.workflow_invoke_company_domain_lookup,
+    google_cloud_run_service_iam_member.workflow_invoke_contact_extraction,
   ]
 }
 
@@ -60,6 +63,7 @@ resource "google_workflows_workflow" "origination" {
     phase1_identity_url       = google_cloudfunctions2_function.phase1_identity.service_config[0].uri
     domain_enrichment_url     = google_cloudfunctions2_function.domain_enrichment.service_config[0].uri
     address_geocoding_url     = google_cloudfunctions2_function.address_geocoding.service_config[0].uri
+    contact_extraction_url    = google_cloudfunctions2_function.contact_extraction.service_config[0].uri
     aggregator_url            = google_cloudfunctions2_function.aggregator.service_config[0].uri
   })
 
@@ -72,12 +76,14 @@ resource "google_workflows_workflow" "origination" {
     google_cloudfunctions2_function.phase1_identity,
     google_cloudfunctions2_function.domain_enrichment,
     google_cloudfunctions2_function.address_geocoding,
+    google_cloudfunctions2_function.contact_extraction,
     google_cloudfunctions2_function.aggregator,
     # Ensure workflow SA has invoker permissions before workflow is created
     google_cloud_run_service_iam_member.workflow_invoke_phase1_identity,
     google_cloud_run_service_iam_member.workflow_invoke_domain_enrichment,
     google_cloud_run_service_iam_member.workflow_invoke_address_geocoding,
     google_cloud_run_service_iam_member.workflow_invoke_company_domain_lookup,
+    google_cloud_run_service_iam_member.workflow_invoke_contact_extraction,
     google_cloud_run_service_iam_member.workflow_invoke_aggregator,
   ]
 }
