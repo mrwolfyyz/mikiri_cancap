@@ -191,131 +191,55 @@ main:
                                     body: null
                                 - phase2_errors.contact_extraction: $${string(e.message)}
 
-    # Build result structure directly (no aggregator needed)
-    - build_enrichment:
+    # Sanitize errors for aggregator
+    - sanitize_phase2_errors:
         assign:
-          # Extract enrichment data safely
-          - empty_dict: {}
-          - domain_enrichment_body: $${default(map.get(domain_enrichment_result, "body"), empty_dict)}
-          - geocoding_identity_body: $${default(map.get(geocoding_identity_result, "body"), empty_dict)}
-          - contact_extraction_body: $${default(map.get(contact_extraction_result, "body"), empty_dict)}
-          # Build enrichment object with explicit default structures
-          - default_contacts:
-              phones: []
-              emails: []
-              addresses: []
-          - enrichment:
-              domains: $${default(map.get(domain_enrichment_body, "domains"), empty_dict)}
-              addresses: $${default(map.get(geocoding_identity_body, "addresses"), empty_dict)}
-              contacts: $${default(map.get(contact_extraction_body, "contacts"), default_contacts)}
-
-    - sanitize_errors:
-        assign:
-          - sanitized_errors:
+          - sanitized_phase2_errors:
+              regulator: ""
+              litigation: ""
+              corporate: ""
+              salaries: ""
               domain_enrichment: $${string(default(phase2_errors.domain_enrichment, ""))}
-              geocoding_identity: $${string(default(phase2_errors.geocoding_identity, ""))}
+              address_geocoding: $${string(default(phase2_errors.geocoding_identity, ""))}
               contact_extraction: $${string(default(phase2_errors.contact_extraction, ""))}
 
-    - filter_errors:
-        assign:
-          - final_errors: {}
-          - has_partial_failure: false
-
-    - add_domain_error:
-        switch:
-          - condition: $${sanitized_errors.domain_enrichment != ""}
-            assign:
-              - final_errors.domain_enrichment: $${sanitized_errors.domain_enrichment}
-              - has_partial_failure: true
-
-    - add_geocoding_error:
-        switch:
-          - condition: $${sanitized_errors.geocoding_identity != ""}
-            assign:
-              - final_errors.geocoding_identity: $${sanitized_errors.geocoding_identity}
-              - has_partial_failure: true
-
-    - add_contact_extraction_error:
-        switch:
-          - condition: $${sanitized_errors.contact_extraction != ""}
-            assign:
-              - final_errors.contact_extraction: $${sanitized_errors.contact_extraction}
-              - has_partial_failure: true
-
-    - build_result_summary:
-        assign:
-          - identity_location: $${default(map.get(identity_result.body, "location"), empty_dict)}
-          - location_confidence: $${default(map.get(identity_location, "confidence"), "unknown")}
-          - has_high_confidence: $${location_confidence == "high"}
-          - summary_bullets: []
-    
-    - add_identity_bullet_if_needed:
-        switch:
-          - condition: $${has_high_confidence}
-            steps:
-              - add_identity_bullet:
-                  assign:
-                    - summary_bullets: ["High-confidence identity and location verified"]
-
-    - add_domain_error_if_needed:
-        switch:
-          - condition: $${has_partial_failure and map.get(final_errors, "domain_enrichment") != "" and map.get(final_errors, "domain_enrichment") != null}
-            steps:
-              - add_domain_error_bullet:
-                  assign:
-                    - domain_error_text: $${map.get(final_errors, "domain_enrichment")}
-                    - domain_prefix: "Domain enrichment: Error - "
-                    - domain_error_bullet: $${domain_prefix + domain_error_text}
-                    - summary_bullets: $${summary_bullets + [domain_error_bullet]}
-
-    - add_geocoding_error_if_needed:
-        switch:
-          - condition: $${has_partial_failure and map.get(final_errors, "geocoding_identity") != "" and map.get(final_errors, "geocoding_identity") != null}
-            steps:
-              - add_geocoding_bullet:
-                  assign:
-                    - geocoding_error_text: $${map.get(final_errors, "geocoding_identity")}
-                    - geocoding_prefix: "Address geocoding: Error - "
-                    - geocoding_error_bullet: $${geocoding_prefix + geocoding_error_text}
-                    - summary_bullets: $${summary_bullets + [geocoding_error_bullet]}
-
-    - determine_result_status:
-        switch:
-          - condition: $${has_partial_failure}
-            steps:
-              - set_partial_failure_status:
-                  assign:
-                    - overall_status: "partial_failure"
-                    - headline: "Skip trace investigation completed with partial data (some sources unavailable)"
-          - condition: $${true}
-            steps:
-              - set_success_status:
-                  assign:
-                    - overall_status: "clear"
-                    - headline: "Skip trace investigation complete"
-
-    - finalize_result_summary:
-        assign:
-          - result_summary:
-              overall_status: $${overall_status}
-              headline: $${headline}
-              bullets: $${summary_bullets}
-              partial_failure: $${has_partial_failure}
-
-    - build_final_result:
-        assign:
-          - final_result:
+    # Aggregate results (pass null for regulator, litigation, corporate, salaries)
+    # Note: geocoding_identity_result.body already has {"addresses": {...}} structure
+    - aggregate:
+        try:
+          call: http.post
+          args:
+            url: "${aggregator_url}"
+            auth:
+              type: OIDC
+            body:
+              job_id: $${job_id}
               identity: $${identity_result.body}
-              enrichment: $${enrichment}
-              result_summary: $${result_summary}
-              partial_failure: $${has_partial_failure}
-              errors: $${final_errors}
+              regulator: null
+              litigation: null
+              corporate: null
+              salaries: null
+              domain_enrichment: $${default(domain_enrichment_result.body, null)}
+              address_geocoding: $${default(geocoding_identity_result.body, null)}
+              contact_extraction: $${default(contact_extraction_result.body, null)}
+              errors: $${sanitized_phase2_errors}
+            timeout: 30
+          result: aggregated_result
+        retry:
+          max_attempts: 3
+          interval: 2s
+          max_interval: 60s
+          multiplier: 2.0
+        except:
+          as: e
+          raise: $${e}
 
     - prepare_firestore_data:
         assign:
-          - result_json: $${json.encode_to_string(final_result)}
-          - result_summary_json: $${json.encode_to_string(result_summary)}
-          - errors_json: $${json.encode_to_string(final_errors)}
+          - aggregated_body: $${aggregated_result.body}
+          - result_json: $${json.encode_to_string(aggregated_body)}
+          - result_summary_json: $${json.encode_to_string(aggregated_body.result_summary)}
+          - errors_json: $${json.encode_to_string(aggregated_body.errors)}
 
     - update_status_post_processing:
         call: googleapis.firestore.v1.projects.databases.documents.patch
@@ -332,7 +256,7 @@ main:
               result_summary:
                 stringValue: $${result_summary_json}
               partial_failure:
-                booleanValue: $${has_partial_failure}
+                booleanValue: $${aggregated_body.partial_failure}
               errors:
                 stringValue: $${errors_json}
         result: final_update
