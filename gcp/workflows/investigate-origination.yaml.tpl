@@ -94,16 +94,19 @@ main:
               body: null
           - geocoding_identity_result:
               body: null
+          - contact_extraction_result:
+              body: null
           - phase2_errors:
               domain_enrichment: null
               geocoding_identity: null
+              contact_extraction: null
           # Extract company_domain from company_domain_lookup result if available
           - company_domain: $${default(map.get(map.get(company_domain_result, "body"), "domain"), "")}
 
-    # Phase 2: Parallel execution of domain enrichment and identity geocoding
+    # Phase 2: Parallel execution of domain enrichment, identity geocoding, and contact extraction
     - phase2_parallel:
         parallel:
-          shared: [identity_result, domain_enrichment_result, geocoding_identity_result, phase2_errors, company_domain]
+          shared: [identity_result, domain_enrichment_result, geocoding_identity_result, contact_extraction_result, phase2_errors, company_domain, job_id]
           branches:
             - domain_enrichment_branch:
                 steps:
@@ -161,6 +164,34 @@ main:
                                     body: null
                                 - phase2_errors.geocoding_identity: $${string(e.message)}
 
+            - contact_extraction_branch:
+                steps:
+                  - call_contact_extraction:
+                      try:
+                        call: http.post
+                        args:
+                          url: "${contact_extraction_url}"
+                          auth:
+                            type: OIDC
+                          body:
+                            job_id: $${job_id}
+                            identity: $${identity_result.body}
+                          timeout: 300
+                        result: contact_extraction_result
+                      retry:
+                        max_attempts: 3
+                        interval: 2s
+                        max_interval: 60s
+                        multiplier: 2.0
+                      except:
+                        as: e
+                        steps:
+                          - set_contact_extraction_error:
+                              assign:
+                                - contact_extraction_result:
+                                    body: null
+                                - phase2_errors.contact_extraction: $${string(e.message)}
+
     # Sanitize errors for aggregator
     - sanitize_phase2_errors:
         assign:
@@ -171,6 +202,7 @@ main:
               salaries: ""
               domain_enrichment: $${string(default(phase2_errors.domain_enrichment, ""))}
               address_geocoding: $${string(default(phase2_errors.geocoding_identity, ""))}
+              contact_extraction: $${string(default(phase2_errors.contact_extraction, ""))}
 
     # Aggregate results (pass null for regulator, litigation, corporate, salaries)
     # Note: geocoding_identity_result.body already has {"addresses": {...}} structure
@@ -190,6 +222,7 @@ main:
               salaries: null
               domain_enrichment: $${default(domain_enrichment_result.body, null)}
               address_geocoding: $${default(geocoding_identity_result.body, null)}
+              contact_extraction: $${default(contact_extraction_result.body, null)}
               errors: $${sanitized_phase2_errors}
             timeout: 30
           result: aggregated_result

@@ -2478,16 +2478,14 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
     # ------------------------------
     # Possible Phone Number(s)
     # ------------------------------
-    # Extract seed info for context
-    seed = data.get('seed', {})
-    
-    # Single LLM extraction call
-    contact_info = extract_contact_info_llm(
-        data.get("queries", []), 
-        seed, 
-        exclude_email=email
-    )
-    
+    # Get contact info from enrichment data (extracted during Phase 2)
+    contact_info = {}
+    if enrichment_data and enrichment_data.get('contacts'):
+        contact_info = enrichment_data.get('contacts', {})
+    else:
+        # Fallback to empty structure if enrichment data not available
+        contact_info = {"phones": [], "emails": [], "addresses": []}
+
     phones = contact_info.get('phones', [])
 
     if phones:
@@ -3736,10 +3734,14 @@ def generate_skiptrace_checklist(data: Dict[str, Any], name: str, output_dir: Pa
         content += f"- [ ] [**Check relevant profiles for hidden marketplace profiles**]({facebook_public_url})\n\n"
         content += "---\n\n"
     
-    # Extract contact info using LLM for all sections (addresses, phones, emails)
-    seed = data.get('seed', {})
-    contact_info = extract_contact_info_llm(queries, seed, exclude_email=email)
-    
+    # Get contact info from enrichment data (extracted during Phase 2)
+    contact_info = {}
+    if enrichment_data and enrichment_data.get('contacts'):
+        contact_info = enrichment_data.get('contacts', {})
+    else:
+        # Fallback to empty structure if enrichment data not available
+        contact_info = {"phones": [], "emails": [], "addresses": []}
+
     # Section: Investigate Address(es) of Interest
     identity_addresses = contact_info.get('addresses', [])
     
@@ -4369,12 +4371,14 @@ def generate_identity_report_skiptrace(data: Dict[str, Any], name: str, output_d
         content += "\n---\n\n"
     
     # Possible Phone Number(s) section
-    seed = data.get('seed', {})
-    contact_info = extract_contact_info_llm(
-        data.get("queries", []), 
-        seed, 
-        exclude_email=email
-    )
+    # Get contact info from enrichment data (extracted during Phase 2)
+    contact_info = {}
+    if enrichment_data and enrichment_data.get('contacts'):
+        contact_info = enrichment_data.get('contacts', {})
+    else:
+        # Fallback to empty structure if enrichment data not available
+        contact_info = {"phones": [], "emails": [], "addresses": []}
+
     phones = contact_info.get('phones', [])
     
     if phones:
@@ -4665,10 +4669,14 @@ def generate_skiptrace_checklist_skiptrace(data: Dict[str, Any], name: str, outp
         content += f"- [ ] [**Check relevant profiles for hidden marketplace profiles**]({facebook_public_url})\n\n"
         content += "---\n\n"
     
-    # Extract contact info using LLM for all sections (addresses, phones, emails)
-    seed = data.get('seed', {})
-    contact_info = extract_contact_info_llm(queries, seed, exclude_email=email)
-    
+    # Get contact info from enrichment data (extracted during Phase 2)
+    contact_info = {}
+    if enrichment_data and enrichment_data.get('contacts'):
+        contact_info = enrichment_data.get('contacts', {})
+    else:
+        # Fallback to empty structure if enrichment data not available
+        contact_info = {"phones": [], "emails": [], "addresses": []}
+
     # Section: Investigate Address(es) of Interest
     identity_addresses = contact_info.get('addresses', [])
     

@@ -44,6 +44,7 @@ variable "function_memory" {
     address_geocoding            = "512Mi"
     company_domain_lookup        = "512Mi"
     aggregator                   = "256Mi"
+    contact_extraction           = "512Mi"
     report_generator_skiptrace   = "2Gi"
     report_generator_origination = "2Gi"
     chat_handler                 = "512Mi"
@@ -62,6 +63,7 @@ variable "function_timeout" {
     address_geocoding            = 600
     company_domain_lookup        = 60
     aggregator                   = 30
+    contact_extraction           = 300
     report_generator_skiptrace   = 540
     report_generator_origination = 540
     chat_handler                 = 120
@@ -80,6 +82,7 @@ variable "function_max_instances" {
     address_geocoding            = 5
     company_domain_lookup        = 5
     aggregator                   = 5
+    contact_extraction           = 10
     report_generator_skiptrace   = 3
     report_generator_origination = 3
     chat_handler                 = 5

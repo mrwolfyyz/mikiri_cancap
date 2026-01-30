@@ -27,6 +27,7 @@ FUNCTIONS_NEEDING_RETRY=(
   "report_generator_origination"
   "chat_handler"
   "address_verification"
+  "contact_extraction"
 )
 
 # Source file location
@@ -105,6 +106,7 @@ ALL_FUNCTIONS=(
   "chat_handler"
   "chat_handler_origination"
   "address_verification"
+  "contact_extraction"
 )
 
 for func in "${ALL_FUNCTIONS[@]}"; do

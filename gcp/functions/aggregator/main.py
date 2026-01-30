@@ -167,6 +167,7 @@ def aggregate(
     salaries: Optional[Dict[str, Any]] = None,
     domain_enrichment: Optional[Dict[str, Any]] = None,
     address_geocoding: Optional[Dict[str, Any]] = None,
+    contact_extraction: Optional[Dict[str, Any]] = None,
     errors: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """
@@ -183,6 +184,7 @@ def aggregate(
     salaries = sanitize_for_json(salaries) if salaries else None
     domain_enrichment = sanitize_for_json(domain_enrichment) if domain_enrichment else None
     address_geocoding = sanitize_for_json(address_geocoding) if address_geocoding else None
+    contact_extraction = sanitize_for_json(contact_extraction) if contact_extraction else None
     
     errors = errors or {}
     sanitized_errors = sanitize_for_json(errors)
@@ -259,12 +261,21 @@ def aggregate(
         enrichment["domains"] = domain_enrichment.get("domains", {})
     else:
         enrichment["domains"] = {}
-    
+
     if address_geocoding:
         enrichment["addresses"] = address_geocoding.get("addresses", {})
     else:
         enrichment["addresses"] = {}
-    
+
+    if contact_extraction:
+        enrichment["contacts"] = contact_extraction.get("contacts", {})
+    else:
+        enrichment["contacts"] = {
+            "phones": [],
+            "emails": [],
+            "addresses": []
+        }
+
     result["enrichment"] = enrichment
     
     result_summary_raw = compute_result_summary(
@@ -290,7 +301,7 @@ def aggregate(
 def main(request):
     """
     HTTP Cloud Function entry point.
-    
+
     Expects JSON body:
     {
         "job_id": "abc123",
@@ -301,13 +312,14 @@ def main(request):
         "salaries": {...},      // from phase2_salaries (may be null)
         "domain_enrichment": {...},  // from domain_enrichment (may be null)
         "address_geocoding": {...},  // from address_geocoding (may be null)
+        "contact_extraction": {...},  // from contact_extraction (may be null)
         "errors": {             // dict of phase2 errors
             "regulator": "timeout",
             "litigation": null,
             ...
         }
     }
-    
+
     Returns aggregated result JSON object.
     """
     # Parse request
@@ -329,6 +341,7 @@ def main(request):
     salaries = req_data.get("salaries")
     domain_enrichment = req_data.get("domain_enrichment")
     address_geocoding = req_data.get("address_geocoding")
+    contact_extraction = req_data.get("contact_extraction")
     errors = req_data.get("errors", {})
     
     if not identity:
@@ -342,6 +355,7 @@ def main(request):
     print(f"[Aggregator] Salaries: {'present' if salaries else 'null'}")
     print(f"[Aggregator] DomainEnrichment: {'present' if domain_enrichment else 'null'}")
     print(f"[Aggregator] AddressGeocoding: {'present' if address_geocoding else 'null'}")
+    print(f"[Aggregator] ContactExtraction: {'present' if contact_extraction else 'null'}")
     actual_error_count = len([v for v in errors.values() if v is not None])
     print(f"[Aggregator] Errors: {actual_error_count} actual phase2 errors (out of {len(errors)} total keys)")
     
@@ -355,6 +369,7 @@ def main(request):
             salaries=salaries,
             domain_enrichment=domain_enrichment,
             address_geocoding=address_geocoding,
+            contact_extraction=contact_extraction,
             errors=errors,
         )
         
