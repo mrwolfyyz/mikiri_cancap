@@ -392,6 +392,18 @@ function preprocessWikiLinks(markdown) {
 }
 
 /**
+ * Strip the navigation bar block from markdown before client HTML rendering.
+ * The nav bar is an [!abstract] callout followed by a horizontal rule.
+ * Markdown files keep it for Obsidian; we remove it for the web UI.
+ */
+function stripNavigationBar(markdown) {
+    // Match: > [!abstract] -\n (-> or >) content lines\n\n---\n\n
+    // Skip trace uses "-> " for continuation; origination uses "> "
+    const navBarRegex = /^>\s*\[!abstract\]\s*-\s*\n[\s\S]*?^-{3,}\s*\n+/gm;
+    return markdown.replace(navBarRegex, '');
+}
+
+/**
  * Extract tab ID from wiki page name.
  * E.g., "Identity___Sari_Cornfield" -> "identity"
  */
@@ -429,6 +441,9 @@ function renderMarkdown(markdown, reportType) {
 
     // Strip YAML front matter (tags block at beginning)
     markdown = markdown.replace(/^---\s*\n[\s\S]*?\n---\s*\n/, '');
+    
+    // Strip nav bar for client display (kept in markdown for Obsidian)
+    markdown = stripNavigationBar(markdown);
     
     // Preprocess Obsidian syntax before marked.js
     markdown = preprocessCallouts(markdown);
