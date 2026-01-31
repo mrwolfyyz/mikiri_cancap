@@ -176,8 +176,9 @@ async function loadInvestigationData() {
 }
 
 function updateReportHeader(jobData) {
-    const name = jobData.full_name || 'Unknown';
-    const city = jobData.city || '';
+    const input = jobData.input || {};
+    const name = input.full_name || jobData.full_name || 'Unknown';
+    const city = input.city || jobData.city || '';
 
     elements.reportTitle.textContent = `${name}${city ? ' - ' + city : ''}`;
 
