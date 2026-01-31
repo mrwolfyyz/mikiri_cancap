@@ -139,6 +139,10 @@
     flex-wrap: wrap;
 }
 
+.common-actions {
+    margin-left: auto;
+}
+
 .toggle-control {
     display: flex;
     align-items: center;
