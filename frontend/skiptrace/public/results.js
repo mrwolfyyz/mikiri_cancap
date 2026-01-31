@@ -62,11 +62,36 @@ async function init() {
 
         // Load investigation data
         await loadInvestigationData();
+        
+        // Setup event delegation for wiki link tab switching
+        setupWikiLinkHandlers();
 
     } catch (error) {
         console.error('Initialization error:', error);
         showError(error.message);
     }
+}
+
+// Setup event delegation for wiki link clicks (tab switching)
+function setupWikiLinkHandlers() {
+    // Delegate clicks on links with href starting with #
+    document.addEventListener('click', (event) => {
+        const link = event.target.closest('a[href^="#"]');
+        if (!link) return;
+        
+        const href = link.getAttribute('href');
+        if (!href || href === '#') return;
+        
+        // Extract tab ID from href (e.g., "#identity" -> "identity")
+        const tabId = href.slice(1).split('#')[0]; // Handle #identity#sources -> identity
+        
+        // Check if this tab exists
+        const tabExists = document.querySelector(`[data-tab="${tabId}"]`);
+        if (tabExists) {
+            event.preventDefault();
+            switchTab(tabId);
+        }
+    });
 }
 
 // Load configuration from firebase-config.json
@@ -315,11 +340,99 @@ function switchTab(tabId) {
 // ===========================
 // Markdown Rendering with marked.js
 // ===========================
+
+/**
+ * Preprocess Obsidian-style callouts into HTML divs before marked.js parsing.
+ * Handles blockquotes starting with > [!type] Title
+ */
+function preprocessCallouts(markdown) {
+    // Match blockquotes starting with > [!type] optional_title
+    // Capture all continuation lines that start with >
+    const calloutRegex = /^>\s*\[!(\w+)\]\s*([^\n]*)\n((?:^>.*$\n?)*)/gm;
+    
+    return markdown.replace(calloutRegex, (match, type, title, content) => {
+        const icon = getCalloutIcon(type.toLowerCase());
+        
+        // Remove leading > from content lines and trim
+        const contentLines = content.split('\n')
+            .map(line => line.replace(/^>\s?/, ''))
+            .join('\n')
+            .trim();
+        
+        // Build HTML callout div
+        let html = `<div class="callout callout-${type.toLowerCase()}">\n`;
+        html += `<div class="callout-title">${icon} ${title.trim()}</div>\n`;
+        
+        if (contentLines) {
+            html += `<div class="callout-content">\n\n${contentLines}\n\n</div>\n`;
+        }
+        
+        html += `</div>\n\n`;
+        return html;
+    });
+}
+
+/**
+ * Preprocess Obsidian-style wiki links into markdown links.
+ * Converts [[Page|Alias]] to [Alias](#tabId) and [[Page]] to [Page](#tabId)
+ */
+function preprocessWikiLinks(markdown) {
+    // Match [[Page|Alias]] or [[Page]] with optional #anchor suffix
+    const wikiLinkRegex = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\](#\w+)?/g;
+    
+    return markdown.replace(wikiLinkRegex, (match, page, alias, anchor) => {
+        // Extract tab ID from page name
+        const tabId = extractTabId(page);
+        const displayText = alias || extractDisplayName(page);
+        const anchorSuffix = anchor || '';
+        
+        // Convert to markdown link with tab ID as fragment
+        return `[${displayText}](#${tabId}${anchorSuffix})`;
+    });
+}
+
+/**
+ * Extract tab ID from wiki page name.
+ * E.g., "Identity___Sari_Cornfield" -> "identity"
+ */
+function extractTabId(pageName) {
+    const prefix = pageName.split('___')[0].toLowerCase();
+    
+    // Map page prefixes to tab IDs
+    const tabMap = {
+        'identity': 'identity',
+        'skiptrace': 'skiptrace',
+        'regulator': 'regulator',
+        'corporate': 'corporate',
+        'adverse_media': 'adverse_media',
+        'borrower_summary': 'identity' // Summary maps to identity tab
+    };
+    
+    return tabMap[prefix] || 'identity';
+}
+
+/**
+ * Extract display name from page name if no alias provided.
+ * E.g., "Identity___Sari_Cornfield" -> "Identity"
+ */
+function extractDisplayName(pageName) {
+    const prefix = pageName.split('___')[0];
+    
+    // Convert snake_case to Title Case
+    return prefix.split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+}
+
 function renderMarkdown(markdown, reportType) {
     if (!markdown) return '<p>No content available.</p>';
 
     // Strip YAML front matter (tags block at beginning)
     markdown = markdown.replace(/^---\s*\n[\s\S]*?\n---\s*\n/, '');
+    
+    // Preprocess Obsidian syntax before marked.js
+    markdown = preprocessCallouts(markdown);
+    markdown = preprocessWikiLinks(markdown);
 
     // Configure marked
     marked.setOptions({
@@ -394,6 +507,7 @@ function renderMarkdown(markdown, reportType) {
 
 function getCalloutIcon(type) {
     const icons = {
+        'abstract': '📋',
         'danger': '🔴',
         'warning': '⚠️',
         'info': 'ℹ️',
