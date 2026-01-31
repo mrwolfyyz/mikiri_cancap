@@ -493,7 +493,12 @@ function renderMarkdown(markdown, reportType) {
     renderer.listitem = function(text, task, checked) {
         // Only treat it as a task list if task is explicitly true (not just truthy)
         if (task === true) {
-            const taskId = generateTaskId(text);
+            // Strip marked's default checkbox from text to avoid double checkboxes.
+            // Checkbox may be at start or after <p> (marked can wrap list item body in <p>).
+            const strippedText = text
+                .replace(/(^\s*|<p>\s*)<input\s[^>]*type\s*=\s*["']checkbox["'][^>]*>\s*/i, '$1')
+                .trim();
+            const taskId = generateTaskId(strippedText);
             const savedState = getTaskState(currentJobId, taskId);
             const isChecked = savedState !== null ? savedState : checked;
 
@@ -505,7 +510,7 @@ function renderMarkdown(markdown, reportType) {
                         data-task-id="${taskId}"
                         onchange="saveTaskState('${currentJobId}', '${taskId}', this.checked)"
                     />
-                    <span>${text}</span>
+                    <span>${strippedText}</span>
                 </li>
             `;
         }
