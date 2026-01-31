@@ -1,0 +1,731 @@
+/* ===========================
+   Results Page Specific Styles
+   =========================== */
+
+.results-container {
+    max-width: 1200px;
+}
+
+/* ===========================
+   Breadcrumb Navigation
+   =========================== */
+.breadcrumb {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-lg);
+    padding: var(--space-sm) 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.breadcrumb a {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 0.95rem;
+}
+
+.breadcrumb a:hover {
+    text-decoration: underline;
+}
+
+.job-id-breadcrumb {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-family: monospace;
+}
+
+/* ===========================
+   Loading and Error States
+   =========================== */
+.loading-state,
+.error-state {
+    text-align: center;
+    padding: var(--space-xl) var(--space-lg);
+}
+
+.loading-state .spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto var(--space-md);
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.error-state {
+    background: var(--bg-secondary);
+    border-radius: var(--radius);
+    border: 1px solid var(--error);
+}
+
+.error-state .error-icon {
+    font-size: 3rem;
+    margin-bottom: var(--space-md);
+}
+
+.error-state h3 {
+    color: var(--error);
+    margin-bottom: var(--space-sm);
+}
+
+.error-state p {
+    color: var(--text-secondary);
+    margin-bottom: var(--space-lg);
+}
+
+.error-state .button {
+    display: inline-block;
+    padding: var(--space-sm) var(--space-lg);
+    background: var(--accent);
+    color: white;
+    text-decoration: none;
+    border-radius: var(--radius);
+    transition: background 0.2s;
+}
+
+.error-state .button:hover {
+    background: var(--accent-hover);
+}
+
+/* ===========================
+   Report Header
+   =========================== */
+.report-header {
+    background: var(--bg-secondary);
+    padding: var(--space-lg);
+    border-radius: var(--radius);
+    margin-bottom: var(--space-lg);
+    border: 1px solid var(--border);
+}
+
+.report-info h2 {
+    font-size: 1.5rem;
+    margin-bottom: var(--space-xs);
+    color: var(--text-primary);
+}
+
+.report-meta {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+/* ===========================
+   Action Bar
+   =========================== */
+.action-bar {
+    margin-top: var(--space-md);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-md);
+    align-items: center;
+}
+
+.skip-trace-actions,
+.origination-actions,
+.common-actions {
+    display: flex;
+    gap: var(--space-sm);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.toggle-control {
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.toggle-control input[type="checkbox"] {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+}
+
+.progress-indicator {
+    padding: 6px 12px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.button-secondary {
+    padding: 8px 16px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-size: 0.9rem;
+    text-decoration: none;
+    display: inline-block;
+    transition: all 0.2s;
+}
+
+.button-secondary:hover {
+    background: var(--border);
+    transform: translateY(-1px);
+}
+
+/* Risk Badge */
+.risk-badge {
+    padding: 6px 12px;
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.risk-level.risk-high {
+    background: #FEE2E2;
+    color: #991B1B;
+    border: 1px solid #DC2626;
+}
+
+.risk-level.risk-medium {
+    background: #FEF3C7;
+    color: #92400E;
+    border: 1px solid #F59E0B;
+}
+
+.risk-level.risk-low {
+    background: #D1FAE5;
+    color: #065F46;
+    border: 1px solid #10B981;
+}
+
+[data-theme="dark"] .risk-level.risk-high {
+    background: #7F1D1D;
+    color: #FCA5A5;
+}
+
+[data-theme="dark"] .risk-level.risk-medium {
+    background: #78350F;
+    color: #FCD34D;
+}
+
+[data-theme="dark"] .risk-level.risk-low {
+    background: #064E3B;
+    color: #6EE7B7;
+}
+
+/* ===========================
+   Tab Navigation
+   =========================== */
+.report-tabs {
+    display: flex;
+    gap: var(--space-xs);
+    margin-bottom: var(--space-lg);
+    border-bottom: 2px solid var(--border);
+    overflow-x: auto;
+}
+
+.tab-button {
+    background: none;
+    border: none;
+    padding: var(--space-sm) var(--space-md);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.tab-button:hover {
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+}
+
+.tab-button.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.tab-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    background: var(--accent);
+    color: white;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+/* ===========================
+   Tab Panels
+   =========================== */
+.tab-panels {
+    min-height: 400px;
+}
+
+.tab-panel {
+    display: none;
+    animation: fadeIn 0.3s;
+}
+
+.tab-panel.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ===========================
+   Markdown Content Styles
+   =========================== */
+.markdown-content {
+    background: var(--bg-secondary);
+    padding: var(--space-lg);
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    line-height: 1.7;
+}
+
+.markdown-content h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin: var(--space-lg) 0 var(--space-md) 0;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--border);
+    padding-bottom: var(--space-sm);
+}
+
+.markdown-content h1:first-child {
+    margin-top: 0;
+}
+
+.markdown-content h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin: var(--space-lg) 0 var(--space-md) 0;
+    color: var(--text-primary);
+}
+
+.markdown-content h3 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: var(--space-md) 0 var(--space-sm) 0;
+    color: var(--text-primary);
+}
+
+.markdown-content h4 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: var(--space-md) 0 var(--space-sm) 0;
+    color: var(--text-primary);
+}
+
+.markdown-content p {
+    margin: var(--space-sm) 0;
+    color: var(--text-primary);
+}
+
+.markdown-content strong {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.markdown-content em {
+    font-style: italic;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+    margin: var(--space-sm) 0;
+    padding-left: 28px;
+}
+
+.markdown-content li {
+    margin-bottom: 6px;
+    color: var(--text-primary);
+}
+
+.markdown-content a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.markdown-content a:hover {
+    text-decoration: underline;
+}
+
+.markdown-content code {
+    background: var(--bg-primary);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.9em;
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+}
+
+.markdown-content pre {
+    background: var(--bg-primary);
+    padding: var(--space-md);
+    border-radius: var(--radius);
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    margin: var(--space-sm) 0;
+}
+
+.markdown-content pre code {
+    background: none;
+    padding: 0;
+    border: none;
+}
+
+.markdown-content blockquote {
+    border-left: 4px solid var(--border);
+    padding-left: var(--space-md);
+    margin: var(--space-md) 0;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* ===========================
+   GitHub-Style Callouts
+   =========================== */
+.callout {
+    padding: var(--space-md);
+    margin: var(--space-md) 0;
+    border-radius: var(--radius);
+    border-left: 4px solid;
+}
+
+.callout-title {
+    font-weight: 600;
+    margin-bottom: var(--space-xs);
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.callout-content {
+    margin-top: var(--space-xs);
+}
+
+.callout-content p:first-child {
+    margin-top: 0;
+}
+
+.callout-content p:last-child {
+    margin-bottom: 0;
+}
+
+/* Danger Callout */
+.callout-danger {
+    background: #FEE2E2;
+    border-left-color: #DC2626;
+}
+
+.callout-danger .callout-title {
+    color: #991B1B;
+}
+
+.callout-danger .callout-content {
+    color: #7F1D1D;
+}
+
+/* Warning Callout */
+.callout-warning {
+    background: #FEF3C7;
+    border-left-color: #F59E0B;
+}
+
+.callout-warning .callout-title {
+    color: #92400E;
+}
+
+.callout-warning .callout-content {
+    color: #78350F;
+}
+
+/* Info Callout */
+.callout-info {
+    background: #DBEAFE;
+    border-left-color: #3B82F6;
+}
+
+.callout-info .callout-title {
+    color: #1E40AF;
+}
+
+.callout-info .callout-content {
+    color: #1E3A8A;
+}
+
+/* Note Callout */
+.callout-note {
+    background: #F3F4F6;
+    border-left-color: #6B7280;
+}
+
+.callout-note .callout-title {
+    color: #374151;
+}
+
+.callout-note .callout-content {
+    color: #1F2937;
+}
+
+/* Tip Callout */
+.callout-tip {
+    background: #D1FAE5;
+    border-left-color: #10B981;
+}
+
+.callout-tip .callout-title {
+    color: #065F46;
+}
+
+.callout-tip .callout-content {
+    color: #064E3B;
+}
+
+/* Dark Mode Callouts */
+[data-theme="dark"] .callout-danger {
+    background: #7F1D1D;
+    border-left-color: #DC2626;
+}
+
+[data-theme="dark"] .callout-danger .callout-title {
+    color: #FCA5A5;
+}
+
+[data-theme="dark"] .callout-danger .callout-content {
+    color: #FEE2E2;
+}
+
+[data-theme="dark"] .callout-warning {
+    background: #78350F;
+    border-left-color: #F59E0B;
+}
+
+[data-theme="dark"] .callout-warning .callout-title {
+    color: #FCD34D;
+}
+
+[data-theme="dark"] .callout-warning .callout-content {
+    color: #FEF3C7;
+}
+
+[data-theme="dark"] .callout-info {
+    background: #1E3A8A;
+    border-left-color: #3B82F6;
+}
+
+[data-theme="dark"] .callout-info .callout-title {
+    color: #93C5FD;
+}
+
+[data-theme="dark"] .callout-info .callout-content {
+    color: #DBEAFE;
+}
+
+[data-theme="dark"] .callout-note {
+    background: #374151;
+    border-left-color: #6B7280;
+}
+
+[data-theme="dark"] .callout-note .callout-title {
+    color: #D1D5DB;
+}
+
+[data-theme="dark"] .callout-note .callout-content {
+    color: #F3F4F6;
+}
+
+[data-theme="dark"] .callout-tip {
+    background: #064E3B;
+    border-left-color: #10B981;
+}
+
+[data-theme="dark"] .callout-tip .callout-title {
+    color: #6EE7B7;
+}
+
+[data-theme="dark"] .callout-tip .callout-content {
+    color: #D1FAE5;
+}
+
+/* ===========================
+   Task List Checkboxes
+   =========================== */
+.task-list-item {
+    list-style: none;
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-sm);
+    padding: 6px 0;
+    margin-left: -28px; /* Offset the ul padding */
+}
+
+.task-list-item input[type="checkbox"] {
+    margin-top: 4px;
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+.task-list-item span {
+    flex: 1;
+}
+
+.task-list-item input[type="checkbox"]:checked + span {
+    text-decoration: line-through;
+    color: var(--text-secondary);
+}
+
+/* Touch-friendly checkboxes for mobile */
+@media (max-width: 768px) {
+    .task-list-item input[type="checkbox"] {
+        width: 24px;
+        height: 24px;
+    }
+}
+
+/* ===========================
+   Print Styles
+   =========================== */
+@media print {
+    /* Hide UI elements */
+    header,
+    .breadcrumb,
+    .action-bar,
+    .report-tabs,
+    .dark-mode-toggle {
+        display: none !important;
+    }
+
+    /* Expand all content */
+    .tab-panel {
+        display: block !important;
+        page-break-inside: avoid;
+    }
+
+    .tab-panel:not(:last-child) {
+        page-break-after: always;
+    }
+
+    /* Show all checkboxes as static */
+    .task-list-item input[type="checkbox"] {
+        pointer-events: none;
+    }
+
+    /* Ensure callouts print well */
+    .callout {
+        page-break-inside: avoid;
+        border: 1px solid;
+    }
+
+    /* Use light colors for print */
+    .callout-danger {
+        background: #FEE2E2 !important;
+        color: #000 !important;
+    }
+
+    .callout-warning {
+        background: #FEF3C7 !important;
+        color: #000 !important;
+    }
+
+    .callout-info {
+        background: #DBEAFE !important;
+        color: #000 !important;
+    }
+
+    .callout-note {
+        background: #F3F4F6 !important;
+        color: #000 !important;
+    }
+
+    .callout-tip {
+        background: #D1FAE5 !important;
+        color: #000 !important;
+    }
+
+    /* Clean page layout */
+    body {
+        background: white !important;
+        color: black !important;
+    }
+
+    .markdown-content {
+        background: white !important;
+        border: none !important;
+        padding: 0 !important;
+    }
+
+    /* Add report title at top of each page */
+    .report-header {
+        page-break-after: avoid;
+    }
+}
+
+/* ===========================
+   Responsive Design
+   =========================== */
+@media (max-width: 768px) {
+    .results-container {
+        padding: var(--space-sm);
+    }
+
+    .report-header {
+        padding: var(--space-md);
+    }
+
+    .action-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .skip-trace-actions,
+    .origination-actions,
+    .common-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .button-secondary {
+        width: 100%;
+        text-align: center;
+    }
+
+    .report-tabs {
+        gap: 0;
+    }
+
+    .tab-button {
+        flex: 1;
+        padding: var(--space-sm);
+        font-size: 0.85rem;
+    }
+
+    .markdown-content {
+        padding: var(--space-md);
+    }
+}

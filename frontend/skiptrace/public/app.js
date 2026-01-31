@@ -505,6 +505,16 @@ function showResults(job) {
     elements.resultSummary.innerHTML = "<p>Report generation complete.</p>";
   }
 
+  // Determine workflow type (default to skiptrace for this frontend)
+  const workflowType = job.workflow_type || 'skiptrace';
+
+  // Set up "View Full Report" button to navigate to results.html
+  const viewFullReportButton = document.getElementById('viewFullReportButton');
+  if (viewFullReportButton && currentJobId) {
+    viewFullReportButton.href = `results.html?job_id=${currentJobId}&workflow=${workflowType}`;
+    viewFullReportButton.style.display = "inline-block";
+  }
+
   // Set Drive link
   if (job.reports_folder_link) {
     elements.viewDriveButton.href = job.reports_folder_link;
