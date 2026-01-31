@@ -82,8 +82,6 @@ const elements = {
 
   // Results
   resultSummary: document.getElementById("resultSummary"),
-  viewDriveButton: document.getElementById("viewDriveButton"),
-  openChatButton: document.getElementById("openChatButton"),
   newReportButton: document.getElementById("newReportButton"),
 
   // Errors
@@ -513,23 +511,6 @@ function showResults(job) {
   if (viewFullReportButton && currentJobId) {
     viewFullReportButton.href = `results.html?job_id=${currentJobId}&workflow=${workflowType}`;
     viewFullReportButton.style.display = "inline-block";
-  }
-
-  // Set Drive link
-  if (job.reports_folder_link) {
-    elements.viewDriveButton.href = job.reports_folder_link;
-  } else {
-    // Fallback to Drive folder if no specific link
-    const driveFolderId = storage.getDriveFolderId();
-    elements.viewDriveButton.href = `https://drive.google.com/drive/folders/${driveFolderId}`;
-  }
-
-  // Show and configure chat button
-  if (currentJobId) {
-    elements.openChatButton.href = `chat.html?job_id=${currentJobId}`;
-    elements.openChatButton.style.display = "inline-block";
-  } else {
-    elements.openChatButton.style.display = "none";
   }
 }
 
