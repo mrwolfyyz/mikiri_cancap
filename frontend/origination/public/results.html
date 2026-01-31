@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Investigation Results - Skip Trace Intelligence</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="results.css">
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+    <!-- marked.js for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+</head>
+<body>
+    <div class="container results-container">
+        <!-- Header -->
+        <header>
+            <div class="logo">
+                <h1>Skip Trace Intelligence Platform</h1>
+                <p class="subtitle">Investigation Results</p>
+            </div>
+            <button id="darkModeToggle" class="dark-mode-toggle" aria-label="Toggle dark mode">
+                <span class="icon-light">☀️</span>
+                <span class="icon-dark">🌙</span>
+            </button>
+        </header>
+
+        <!-- Breadcrumb Navigation -->
+        <nav class="breadcrumb">
+            <a href="index.html">← Back to Home</a>
+            <span class="job-id-breadcrumb">Job ID: <span id="jobIdBreadcrumb">Loading...</span></span>
+        </nav>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="loading-state">
+            <div class="spinner"></div>
+            <p>Loading investigation results...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" class="error-state" style="display: none;">
+            <div class="error-icon">⚠️</div>
+            <h3>Failed to Load Results</h3>
+            <p id="errorMessage"></p>
+            <a href="index.html" class="button">Return to Home</a>
+        </div>
+
+        <!-- Results Content -->
+        <div id="resultsContent" class="results-content" style="display: none;">
+            <!-- Report Header -->
+            <div class="report-header">
+                <div class="report-info">
+                    <h2 id="reportTitle">Investigation Report</h2>
+                    <p class="report-meta" id="reportMeta"></p>
+                </div>
+
+                <!-- Action Bar -->
+                <div class="action-bar" id="actionBar">
+                    <!-- Skip Trace Actions -->
+                    <div class="skip-trace-actions" id="skipTraceActions" style="display: none;">
+                        <label class="toggle-control">
+                            <input type="checkbox" id="checklistToggle" checked>
+                            <span>Show Checklist</span>
+                        </label>
+                        <div class="progress-indicator">
+                            <span id="checklistProgress">0/0 completed</span>
+                        </div>
+                        <button id="resetProgress" class="button-secondary">🔄 Reset Progress</button>
+                    </div>
+
+                    <!-- Origination Actions -->
+                    <div class="origination-actions" id="originationActions" style="display: none;">
+                        <div class="risk-badge" id="riskBadge" style="display: none;">
+                            <span id="riskLevel"></span>
+                        </div>
+                    </div>
+
+                    <!-- Common Actions -->
+                    <div class="common-actions">
+                        <a id="openChatButton" href="#" target="_blank" class="button-secondary">💬 Ask Questions</a>
+                        <button id="exportPdfButton" class="button-secondary" onclick="window.print()">📄 Export PDF</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab Navigation -->
+            <nav class="report-tabs" id="reportTabs">
+                <!-- Tabs will be dynamically generated based on workflow type -->
+            </nav>
+
+            <!-- Tab Content -->
+            <div class="tab-panels" id="tabPanels">
+                <!-- Tab panels will be dynamically generated -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="results.js"></script>
+</body>
+</html>
