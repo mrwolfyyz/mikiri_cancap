@@ -521,6 +521,20 @@
     color: #064E3B;
 }
 
+/* Abstract Callout */
+.callout-abstract {
+    background: #E0E7FF;
+    border-left-color: #6366F1;
+}
+
+.callout-abstract .callout-title {
+    color: #3730A3;
+}
+
+.callout-abstract .callout-content {
+    color: #312E81;
+}
+
 /* Dark Mode Callouts */
 [data-theme="dark"] .callout-danger {
     background: #7F1D1D;
@@ -585,6 +599,19 @@
 
 [data-theme="dark"] .callout-tip .callout-content {
     color: #D1FAE5;
+}
+
+[data-theme="dark"] .callout-abstract {
+    background: #312E81;
+    border-left-color: #6366F1;
+}
+
+[data-theme="dark"] .callout-abstract .callout-title {
+    color: #C7D2FE;
+}
+
+[data-theme="dark"] .callout-abstract .callout-content {
+    color: #E0E7FF;
 }
 
 /* ===========================
