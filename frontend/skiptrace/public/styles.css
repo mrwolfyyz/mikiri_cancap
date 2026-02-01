@@ -227,6 +227,25 @@
     text-align: center;
 }
 
+/* When results-section contains full report (inline), left-align the report */
+.results-section .results-content {
+    text-align: left;
+}
+
+/* Expand to match results page width when showing full report */
+.container.report-expanded {
+    max-width: 1200px;
+}
+
+/* Full report: no extra card wrapper (match standalone results page) */
+.results-section.report-expanded {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    padding: 0;
+    text-align: left;
+}
+
 .success-icon {
     font-size: 2.25rem;
     color: #16A34A;
