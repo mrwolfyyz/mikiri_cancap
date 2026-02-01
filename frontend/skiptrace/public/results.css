@@ -110,8 +110,9 @@
 
 .report-info h2 {
     font-size: 1.5rem;
-    margin-bottom: var(--space-xs);
+    margin-bottom: var(--space-sm);
     color: var(--text-primary);
+    font-weight: 600;
 }
 
 .report-meta {
@@ -124,6 +125,8 @@
    =========================== */
 .action-bar {
     margin-top: var(--space-md);
+    padding-top: var(--space-md);
+    border-top: 1px solid var(--border);
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-md);
@@ -137,6 +140,9 @@
     gap: var(--space-sm);
     align-items: center;
     flex-wrap: wrap;
+    background: var(--bg-muted);
+    padding: var(--space-sm);
+    border-radius: var(--radius);
 }
 
 .common-actions {
@@ -171,24 +177,30 @@
     padding: 8px 14px;
     background: var(--bg-secondary);
     color: var(--text-primary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--accent);
     border-radius: var(--radius);
     cursor: pointer;
     font-size: 0.9rem;
     text-decoration: none;
     display: inline-block;
-    transition: background 0.2s, border-color 0.2s, color 0.2s;
+    transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.2s;
 }
 
 .button-secondary:hover {
-    background: var(--bg-muted);
-    border-color: var(--border-strong);
+    background: rgba(37, 99, 235, 0.05);
+    border-color: var(--accent-hover);
+    transform: translateY(-1px);
+}
+
+[data-theme="dark"] .button-secondary:hover {
+    background: rgba(96, 165, 250, 0.1);
 }
 
 .button-secondary:focus-visible,
 .report-tabs .tab-button:focus-visible {
     outline: none;
     box-shadow: var(--focus-ring);
+    border-color: var(--accent);
 }
 
 /* Risk Badge */
