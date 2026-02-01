@@ -252,6 +252,9 @@ function setupActionBar() {
 
         elements.checklistToggle.addEventListener('change', handleChecklistToggle);
         elements.resetProgress.addEventListener('click', handleResetProgress);
+
+        // Apply initial visibility state
+        applyChecklistVisibility();
     } else {
         elements.skipTraceActions.style.display = 'none';
         elements.originationActions.style.display = 'flex';
@@ -323,6 +326,11 @@ function renderTabContent() {
     // Apply checklist visibility if skip trace
     if (currentWorkflow === 'skiptrace') {
         applyChecklistVisibility();
+    }
+
+    // Apply alert-based button styling for origination workflow
+    if (currentWorkflow === 'origination') {
+        applyAlertButtonStyling();
     }
 }
 
@@ -592,9 +600,34 @@ function applyChecklistVisibility() {
         skiptracePanel.style.display = visible ? 'block' : 'none';
     }
 
+    // Show/hide progress indicator and reset button based on checklist visibility
+    elements.checklistProgress.parentElement.style.display = visible ? 'block' : 'none';
+    elements.resetProgress.style.display = visible ? 'inline-block' : 'none';
+
     // If skiptrace tab is hidden and active, switch to identity tab
     if (!visible && skiptracePanel && skiptracePanel.classList.contains('active')) {
         switchTab('identity');
+    }
+}
+
+function applyAlertButtonStyling() {
+    // Detect highest severity callout in the document
+    const hasDanger = document.querySelector('.callout-danger');
+    const hasWarning = document.querySelector('.callout-warning');
+
+    // Get all secondary buttons in the action bar
+    const buttons = document.querySelectorAll('.button-secondary');
+
+    // Remove any existing severity classes
+    buttons.forEach(btn => {
+        btn.classList.remove('button-danger', 'button-warning');
+    });
+
+    // Apply appropriate class based on severity
+    if (hasDanger) {
+        buttons.forEach(btn => btn.classList.add('button-danger'));
+    } else if (hasWarning) {
+        buttons.forEach(btn => btn.classList.add('button-warning'));
     }
 }
 

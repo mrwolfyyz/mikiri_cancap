@@ -140,9 +140,6 @@
     gap: var(--space-sm);
     align-items: center;
     flex-wrap: wrap;
-    background: var(--bg-muted);
-    padding: var(--space-sm);
-    border-radius: var(--radius);
 }
 
 .common-actions {
@@ -201,6 +198,47 @@
     outline: none;
     box-shadow: var(--focus-ring);
     border-color: var(--accent);
+}
+
+/* SVG Icon Styling */
+.button-icon {
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 6px;
+    stroke: currentColor;
+}
+
+/* Alert-Based Button Styling */
+.button-secondary.button-warning {
+    border-color: var(--warning);
+}
+
+.button-secondary.button-warning .button-icon {
+    color: var(--warning);
+}
+
+.button-secondary.button-warning:hover {
+    border-color: #D97706;
+}
+
+.button-secondary.button-warning:hover .button-icon {
+    color: #D97706;
+}
+
+.button-secondary.button-danger {
+    border-color: var(--error);
+}
+
+.button-secondary.button-danger .button-icon {
+    color: var(--error);
+}
+
+.button-secondary.button-danger:hover {
+    border-color: #DC2626;
+}
+
+.button-secondary.button-danger:hover .button-icon {
+    color: #DC2626;
 }
 
 /* Risk Badge */
