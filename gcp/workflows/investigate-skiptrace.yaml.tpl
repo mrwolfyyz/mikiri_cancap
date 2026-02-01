@@ -75,7 +75,7 @@ main:
               full_name: $${full_name}
               city: $${city}
               company_name: $${company_name}
-            timeout: 120
+            timeout: 180
           result: identity_result
         retry:
           max_attempts: 3
