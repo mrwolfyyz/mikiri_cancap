@@ -580,12 +580,14 @@ async function showResults(job) {
       getToken
     );
 
-    // Build jobData from poll response (API returns input, created_at as ISO string)
+    // Build jobData from poll response (API returns input, created_at/started_at/completed_at as ISO strings)
     const jobData = {
       input: job.input || {},
       full_name: job.input?.full_name,
       city: job.input?.city,
       created_at: job.created_at,
+      started_at: job.started_at,
+      completed_at: job.completed_at,
     };
 
     elements.progressSection.style.display = "none";

@@ -14,17 +14,17 @@
     justify-content: space-between;
     align-items: center;
     margin-bottom: var(--space-lg);
-    padding: var(--space-xs) var(--space-md);
-    border: 1px solid var(--border);
+    padding: var(--space-sm) var(--space-lg);
+    border: 1px solid var(--border-strong);
     border-radius: var(--radius);
     background: var(--bg-secondary);
-    box-shadow: none;
+    box-shadow: var(--shadow-xs);
 }
 
 .breadcrumb a {
     color: var(--accent);
     text-decoration: none;
-    font-size: 0.95rem;
+    font-size: var(--font-sm);
 }
 
 .breadcrumb a:hover {
@@ -32,7 +32,7 @@
 }
 
 .job-id-breadcrumb {
-    font-size: 0.85rem;
+    font-size: var(--font-xs);
     color: var(--text-secondary);
     font-family: monospace;
 }
@@ -47,8 +47,8 @@
 }
 
 .loading-state .spinner {
-    width: 48px;
-    height: 48px;
+    width: 56px;
+    height: 56px;
     border: 4px solid var(--border);
     border-top-color: var(--accent);
     border-radius: 50%;
@@ -64,7 +64,7 @@
     background: var(--bg-secondary);
     border-radius: var(--radius);
     border: 1px solid var(--error);
-    box-shadow: none;
+    box-shadow: var(--shadow-sm);
 }
 
 .error-state .error-icon {
@@ -89,11 +89,14 @@
     color: white;
     text-decoration: none;
     border-radius: var(--radius);
-    transition: background 0.2s;
+    transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+    box-shadow: var(--shadow-xs);
 }
 
 .error-state .button:hover {
     background: var(--accent-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
 }
 
 /* ===========================
@@ -101,15 +104,15 @@
    =========================== */
 .report-header {
     background: var(--bg-secondary);
-    padding: var(--space-md);
+    padding: var(--space-lg);
     border-radius: var(--radius);
     margin-bottom: var(--space-lg);
-    border: 1px solid var(--border);
-    box-shadow: none;
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-sm);
 }
 
 .report-info h2 {
-    font-size: 1.5rem;
+    font-size: var(--font-xl);
     margin-bottom: var(--space-sm);
     color: var(--text-primary);
     font-weight: 600;
@@ -117,7 +120,7 @@
 
 .report-meta {
     color: var(--text-secondary);
-    font-size: 0.9rem;
+    font-size: var(--font-sm);
 }
 
 /* ===========================
@@ -165,28 +168,30 @@
     background: var(--bg-muted);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    font-size: 0.85rem;
+    font-size: var(--font-sm);
     font-weight: 500;
     color: var(--text-primary);
 }
 
 .button-secondary {
-    padding: 8px 14px;
+    padding: 10px 16px;
     background: var(--bg-secondary);
     color: var(--text-primary);
     border: 1px solid var(--accent);
     border-radius: var(--radius);
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: var(--font-sm);
     text-decoration: none;
     display: inline-block;
-    transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.2s;
+    transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.2s, box-shadow 0.2s;
+    box-shadow: var(--shadow-xs);
 }
 
 .button-secondary:hover {
     background: rgba(37, 99, 235, 0.05);
     border-color: var(--accent-hover);
     transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
 }
 
 [data-theme="dark"] .button-secondary:hover {
@@ -300,8 +305,8 @@
 .tab-button {
     background: transparent;
     border: none;
-    padding: 10px 2px;
-    font-size: 0.95rem;
+    padding: 10px 12px;
+    font-size: var(--font-sm);
     font-weight: 600;
     color: var(--text-secondary);
     cursor: pointer;
@@ -310,18 +315,20 @@
     display: flex;
     align-items: center;
     gap: var(--space-xs);
-    border-radius: 0;
+    border-radius: 6px 6px 0 0;
     border-bottom: 2px solid transparent;
 }
 
 .tab-button:hover {
     color: var(--text-primary);
+    background: var(--bg-secondary);
 }
 
 .tab-button.active {
     color: var(--text-primary);
     border-bottom-color: var(--accent);
-    box-shadow: none;
+    background: var(--bg-secondary);
+    box-shadow: var(--shadow-xs);
 }
 
 .tab-badge {
@@ -366,11 +373,11 @@
    =========================== */
 .markdown-content {
     background: var(--bg-secondary);
-    padding: var(--space-md);
+    padding: var(--space-lg);
     border-radius: var(--radius);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     line-height: 1.7;
-    box-shadow: none;
+    box-shadow: var(--shadow-sm);
 }
 
 .markdown-content h1 {
