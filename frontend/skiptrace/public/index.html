@@ -34,7 +34,7 @@
             </div>
 
             <!-- Configuration Warning -->
-            <div id="driveWarning" class="warning-banner" style="display: none;">
+            <div id="driveWarning" class="warning-banner is-hidden">
                 ⚠️ Google Drive not configured. Go to <a href="#" id="setupLink">Setup</a> to add your Drive folder.
             </div>
 
@@ -98,7 +98,7 @@
             </form>
 
             <!-- Progress Display -->
-            <div id="progressSection" class="progress-section" style="display: none;">
+            <div id="progressSection" class="progress-section is-hidden">
                 <div class="progress-content">
                     <div class="spinner"></div>
                     <h3 id="progressStatus">Queuing investigation...</h3>
@@ -108,14 +108,14 @@
             </div>
 
             <!-- Results Display (full report renders inline) -->
-            <div id="resultsSection" class="results-section" style="display: none;">
-                <div class="results-actions results-actions-top" style="display: flex; justify-content: flex-start; margin-bottom: var(--space-lg);">
+            <div id="resultsSection" class="results-section is-hidden">
+                <div class="results-actions results-actions-top">
                     <button id="newReportButton" class="new-report-button">
                         Generate Another Report
                     </button>
                 </div>
                 <div id="inlineReportContainer" class="results-content"></div>
-                <div class="results-actions results-actions-bottom" style="display: flex; justify-content: center; flex-wrap: wrap; margin-top: var(--space-lg);">
+                <div class="results-actions results-actions-bottom">
                     <button id="newReportButtonBottom" class="new-report-button">
                         Generate Another Report
                     </button>
@@ -123,7 +123,7 @@
             </div>
 
             <!-- Error Display -->
-            <div id="errorSection" class="error-section" style="display: none;">
+            <div id="errorSection" class="error-section is-hidden">
                 <div class="error-content">
                     <div class="error-icon">⚠️</div>
                     <h3>Investigation Failed</h3>
@@ -144,7 +144,7 @@
                     Reports are automatically saved to a Google Shared Drive folder. Follow these steps to set it up:
                 </p>
 
-                <div class="warning-box" style="margin-bottom: 24px;">
+                <div class="warning-box stacked-margin-lg">
                     <strong>⚠️ IMPORTANT:</strong> You must use a <strong>Shared Drive (Team Drive)</strong>, not a personal "My Drive" folder. The service account only has access to Shared Drives.
                 </div>
 
@@ -205,7 +205,7 @@
                             </li>
                             <li>
                                 In the "Add people and groups" field, paste this email:
-                                <div id="serviceAccountEmail" style="background: var(--bg-primary); padding: 12px; border-radius: 4px; margin: 8px 0; font-family: monospace; font-size: 0.9em; word-break: break-all;">
+                                <div id="serviceAccountEmail" class="service-account-email">
                                     Loading...
                                 </div>
                             </li>
@@ -254,7 +254,7 @@
                         <button id="clearDriveButton" class="secondary-button">Clear</button>
                     </div>
 
-                    <div id="driveStatus" class="status-message" style="display: none;"></div>
+                    <div id="driveStatus" class="status-message is-hidden"></div>
                 </div>
 
                 <div class="folder-structure">
@@ -275,7 +275,7 @@
                 <h3>Step 2: Set Up Obsidian (Optional)</h3>
                 <p class="section-description">
                     Obsidian gives you a powerful way to view and link between skip trace reports. It's free and works great with Shared Drives.
-                    <div class="tip-box" style="margin-bottom: 20px;">
+                    <div class="tip-box stacked-margin-md">
                         <strong>🔍 Used by investigators:</strong> Obsidian is the go-to tool for investigative journalists, intelligence analysts, and skip tracers working complex cases.
                     </div>
                 </p>
@@ -539,7 +539,7 @@
 
         <!-- Footer -->
         <footer>
-            <p>&copy; 2025 BounceBack AI. Built for CanCap.</p>
+            <p>&copy; 2025 Mikiri AI. Built for CanCap.</p>
         </footer>
     </div>
 

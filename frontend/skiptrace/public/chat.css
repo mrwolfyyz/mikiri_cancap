@@ -16,11 +16,11 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: var(--space-sm) var(--space-md);
-    border: 1px solid var(--border);
+    padding: var(--space-md) var(--space-lg);
+    border: 1px solid var(--border-strong);
     border-radius: var(--radius);
     background: var(--bg-secondary);
-    box-shadow: none;
+    box-shadow: var(--shadow-xs);
     margin-bottom: var(--space-md);
 }
 
@@ -32,18 +32,18 @@
 }
 
 .chat-header h2 {
-    font-size: 1.05rem;
+    font-size: var(--font-lg);
     margin: 0;
 }
 
 .chat-header .job-id {
-    font-size: 0.8rem;
+    font-size: var(--font-xs);
     color: var(--text-secondary);
     font-family: monospace;
 }
 
 .chat-header .back-link {
-    font-size: 0.9rem;
+    font-size: var(--font-sm);
     margin: 0;
 }
 
@@ -55,31 +55,34 @@
     margin-bottom: var(--space-md);
     background: var(--bg-secondary);
     border-radius: var(--radius);
-    border: 1px solid var(--border);
-    box-shadow: none;
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-sm);
 }
 
 .message {
     margin-bottom: var(--space-lg);
-    padding: var(--space-sm);
+    padding: var(--space-md);
     border-radius: calc(var(--radius) - 2px);
     position: relative;
     clear: both;
+    max-width: 72%;
+    box-shadow: var(--shadow-xs);
 }
 
 .message.user {
     background: var(--accent);
     color: white;
-    margin-left: 20%;
-    text-align: right;
-    box-shadow: none;
+    margin-left: auto;
+    text-align: left;
+    box-shadow: var(--shadow-sm);
 }
 
 .message.assistant {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
-    margin-right: 8%;
-    box-shadow: none;
+    margin-right: auto;
+    text-align: left;
+    box-shadow: var(--shadow-xs);
 }
 
 .message-content {
@@ -141,11 +144,11 @@
     margin-top: var(--space-md);
     padding: var(--space-md);
     background: var(--bg-secondary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: var(--radius);
     position: relative;
     overflow: visible;
-    box-shadow: none;
+    box-shadow: var(--shadow-xs);
 }
 
 .search-suggestions h4 {
@@ -244,21 +247,21 @@
     padding: var(--space-md);
     background: var(--bg-secondary);
     border-radius: var(--radius);
-    border: 1px solid var(--border);
-    box-shadow: none;
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-sm);
 }
 
 .chat-input {
     flex: 1;
-    padding: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: var(--bg-secondary);
     color: var(--text-primary);
     font-family: inherit;
-    font-size: 1rem;
+    font-size: var(--font-md);
     resize: none;
-    min-height: 60px;
+    min-height: 72px;
     max-height: 200px;
     transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -271,20 +274,22 @@
 }
 
 .send-button {
-    padding: 10px 16px;
+    padding: 10px 18px;
     background: var(--accent);
     color: white;
     border: none;
     border-radius: var(--radius);
     cursor: pointer;
     font-weight: 600;
-    transition: background 0.2s;
+    transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
     align-self: flex-end;
-    box-shadow: none;
+    box-shadow: var(--shadow-xs);
 }
 
 .send-button:hover:not(:disabled) {
     background: var(--accent-hover);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
 }
 
 .send-button:disabled {
@@ -317,13 +322,13 @@
     gap: 8px;
     padding: var(--space-sm) var(--space-md);
     background: var(--bg-secondary);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     border-radius: var(--radius);
-    margin-right: 8%;
+    margin-right: auto;
     margin-bottom: var(--space-md);
     color: var(--text-secondary);
     font-style: italic;
-    box-shadow: none;
+    box-shadow: var(--shadow-xs);
 }
 
 .typing-indicator .dots {
@@ -414,8 +419,7 @@
 
     .message.user,
     .message.assistant {
-        margin-left: 0;
-        margin-right: 0;
+        max-width: 100%;
     }
 
     .chat-input-container {

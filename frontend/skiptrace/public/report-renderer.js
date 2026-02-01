@@ -182,10 +182,24 @@
 
     function parseCreatedAt(createdAt) {
         if (!createdAt) return 'Unknown date';
+        let date;
         if (createdAt.toDate && typeof createdAt.toDate === 'function') {
-            return new Date(createdAt.toDate()).toLocaleDateString();
+            date = createdAt.toDate();
+        } else if (createdAt.toMillis && typeof createdAt.toMillis === 'function') {
+            date = new Date(createdAt.toMillis());
+        } else if (typeof createdAt === 'object' && (createdAt.seconds != null || createdAt._seconds != null)) {
+            const sec = createdAt.seconds ?? createdAt._seconds ?? 0;
+            const ns = createdAt.nanoseconds ?? createdAt._nanoseconds ?? 0;
+            date = new Date(sec * 1000 + ns / 1e6);
+        } else if (typeof createdAt === 'string' || typeof createdAt === 'number') {
+            // API returns ISO strings with redundant "+00:00Z" - normalize so Date() parses correctly
+            const s = typeof createdAt === 'string' ? createdAt.replace(/\+00:00Z$/, 'Z') : String(createdAt);
+            date = new Date(s);
+        } else {
+            date = new Date(createdAt);
         }
-        return new Date(createdAt).toLocaleDateString();
+        const formatted = date.toLocaleDateString();
+        return formatted === 'Invalid Date' ? 'Unknown date' : formatted;
     }
 
     function renderReport(container, options) {
@@ -193,7 +207,7 @@
         const input = jobData?.input || {};
         const name = input.full_name || jobData?.full_name || 'Unknown';
         const city = input.city || jobData?.city || '';
-        const createdAt = parseCreatedAt(jobData?.created_at);
+        const createdAt = parseCreatedAt(jobData?.created_at ?? jobData?.started_at ?? jobData?.completed_at);
 
         const tabs = getTabsForWorkflow(markdownReports);
         if (tabs.length === 0) {
