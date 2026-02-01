@@ -4490,18 +4490,21 @@ def generate_identity_report_skiptrace(data: Dict[str, Any], name: str, output_d
         else:
             content += f"Source: {source_label} ·Timestamp: {report_timestamp}\n\n"
         content += "**Query**\n\n"
-        content += f"```\n{query_text}\n```\n\n"
+        content += f"`{query_text}`\n\n"
+        content += "**Hits**\n\n"
         
         if hits:
-            content += f"**Top {min(3, len(hits))} Results**\n\n"
-            for hit in hits[:3]:
-                hit_url = hit.get('url', '')
-                hit_title = hit.get('title', 'No title')
-                hit_snippet = hit.get('snippet', '')
-                content += f"- [{hit_title}]({hit_url})  \n"
-                if hit_snippet:
-                    content += f"  > {hit_snippet}\n"
-            content += "\n"
+            for i, hit in enumerate(hits, 1):
+                title = hit.get('title', 'Untitled')
+                url = hit.get('url', '')
+                snippet = hit.get('snippet', '')
+                content += f"{i}. [{title}]({url})  \n"
+                content += f"   - **URL:** {url}  \n"
+                content += f"   > {snippet}\n\n"
+        else:
+            content += "*(None)*\n\n"
+        
+        content += "---\n\n"
     
     # Write file
     wiki_name = name.replace(' ', '_')
