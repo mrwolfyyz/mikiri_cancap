@@ -81,8 +81,9 @@ const elements = {
   jobIdDisplay: document.getElementById("jobIdDisplay"),
 
   // Results
-  resultSummary: document.getElementById("resultSummary"),
+  inlineReportContainer: document.getElementById("inlineReportContainer"),
   newReportButton: document.getElementById("newReportButton"),
+  newReportButtonBottom: document.getElementById("newReportButtonBottom"),
 
   // Errors
   errorMessage: document.getElementById("errorMessage"),
@@ -468,49 +469,47 @@ function updateProgressStatus(status) {
     statusMessages[status] || "Processing...";
 }
 
-function showResults(job) {
-  elements.progressSection.style.display = "none";
-  elements.resultsSection.style.display = "block";
+async function showResults(job) {
+  const workflowType = job.workflow_type || "skiptrace";
 
-  // Display result summary if available
-  if (job.result_summary) {
-    try {
-      const summary =
-        typeof job.result_summary === "string"
-          ? JSON.parse(job.result_summary)
-          : job.result_summary;
+  // Keep progress visible with "Loading report..." while fetching markdown
+  elements.progressStatus.textContent = "Loading report...";
 
-      let summaryHtml = "<h4>Summary</h4>";
+  try {
+    const getToken = () => getAuthToken();
+    const markdownReports = await window.ReportRenderer.loadMarkdownReports(
+      API_URL,
+      currentJobId,
+      getToken
+    );
 
-      if (summary.headline) {
-        summaryHtml += `<p><strong>${summary.headline}</strong></p>`;
-      }
+    // Build jobData from poll response (API returns input, created_at as ISO string)
+    const jobData = {
+      input: job.input || {},
+      full_name: job.input?.full_name,
+      city: job.input?.city,
+      created_at: job.created_at,
+    };
 
-      if (summary.bullets && summary.bullets.length > 0) {
-        summaryHtml += "<ul>";
-        summary.bullets.forEach((bullet) => {
-          summaryHtml += `<li>${bullet}</li>`;
-        });
-        summaryHtml += "</ul>";
-      }
+    elements.progressSection.style.display = "none";
+    elements.resultsSection.style.display = "block";
 
-      elements.resultSummary.innerHTML = summaryHtml;
-    } catch (e) {
-      console.error("Error parsing result summary:", e);
-      elements.resultSummary.innerHTML = "<p>Report generation complete.</p>";
-    }
-  } else {
-    elements.resultSummary.innerHTML = "<p>Report generation complete.</p>";
-  }
+    window.ReportRenderer.renderReport(elements.inlineReportContainer, {
+      jobId: currentJobId,
+      workflowType,
+      jobData,
+      markdownReports,
+      chatUrl: `chat.html?job_id=${currentJobId}`,
+    });
 
-  // Determine workflow type (default to skiptrace for this frontend)
-  const workflowType = job.workflow_type || 'skiptrace';
-
-  // Set up "View Full Report" button to navigate to results.html
-  const viewFullReportButton = document.getElementById('viewFullReportButton');
-  if (viewFullReportButton && currentJobId) {
-    viewFullReportButton.href = `results.html?job_id=${currentJobId}&workflow=${workflowType}`;
-    viewFullReportButton.style.display = "inline-block";
+    document.querySelector(".container")?.classList.add("report-expanded");
+    elements.resultsSection.classList.add("report-expanded");
+  } catch (error) {
+    console.error("Error loading report:", error);
+    elements.progressSection.style.display = "none";
+    elements.resultsSection.style.display = "block";
+    elements.inlineReportContainer.innerHTML =
+      `<p class="error-message">Failed to load report: ${error.message}</p>`;
   }
 }
 
@@ -562,6 +561,17 @@ function resetForm() {
   elements.progressSection.style.display = "none";
   elements.resultsSection.style.display = "none";
   elements.errorSection.style.display = "none";
+
+  if (elements.inlineReportContainer) {
+    elements.inlineReportContainer.innerHTML = "";
+  }
+  if (elements.viewInNewTabLink) {
+    elements.viewInNewTabLink.href = "#";
+    elements.viewInNewTabLink.style.display = "none";
+  }
+
+  document.querySelector(".container")?.classList.remove("report-expanded");
+  elements.resultsSection?.classList.remove("report-expanded");
 
   elements.form.reset();
   showFieldError(elements.fullNameError, null);
@@ -804,8 +814,11 @@ function initEventListeners() {
   elements.fullNameInput.addEventListener("input", autoGenerateEmail);
   elements.fullNameInput.addEventListener("blur", autoGenerateEmail);
 
-  // New report button
+  // New report buttons (top and bottom)
   elements.newReportButton.addEventListener("click", resetForm);
+  if (elements.newReportButtonBottom) {
+    elements.newReportButtonBottom.addEventListener("click", resetForm);
+  }
 
   // Retry button
   elements.retryButton.addEventListener("click", resetForm);

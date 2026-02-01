@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Skip Trace Intelligence Platform</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="results.css">
 </head>
 <body>
     <div class="container">
@@ -106,21 +107,16 @@
                 </div>
             </div>
 
-            <!-- Results Display -->
+            <!-- Results Display (full report renders inline) -->
             <div id="resultsSection" class="results-section" style="display: none;">
-                <div class="results-content">
-                    <div class="success-icon">✓</div>
-                    <h3>Skip Trace Report Complete</h3>
-                    
-                    <div id="resultSummary" class="result-summary"></div>
-
-                    <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
-                        <a id="viewFullReportButton" href="#" class="view-drive-button" style="display: none;">
-                            View Full Report
-                        </a>
-                    </div>
-
+                <div class="results-actions results-actions-top" style="display: flex; justify-content: flex-start; margin-bottom: var(--space-lg);">
                     <button id="newReportButton" class="new-report-button">
+                        Generate Another Report
+                    </button>
+                </div>
+                <div id="inlineReportContainer" class="results-content"></div>
+                <div class="results-actions results-actions-bottom" style="display: flex; justify-content: center; flex-wrap: wrap; margin-top: var(--space-lg);">
+                    <button id="newReportButtonBottom" class="new-report-button">
                         Generate Another Report
                     </button>
                 </div>
@@ -550,6 +546,8 @@
     <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+    <script src="report-renderer.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
