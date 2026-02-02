@@ -67,28 +67,30 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="email">Email (optional)</label>
+                    <label for="email">Email *</label>
                     <input 
                         type="email" 
                         id="email" 
                         name="email" 
                         placeholder="jacob.kinross@gmail.com"
+                        required
                         autocomplete="email"
                     >
-                    <span class="helper-text">Auto-generated from name if left blank</span>
+                    <span class="helper-text">Required for investigation</span>
                     <span class="error-message" id="emailError"></span>
                 </div>
 
                 <div class="form-group">
-                    <label for="companyName">Company Name (optional)</label>
+                    <label for="companyName">Company Name *</label>
                     <input 
                         type="text" 
                         id="companyName" 
                         name="companyName" 
                         placeholder="e.g., Acme Corporation"
+                        required
                         autocomplete="organization"
                     >
-                    <span class="helper-text">Optional: Company name for domain verification</span>
+                    <span class="helper-text">Required for domain verification</span>
                     <span class="error-message" id="companyNameError"></span>
                 </div>
 
