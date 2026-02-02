@@ -287,6 +287,17 @@
     color: #6EE7B7;
 }
 
+/* Conditional box outline by risk level (report header + content area) */
+.results-content.risk-high .report-header,
+.results-content.risk-high .markdown-content {
+    border-color: var(--error);
+}
+
+.results-content.risk-medium .report-header,
+.results-content.risk-medium .markdown-content {
+    border-color: var(--warning);
+}
+
 /* ===========================
    Tab Navigation
    =========================== */
