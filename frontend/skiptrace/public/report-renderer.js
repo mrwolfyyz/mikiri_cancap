@@ -156,6 +156,17 @@
       return `<li>${text}</li>`;
     };
 
+    renderer.link = function (href, title, text) {
+      const isExternal = href && href.charAt(0) !== "#";
+      const attrs = isExternal
+        ? ' target="_blank" rel="noopener noreferrer"'
+        : "";
+      const titleAttr = title
+        ? ` title="${title.replace(/"/g, "&quot;")}"`
+        : "";
+      return `<a href="${href}"${titleAttr}${attrs}>${text}</a>`;
+    };
+
     try {
       return marked.parse(markdown, { renderer });
     } catch (e) {
