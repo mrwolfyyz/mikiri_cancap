@@ -216,6 +216,25 @@
 .progress-time {
     color: var(--text-secondary);
     font-size: 0.95rem;
+    transition: opacity 0.3s ease-in-out, color 0.5s ease;
+    opacity: 1;
+}
+
+.progress-time.fade-transition {
+    opacity: 0.4;
+}
+
+.progress-time.status-technical {
+    color: var(--text-secondary);
+}
+
+.progress-time.status-humor {
+    color: var(--accent);
+}
+
+.progress-time.status-philosophy {
+    color: var(--accent);
+    opacity: 0.9;
 }
 
 .job-id-display {
