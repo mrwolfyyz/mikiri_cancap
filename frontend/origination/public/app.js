@@ -379,27 +379,17 @@ function canSubmitRequest() {
 // ===========================
 function checkDriveConfiguration() {
   const driveFolderId = storage.getDriveFolderId();
-
-  if (!driveFolderId) {
-    elements.driveWarning.style.display = "block";
-    return false;
-  } else {
-    elements.driveWarning.style.display = "none";
-    return true;
+  if (elements.driveWarning) {
+    elements.driveWarning.style.display = driveFolderId ? "none" : "block";
   }
+  return !!driveFolderId;
 }
 
 // ===========================
 // API Calls
 // ===========================
 async function submitInvestigation(fullName, city, email, companyName = "") {
-  const driveFolderId = storage.getDriveFolderId();
-
-  if (!driveFolderId) {
-    throw new Error(
-      "Google Drive folder not configured. Please go to Setup first."
-    );
-  }
+  const driveFolderId = storage.getDriveFolderId() || "";
 
   const token = await getAuthToken(); // Get fresh token
 
@@ -936,15 +926,6 @@ async function handleSubmit(e) {
 
   // If email is empty, generate one from the name
   const finalEmail = email.trim() || generateEmailFromName(fullName);
-
-  // Check Drive configuration
-  if (!checkDriveConfiguration()) {
-    alert(
-      "Please configure your Google Drive folder in Setup before submitting."
-    );
-    switchTab("setup");
-    return;
-  }
 
   // Check rate limit
   if (!canSubmitRequest()) {
@@ -1597,11 +1578,13 @@ function initEventListeners() {
     button.addEventListener("click", () => switchTab(button.dataset.tab));
   });
 
-  // Setup link in warning banner
-  elements.setupLink.addEventListener("click", (e) => {
-    e.preventDefault();
-    switchTab("setup");
-  });
+  // Setup link in warning banner (if present)
+  if (elements.setupLink) {
+    elements.setupLink.addEventListener("click", (e) => {
+      e.preventDefault();
+      switchTab("setup");
+    });
+  }
 
   // Form submission
   elements.form.addEventListener("submit", handleSubmit);
