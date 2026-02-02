@@ -288,7 +288,7 @@ def main(request: Request):
         full_name = (data.get("full_name") or "").strip()
         city = (data.get("city") or "").strip()
         drive_folder_id = (data.get("drive_folder_id") or "").strip()
-        company_name = (data.get("company_name") or "").strip() or None
+        company_name = (data.get("company_name") or "").strip()
         
         # Validate
         errors = []
@@ -308,6 +308,9 @@ def main(request: Request):
         valid, msg = validate_city(city)
         if not valid:
             errors.append({"field": "city", "message": msg})
+        
+        if not company_name:
+            errors.append({"field": "company_name", "message": "Company name is required"})
         
         if errors:
             return jsonify({"error": "validation_error", "details": errors}), 400, headers
@@ -344,7 +347,7 @@ def main(request: Request):
         full_name = (data.get("full_name") or "").strip()
         city = (data.get("city") or "").strip()
         drive_folder_id = (data.get("drive_folder_id") or "").strip()
-        company_name = (data.get("company_name") or "").strip() or None
+        company_name = (data.get("company_name") or "").strip()
         
         # Validate
         errors = []
@@ -364,6 +367,9 @@ def main(request: Request):
         valid, msg = validate_city(city)
         if not valid:
             errors.append({"field": "city", "message": msg})
+        
+        if not company_name:
+            errors.append({"field": "company_name", "message": "Company name is required"})
         
         if errors:
             return jsonify({"error": "validation_error", "details": errors}), 400, headers
