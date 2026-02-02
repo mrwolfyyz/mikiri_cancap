@@ -26,7 +26,8 @@ from google.genai.types import GenerateContentConfig, Tool, GoogleSearch
 # Config
 # -------------------------
 GCP_PROJECT = os.environ.get("GCP_PROJECT", os.environ.get("GOOGLE_CLOUD_PROJECT", ""))
-GCP_LOCATION = os.environ.get("GCP_LOCATION", "northamerica-northeast1")
+# Use global endpoint for Gemini models (Terraform sets GCP_LOCATION for deployment)
+GCP_LOCATION = os.environ.get("GCP_LOCATION", "global")
 
 
 

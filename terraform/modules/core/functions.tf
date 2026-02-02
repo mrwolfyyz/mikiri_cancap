@@ -374,7 +374,7 @@ resource "google_cloudfunctions2_function" "address_verification" {
 
     environment_variables = {
       GCP_PROJECT  = var.project_id
-      GCP_LOCATION = "northamerica-northeast1"  # Use northamerica-northeast1 for CanCap data residency
+      GCP_LOCATION = "global"  # Use global endpoint for Gemini models
     }
   }
 
@@ -521,7 +521,7 @@ resource "google_cloudfunctions2_function" "phase1_identity" {
 
     environment_variables = {
       GCP_PROJECT            = var.project_id
-      GCP_LOCATION           = var.region
+      GCP_LOCATION           = "global"  # Use global endpoint for Gemini models
       LINKEDIN_ENGINE_ID     = "linkedin-search-engine"
       LINKEDIN_USE_VERTEX_AI = "true"
       PRECISION_ENGINE_ID    = "precision-search-engine"
@@ -669,7 +669,7 @@ resource "google_cloudfunctions2_function" "address_geocoding" {
 
     environment_variables = {
       GCP_PROJECT  = var.project_id
-      GCP_LOCATION = var.region
+      GCP_LOCATION = "global"  # Use global endpoint for Gemini models
     }
   }
 
@@ -734,7 +734,7 @@ resource "google_cloudfunctions2_function" "company_domain_lookup" {
 
     environment_variables = {
       GCP_PROJECT  = var.project_id
-      GCP_LOCATION = var.region
+      GCP_LOCATION = "global"  # Use global endpoint for Gemini models
     }
   }
 
@@ -936,7 +936,7 @@ resource "google_cloudfunctions2_function" "report_generator_skiptrace" {
 
     environment_variables = {
       GCP_PROJECT  = var.project_id
-      GCP_LOCATION = var.region
+      GCP_LOCATION = "global"  # Use global endpoint for Gemini models
     }
   }
 
@@ -1027,7 +1027,7 @@ resource "google_cloudfunctions2_function" "report_generator_origination" {
 
     environment_variables = {
       GCP_PROJECT  = var.project_id
-      GCP_LOCATION = var.region
+      GCP_LOCATION = "global"  # Use global endpoint for Gemini models
     }
   }
 
