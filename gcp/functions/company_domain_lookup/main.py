@@ -2,7 +2,7 @@
 Company Domain Lookup Cloud Function
 
 Performs:
-- LLM-based domain resolution using Gemini 2.5 Flash with Google Search grounding
+- LLM-based domain resolution using Gemini 3 Flash Preview with Google Search grounding
 - Updates Firestore job document with company domain
 """
 
@@ -84,7 +84,7 @@ def extract_grounding_metadata(response) -> Dict[str, Any]:
 
 def vertex_ai_domain_resolution_grounded(company_name: str) -> Dict[str, Any]:
     """
-    Use Gemini 2.5 Flash with Google Search grounding to determine official company domain.
+    Use Gemini 3 Flash Preview with Google Search grounding to determine official company domain.
     The model performs its own searches and returns grounded domain resolution.
     """
     if not GCP_PROJECT:
@@ -131,12 +131,11 @@ Return JSON only."""
             print(f"[Vertex AI] Calling Gemini 2.5 Flash with Google Search grounding...")
             
             # Generate response with grounding
-            # NOTE: Cannot use response_schema with grounding in Gemini 2.5 Flash
-            # (Structured outputs with tools only available in Gemini 3)
-            # Must parse JSON manually from text response
+            # NOTE: Structured output with grounding may be available in Gemini 3;
+            # we parse JSON manually from text response for compatibility.
             # Use system_instruction parameter to match Google AI Studio behavior
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3-flash-preview",
                 contents=user_prompt,
                 config=GenerateContentConfig(
                     system_instruction=system_prompt,
