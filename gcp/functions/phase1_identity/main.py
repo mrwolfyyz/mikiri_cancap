@@ -573,10 +573,10 @@ def extract_grounding_metadata(response) -> Dict[str, Any]:
             if hasattr(candidate, 'grounding_metadata'):
                 grounding = candidate.grounding_metadata
 
-                if hasattr(grounding, 'web_search_queries'):
+                if hasattr(grounding, 'web_search_queries') and grounding.web_search_queries is not None:
                     metadata["search_queries"] = list(grounding.web_search_queries)
 
-                if hasattr(grounding, 'grounding_chunks'):
+                if hasattr(grounding, 'grounding_chunks') and grounding.grounding_chunks is not None:
                     for chunk in grounding.grounding_chunks:
                         if hasattr(chunk, 'web'):
                             metadata["grounding_sources"].append({
