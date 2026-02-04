@@ -75,6 +75,7 @@ const elements = {
   form: document.getElementById("investigationForm"),
   fullNameInput: document.getElementById("fullName"),
   cityInput: document.getElementById("city"),
+  provinceInput: document.getElementById("province"),
   emailInput: document.getElementById("email"),
   companyNameInput: document.getElementById("companyName"),
   submitButton: document.getElementById("submitButton"),
@@ -99,6 +100,7 @@ const elements = {
   retryButton: document.getElementById("retryButton"),
   fullNameError: document.getElementById("fullNameError"),
   cityError: document.getElementById("cityError"),
+  provinceError: document.getElementById("provinceError"),
   emailError: document.getElementById("emailError"),
   companyNameError: document.getElementById("companyNameError"),
 
@@ -274,6 +276,21 @@ function validateCompanyName(companyName) {
   return null;
 }
 
+function validateProvince(province) {
+  // Province is optional, so empty is valid
+  if (!province || province.trim().length === 0) {
+    return null;
+  }
+
+  // If provided, must be a valid province code
+  const validProvinces = ["ON", "BC", "AB", "QC", "MB", "SK", "NS", "NB", "NL", "PE", "NT", "YT", "NU"];
+  if (!validProvinces.includes(province)) {
+    return "Invalid province selected";
+  }
+
+  return null;
+}
+
 function generateEmailFromName(fullName) {
   if (!fullName || fullName.trim().length === 0) {
     return "";
@@ -352,7 +369,7 @@ function checkDriveConfiguration() {
 // ===========================
 // API Calls
 // ===========================
-async function submitInvestigation(fullName, city, email, companyName = "") {
+async function submitInvestigation(fullName, city, email, companyName = "", province = "") {
   const driveFolderId = storage.getDriveFolderId() || "";
 
   const token = await getAuthToken(); // Get fresh token
@@ -363,6 +380,7 @@ async function submitInvestigation(fullName, city, email, companyName = "") {
     email: email.trim(),
     drive_folder_id: driveFolderId,
     company_name: companyName.trim(),
+    province: province.trim(),
   };
 
   const response = await fetch(`${API_URL}/investigate-skiptrace`, {
@@ -721,6 +739,7 @@ function resetForm() {
   elements.form.reset();
   showFieldError(elements.fullNameError, null);
   showFieldError(elements.cityError, null);
+  showFieldError(elements.provinceError, null);
   showFieldError(elements.emailError, null);
   showFieldError(elements.companyNameError, null);
 
@@ -788,18 +807,21 @@ async function handleSubmit(e) {
   // Clear previous errors
   showFieldError(elements.fullNameError, null);
   showFieldError(elements.cityError, null);
+  showFieldError(elements.provinceError, null);
   showFieldError(elements.emailError, null);
   showFieldError(elements.companyNameError, null);
 
   // Get values
   const fullName = elements.fullNameInput.value;
   const city = elements.cityInput.value;
+  const province = elements.provinceInput.value;
   const email = elements.emailInput.value;
   const companyName = elements.companyNameInput.value;
 
   // Validate
   const fullNameError = validateFullName(fullName);
   const cityError = validateCity(city);
+  const provinceError = validateProvince(province);
   const emailError = validateEmail(email);
   const companyNameError = validateCompanyName(companyName);
 
@@ -812,6 +834,11 @@ async function handleSubmit(e) {
 
   if (cityError) {
     showFieldError(elements.cityError, cityError);
+    hasErrors = true;
+  }
+
+  if (provinceError) {
+    showFieldError(elements.provinceError, provinceError);
     hasErrors = true;
   }
 
@@ -845,7 +872,8 @@ async function handleSubmit(e) {
       fullName,
       city,
       finalEmail,
-      companyName
+      companyName,
+      province
     );
 
     // Update last request time

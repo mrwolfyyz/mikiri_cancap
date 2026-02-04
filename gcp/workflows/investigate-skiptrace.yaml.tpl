@@ -15,6 +15,7 @@ main:
           - email: $${input.email}
           - full_name: $${input.full_name}
           - city: $${input.city}
+          - province: $${default(map.get(input, "province"), "")}
           - company_name: $${default(map.get(input, "company_name"), "")}
           - project_id: "${project_id}"
 
@@ -61,6 +62,36 @@ main:
                     assign:
                       - company_domain_result: null
 
+    # Query Constructor - generates precision search query with name variations
+    - query_constructor:
+        try:
+          call: http.post
+          args:
+            url: "${query_constructor_url}"
+            auth:
+              type: OIDC
+            body:
+              full_name: $${full_name}
+              city: $${city}
+              province: $${province}
+            timeout: 30
+          result: query_constructor_result
+        retry:
+          max_attempts: 3
+          interval: 2s
+          max_interval: 60s
+          multiplier: 2.0
+        except:
+          as: e
+          steps:
+            - set_query_constructor_fallback:
+                assign:
+                  - query_constructor_result:
+                      body:
+                        original_name: $${full_name}
+                        generated_names: []
+                        vertex_query: $${"\"" + full_name + "\" \"" + city + (if(province != "", ", " + province, "")) + "\""}
+
     # Phase 1: Identity Resolution
     - phase1_identity:
         try:
@@ -74,7 +105,9 @@ main:
               email: $${email}
               full_name: $${full_name}
               city: $${city}
+              province: $${province}
               company_name: $${company_name}
+              precision_query: $${query_constructor_result.body.vertex_query}
             timeout: 180
           result: identity_result
         retry:

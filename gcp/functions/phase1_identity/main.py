@@ -895,6 +895,7 @@ def main(request):
     full_name = req_data.get("full_name", "").strip()
     city = req_data.get("city", "").strip()
     company_name = req_data.get("company_name", "").strip()
+    precision_query = req_data.get("precision_query", "").strip()
 
     if not email or not full_name:
         return {"error": "email and full_name are required"}, 400
@@ -907,7 +908,7 @@ def main(request):
         "last_known_city": city,
         "full_name": full_name,
     }
-    
+
     # Add company_name to seed if provided
     if company_name:
         seed["company_name"] = company_name
@@ -917,18 +918,24 @@ def main(request):
     # -------------------------
     # Execute search queries
     # -------------------------
-    
-    # 1. Precision query - social platforms with full name
-    # Note: Site restrictions are handled by the Vertex AI precision search engine configuration
-    # Generate name variations (full name + middle+last if applicable)
+
+    # Initialize name variables (used later for middle name LinkedIn search)
     name_full, name_variation = generate_name_variations(full_name)
+
+    # 1A. Precision query - social platforms with full name
     if name_variation:
-        precision_query = f'"{name_full}" OR "{name_variation}"'
+        precision_query_base = f'"{name_full}" OR "{name_variation}"'
     else:
-        precision_query = f'"{name_full}"'
+        precision_query_base = f'"{name_full}"'
+
+    # Add location to query (no quotes on city - original behavior)
     if city:
-        precision_query += f' {city.split(",")[0]}'
-    precision_raw = google_search_precision_v2(precision_query, num=10)
+        precision_query_base += f' {city.split(",")[0]}'
+
+    print(f"[Phase1] Running precision search: {precision_query_base[:100]}...")
+    precision_raw = google_search_precision_v2(precision_query_base, num=10)
+
+    # Convert to SearchHit objects
     has_vertex_results = any(h.get("_source") == "vertex_ai_search" for h in precision_raw if h.get("url"))
     source_value = "vertex_ai_precision" if has_vertex_results else "google_search"
     precision_hits = [
@@ -943,6 +950,37 @@ def main(request):
         )
         for h in precision_raw if h.get("url")
     ]
+
+    # 1B. LLM-generated precision query - ADDITIONAL search (NEW)
+    # This runs when precision_query is provided from query_constructor
+    if precision_query:
+        print(f"[Phase1] Running ADDITIONAL LLM precision search: {precision_query[:100]}...")
+        llm_precision_raw = google_search_precision_v2(precision_query, num=10)
+
+        # Convert to SearchHit objects
+        has_vertex_results = any(h.get("_source") == "vertex_ai_search" for h in llm_precision_raw if h.get("url"))
+        source_value = "vertex_ai_precision" if has_vertex_results else "google_search"
+        llm_precision_hits = [
+            SearchHit(
+                url=h["url"],
+                title=h["title"],
+                snippet=h["snippet"],
+                source=source_value,
+                query_id="precision_llm",
+                query_type="high_precision",
+                relevance_score=h.get("relevance_score", 0.0),
+            )
+            for h in llm_precision_raw if h.get("url")
+        ]
+
+        # Combine results and deduplicate by URL
+        seen_urls = {hit.url for hit in precision_hits}
+        for hit in llm_precision_hits:
+            if hit.url not in seen_urls:
+                precision_hits.append(hit)
+                seen_urls.add(hit.url)
+
+        print(f"[Phase1] Combined precision results: {len(precision_hits)} hits (original + LLM deduplicated)")
 
     # Middle name LinkedIn search - if middle name is detected
     middle_name_linkedin_hits: List[SearchHit] = []
@@ -1129,7 +1167,7 @@ def main(request):
         {
             "id": "precision",
             "type": "high_precision",
-            "query": precision_query,
+            "query": precision_query_base,
             "hits": [asdict(h) for h in precision_hits],
         },
         {

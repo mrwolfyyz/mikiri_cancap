@@ -20,6 +20,7 @@ resource "google_workflows_workflow" "skiptrace" {
   source_contents = templatefile("${path.module}/../../../gcp/workflows/investigate-skiptrace.yaml.tpl", {
     project_id                = var.project_id
     company_domain_lookup_url = google_cloudfunctions2_function.company_domain_lookup.service_config[0].uri
+    query_constructor_url     = google_cloudfunctions2_function.query_constructor.service_config[0].uri
     phase1_identity_url       = google_cloudfunctions2_function.phase1_identity.service_config[0].uri
     domain_enrichment_url     = google_cloudfunctions2_function.domain_enrichment.service_config[0].uri
     address_geocoding_url     = google_cloudfunctions2_function.address_geocoding.service_config[0].uri
@@ -33,6 +34,7 @@ resource "google_workflows_workflow" "skiptrace" {
     google_project_service.apis["workflows.googleapis.com"],
     time_sleep.api_propagation,
     google_cloudfunctions2_function.company_domain_lookup,
+    google_cloudfunctions2_function.query_constructor,
     google_cloudfunctions2_function.phase1_identity,
     google_cloudfunctions2_function.domain_enrichment,
     google_cloudfunctions2_function.address_geocoding,
@@ -43,6 +45,7 @@ resource "google_workflows_workflow" "skiptrace" {
     google_cloud_run_service_iam_member.workflow_invoke_domain_enrichment,
     google_cloud_run_service_iam_member.workflow_invoke_address_geocoding,
     google_cloud_run_service_iam_member.workflow_invoke_company_domain_lookup,
+    google_cloud_run_service_iam_member.query_constructor_workflow_invoker,
     google_cloud_run_service_iam_member.workflow_invoke_contact_extraction,
     google_cloud_run_service_iam_member.workflow_invoke_aggregator,
   ]
@@ -63,6 +66,7 @@ resource "google_workflows_workflow" "origination" {
   source_contents = templatefile("${path.module}/../../../gcp/workflows/investigate-origination.yaml.tpl", {
     project_id                = var.project_id
     company_domain_lookup_url = google_cloudfunctions2_function.company_domain_lookup.service_config[0].uri
+    query_constructor_url     = google_cloudfunctions2_function.query_constructor.service_config[0].uri
     phase1_identity_url       = google_cloudfunctions2_function.phase1_identity.service_config[0].uri
     domain_enrichment_url     = google_cloudfunctions2_function.domain_enrichment.service_config[0].uri
     address_geocoding_url     = google_cloudfunctions2_function.address_geocoding.service_config[0].uri
@@ -76,6 +80,7 @@ resource "google_workflows_workflow" "origination" {
     google_project_service.apis["workflows.googleapis.com"],
     time_sleep.api_propagation,
     google_cloudfunctions2_function.company_domain_lookup,
+    google_cloudfunctions2_function.query_constructor,
     google_cloudfunctions2_function.phase1_identity,
     google_cloudfunctions2_function.domain_enrichment,
     google_cloudfunctions2_function.address_geocoding,
@@ -86,6 +91,7 @@ resource "google_workflows_workflow" "origination" {
     google_cloud_run_service_iam_member.workflow_invoke_domain_enrichment,
     google_cloud_run_service_iam_member.workflow_invoke_address_geocoding,
     google_cloud_run_service_iam_member.workflow_invoke_company_domain_lookup,
+    google_cloud_run_service_iam_member.query_constructor_workflow_invoker,
     google_cloud_run_service_iam_member.workflow_invoke_contact_extraction,
     google_cloud_run_service_iam_member.workflow_invoke_aggregator,
   ]

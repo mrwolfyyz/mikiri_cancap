@@ -54,6 +54,17 @@ resource "null_resource" "prepare_domain_enrichment" {
   }
 }
 
+# Ensure retry_utils.py is present in query_constructor
+resource "null_resource" "prepare_query_constructor" {
+  triggers = {
+    source_hash = filemd5("${path.module}/../../../gcp/shared/retry_utils.py")
+  }
+
+  provisioner "local-exec" {
+    command = "cp ${path.module}/../../../gcp/shared/retry_utils.py ${path.module}/../../../gcp/functions/query_constructor/"
+  }
+}
+
 # -----------------------------------------------------------------------------
 # Function Source Archives
 # -----------------------------------------------------------------------------
@@ -132,6 +143,14 @@ data "archive_file" "contact_extraction" {
   output_path = "${path.module}/../../../.build/contact_extraction.zip"
 }
 
+data "archive_file" "query_constructor" {
+  type        = "zip"
+  source_dir  = "${path.module}/../../../gcp/functions/query_constructor"
+  output_path = "${path.module}/../../../.build/query_constructor.zip"
+
+  depends_on = [null_resource.prepare_query_constructor]
+}
+
 # -----------------------------------------------------------------------------
 # Upload Source Archives to GCS
 # -----------------------------------------------------------------------------
@@ -206,6 +225,12 @@ resource "google_storage_bucket_object" "contact_extraction" {
   name   = "contact_extraction-${data.archive_file.contact_extraction.output_md5}.zip"
   bucket = google_storage_bucket.function_source.name
   source = data.archive_file.contact_extraction.output_path
+}
+
+resource "google_storage_bucket_object" "query_constructor" {
+  name   = "query_constructor-${data.archive_file.query_constructor.output_md5}.zip"
+  bucket = google_storage_bucket.function_source.name
+  source = data.archive_file.query_constructor.output_path
 }
 
 # =============================================================================
@@ -768,6 +793,72 @@ resource "google_cloud_run_service_iam_member" "workflow_invoke_company_domain_l
   project  = var.project_id
   location = var.region
   service  = google_cloudfunctions2_function.company_domain_lookup.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.workflow.email}"
+}
+
+# -----------------------------------------------------------------------------
+# Query Constructor (OIDC - called by workflow before phase1_identity)
+# -----------------------------------------------------------------------------
+
+resource "google_cloudfunctions2_function" "query_constructor" {
+  project  = var.project_id
+  name     = "query-constructor"
+  location = var.region
+
+  build_config {
+    runtime     = "python311"
+    entry_point = "main"
+    source {
+      storage_source {
+        bucket = google_storage_bucket.function_source.name
+        object = google_storage_bucket_object.query_constructor.name
+      }
+    }
+  }
+
+  service_config {
+    max_instance_count    = 10
+    min_instance_count    = 0
+    available_memory      = "512Mi"
+    timeout_seconds       = 30
+    service_account_email = google_service_account.functions.email
+
+    environment_variables = {
+      GCP_PROJECT  = var.project_id
+      GCP_LOCATION = "global"
+    }
+  }
+
+  labels = local.common_labels
+
+  # Cloud Build dependencies required for all function deployments
+  # Includes both Cloud Build SA and Compute SA permissions (required as of 2024 default change)
+  depends_on = [
+    google_project_service.apis["cloudfunctions.googleapis.com"],
+    google_project_service.apis["run.googleapis.com"],
+    google_project_service.apis["cloudbuild.googleapis.com"],
+    time_sleep.api_propagation,
+    # Cloud Build SA permissions (for explicit Cloud Build triggers)
+    google_project_iam_member.cloudbuild_functions_developer,
+    google_project_iam_member.cloudbuild_run_admin,
+    google_project_iam_member.cloudbuild_service_account_user,
+    google_storage_bucket_iam_member.cloudbuild_object_admin,
+    # Compute SA permissions (for Functions Gen2 internal builds - default as of 2024)
+    google_project_iam_member.compute_functions_developer,
+    google_project_iam_member.compute_run_admin,
+    google_project_iam_member.compute_service_account_user,
+    google_project_iam_member.compute_storage_viewer,
+    google_project_iam_member.compute_artifactregistry_writer,
+    google_storage_bucket_iam_member.compute_object_admin,
+  ]
+}
+
+# Allow workflow to invoke query_constructor
+resource "google_cloud_run_service_iam_member" "query_constructor_workflow_invoker" {
+  project  = var.project_id
+  location = var.region
+  service  = google_cloudfunctions2_function.query_constructor.name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.workflow.email}"
 }
