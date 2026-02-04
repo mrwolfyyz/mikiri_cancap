@@ -21,9 +21,9 @@ from typing import List, Dict, Any, Tuple, Optional
 from urllib.parse import urlparse
 from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError
 
-# Vertex AI imports
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+# Google Gen AI SDK imports (for Gemini with Google Search grounding support)
+from google import genai
+from google.genai.types import GenerateContentConfig, Tool, GoogleSearch
 
 # -------------------------
 # Config
@@ -556,20 +556,58 @@ def google_search_recall_2_v2(query: str, num: int = 5) -> List[Dict[str, str]]:
     return vertex_ai_search_precision(query, num)
 
 
+def extract_grounding_metadata(response) -> Dict[str, Any]:
+    """
+    Extract grounding metadata from Google Gen AI SDK response for audit trail.
+    """
+    metadata = {
+        "grounding_sources": [],
+        "search_queries": [],
+        "search_entry_point": ""
+    }
+
+    try:
+        if hasattr(response, 'candidates') and response.candidates:
+            candidate = response.candidates[0]
+
+            if hasattr(candidate, 'grounding_metadata'):
+                grounding = candidate.grounding_metadata
+
+                if hasattr(grounding, 'web_search_queries'):
+                    metadata["search_queries"] = list(grounding.web_search_queries)
+
+                if hasattr(grounding, 'grounding_chunks'):
+                    for chunk in grounding.grounding_chunks:
+                        if hasattr(chunk, 'web'):
+                            metadata["grounding_sources"].append({
+                                "url": getattr(chunk.web, 'uri', ''),
+                                "title": getattr(chunk.web, 'title', ''),
+                                "snippet": ""
+                            })
+
+                if hasattr(grounding, 'search_entry_point'):
+                    entry_point = grounding.search_entry_point
+                    if hasattr(entry_point, 'rendered_content'):
+                        metadata["search_entry_point"] = entry_point.rendered_content
+                    elif hasattr(entry_point, 'html'):
+                        metadata["search_entry_point"] = entry_point.html
+
+    except Exception as e:
+        print(f"[Grounding Metadata] Error extracting metadata: {e}")
+        import traceback
+        traceback.print_exc()
+
+    return metadata
+
+
 def vertex_ai_score(seed: Dict[str, Any], queries_payload: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Phase 1: Identity resolver LLM call using Vertex AI Gemini."""
+    """Phase 1: Identity resolver LLM call using Gemini with Google Search grounding."""
     if not GCP_PROJECT:
         return {"error": "GCP_PROJECT not set"}
-    
-    # Initialize Vertex AI
-    try:
-        vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
-    except Exception as e:
-        print(f"[Vertex AI] Initialization error: {e}")
-        return {"error": f"Vertex AI initialization failed: {str(e)}"}
-    
+
     system_prompt = (
-        "You are an evidence-driven resolver. You help skip tracers find and contact debtors. You ONLY use the provided evidence.\n"
+        "You are an evidence-driven resolver. You help skip tracers find and contact debtors.\n"
+        "- You also have access to Google Search. Use it to verify ambiguous matches and discover additional information about the person not found in the provided results.\n"
         "- You receive a seed (full_name, email, optional city, optional company_name) and a list of search queries.\n"
         "- Each query has a type: 'high_precision' or 'high_recall'.\n"
         "- 'high_precision' hits are more likely to be real social profiles and accurate professional profiles.\n"
@@ -584,6 +622,11 @@ def vertex_ai_score(seed: Dict[str, Any], queries_payload: List[Dict[str, Any]])
         "People sometimes use variations of their names. For example, their middle and last name. Include these when they match other seed information, like city or same/similiar company."
         "When two sources confirm the same address, prefer the one that includes a property purchase, deed, or asset transaction.\n"
         "Return STRICT JSON only.\n"
+        "\nReturn JSON with this exact structure:\n"
+        '{"top_handles": [{"platform": str, "handle": str, "url": str, "city": str (optional), "confidence": "high"|"medium"|"low"}], '
+        '"identity_clues": [{"title": str, "url": str, "snippet": str (optional), "source_query_id": str (optional)}], '
+        '"location": {"city": str, "confidence": "high"|"medium"|"low"}, '
+        '"rationale": str}\n'
     )
     
     schema = {
@@ -646,38 +689,39 @@ Return valid JSON with all required fields."""
     
     def _call_vertex_ai():
         try:
-            # Use gemini-2.5-flash with global endpoint for faster processing
-            model = GenerativeModel(model_name="gemini-2.5-flash")
-            print(f"[Vertex AI] Calling Gemini 2.5 Flash...")
-            
-            # Generate response
-            # Combine system prompt and user prompt since system_instruction may not be available
-            full_prompt = f"{system_prompt}\n\n{user_prompt}"
-            response = model.generate_content(
-                full_prompt,
-                generation_config=GenerationConfig(
+            # Initialize Google Gen AI client with Vertex AI backend
+            client = genai.Client(
+                vertexai=True,
+                project=GCP_PROJECT,
+                location=GCP_LOCATION
+            )
+
+            # Configure Google Search grounding tool
+            google_search_tool = Tool(google_search=GoogleSearch())
+
+            print(f"[Vertex AI] Calling Gemini 2.5 Flash with Google Search grounding...")
+
+            # Generate response with grounding
+            # NOTE: Structured output (response_schema) is not compatible with grounding tools.
+            # We parse JSON manually from text response, following the same pattern as
+            # company_domain_lookup and address_verification.
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=user_prompt,
+                config=GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    tools=[google_search_tool],
                     temperature=0.1,
-                    response_mime_type="application/json",
-                    response_schema=schema,
                 )
             )
-            
-            # Check for empty response - handle cases where response.text might not exist or be None
-            if not response:
+
+            # Check for empty response
+            if not response or not hasattr(response, 'text') or not response.text:
                 raise EmptyLLMResponseError("Empty response from Vertex AI")
-            
-            # Safely get response text, handling AttributeError if text property doesn't exist
-            try:
-                response_text = response.text
-            except AttributeError:
-                raise EmptyLLMResponseError("Response object missing text attribute")
-            
-            if not response_text:
-                raise EmptyLLMResponseError("Empty response from Vertex AI")
-            
+
             # Parse JSON response
-            content = response_text.strip()
-            
+            content = response.text.strip()
+
             # Strip markdown code blocks if present
             if content.startswith("```"):
                 lines = content.split("\n")
@@ -686,32 +730,43 @@ Return valid JSON with all required fields."""
                 if lines and lines[-1].strip() == "```":
                     lines = lines[:-1]
                 content = "\n".join(lines)
-            
+
             # Check if content is empty after stripping
             if not content.strip():
                 raise EmptyLLMResponseError("Empty content after stripping markdown")
-            
+
             result = json.loads(content)
-            
+
+            # Extract grounding metadata for audit trail
+            grounding_metadata = extract_grounding_metadata(response)
+            result["_grounding_metadata"] = grounding_metadata
+
             # Validate required fields
             if "top_handles" not in result:
                 result["top_handles"] = []
             if "rationale" not in result:
                 result["rationale"] = "Analysis completed but rationale was missing from response."
-            
+
             # Ensure top_handles is a list
             if not isinstance(result.get("top_handles"), list):
                 result["top_handles"] = []
-            
+
             # Validate confidence enum values for each handle
             for handle in result.get("top_handles", []):
                 if "confidence" in handle and handle["confidence"] not in ["high", "medium", "low"]:
                     handle["confidence"] = "medium"
-                    print(f"[Vertex AI] ⚠️  Invalid confidence value, defaulting to 'medium'")
-            
-            print(f"[Vertex AI] ✅ Successfully analyzed identity results")
+                    print(f"[Vertex AI] Warning: Invalid confidence value, defaulting to 'medium'")
+
+            # Validate identity_clues and location (no schema enforcement with grounding)
+            if not isinstance(result.get("identity_clues"), list):
+                result["identity_clues"] = []
+            if not isinstance(result.get("location"), dict):
+                result["location"] = {}
+
+            print(f"[Vertex AI] Successfully analyzed identity results with grounding")
+            print(f"[Vertex AI] Grounding sources: {len(grounding_metadata.get('grounding_sources', []))}")
             return result
-            
+
         except Exception as e:
             print(f"[Vertex AI] Error: {e}")
             raise
@@ -953,6 +1008,7 @@ def main(request):
 
     # 1B. LLM-generated precision query - ADDITIONAL search (NEW)
     # This runs when precision_query is provided from query_constructor
+    llm_precision_hits: List[SearchHit] = []
     if precision_query:
         print(f"[Phase1] Running ADDITIONAL LLM precision search: {precision_query[:100]}...")
         llm_precision_raw = google_search_precision_v2(precision_query, num=10)
@@ -1210,9 +1266,12 @@ def main(request):
     try:
         scored = vertex_ai_score(seed, queries_payload)
         scored_error = scored.get("error")
+        # Extract grounding metadata from scored result (if present)
+        grounding_metadata = scored.pop("_grounding_metadata", {})
     except Exception as e:
         scored = {}
         scored_error = str(e)
+        grounding_metadata = {}
 
     # -------------------------
     # Location-based name search rerun
@@ -1334,6 +1393,7 @@ def main(request):
         "scored": scored,
         "queries": queries_payload,
         "scored_error": scored_error,
+        "grounding_metadata": grounding_metadata,
     }
 
     print(f"[Phase1] Complete - {len(scored.get('top_handles', []))} handles, {len(breaches)} breaches")
