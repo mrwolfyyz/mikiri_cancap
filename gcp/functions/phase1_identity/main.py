@@ -973,14 +973,7 @@ def main(request):
             for h in llm_precision_raw if h.get("url")
         ]
 
-        # Combine results and deduplicate by URL
-        seen_urls = {hit.url for hit in precision_hits}
-        for hit in llm_precision_hits:
-            if hit.url not in seen_urls:
-                precision_hits.append(hit)
-                seen_urls.add(hit.url)
-
-        print(f"[Phase1] Combined precision results: {len(precision_hits)} hits (original + LLM deduplicated)")
+        print(f"[Phase1] LLM precision search: {len(llm_precision_hits)} hits (kept separate from basic precision)")
 
     # Middle name LinkedIn search - if middle name is detected
     middle_name_linkedin_hits: List[SearchHit] = []
@@ -1157,7 +1150,7 @@ def main(request):
     # Deduplicate hits
     seen = set()
     combined_hits: List[SearchHit] = []
-    for hit in precision_hits + context_hits + recall_hits + recall_2_hits + name_hits:
+    for hit in precision_hits + llm_precision_hits + context_hits + recall_hits + recall_2_hits + name_hits:
         if hit.url not in seen:
             seen.add(hit.url)
             combined_hits.append(hit)
@@ -1200,6 +1193,15 @@ def main(request):
             "type": "high_precision",
             "query": middle_name_linkedin_query,
             "hits": [asdict(h) for h in middle_name_linkedin_hits],
+        })
+
+    # Add LLM precision query if it was executed
+    if precision_query:
+        queries_payload.append({
+            "id": "precision_llm",
+            "type": "high_precision",
+            "query": precision_query,
+            "hits": [asdict(h) for h in llm_precision_hits],
         })
 
     # -------------------------
