@@ -153,25 +153,29 @@ def create_job(email: str, full_name: str, city: str, drive_folder_id: str = Non
     return job_id
 
 
-def trigger_workflow(job_id: str, email: str, full_name: str, city: str, company_name: str = None, workflow_name: str = None) -> str:
+def trigger_workflow(job_id: str, email: str, full_name: str, city: str, province: str = None, company_name: str = None, workflow_name: str = None) -> str:
     """Trigger the investigate workflow."""
     if workflow_name is None:
         workflow_name = SKIPTRACE_WORKFLOW_NAME
-    
+
     if not PROJECT_ID:
         raise ValueError("GCP_PROJECT environment variable not set")
-    
+
     client = executions_v1.ExecutionsClient()
-    
+
     parent = f"projects/{PROJECT_ID}/locations/{LOCATION}/workflows/{workflow_name}"
-    
+
     workflow_input = {
         "job_id": job_id,
         "email": email,
         "full_name": full_name,
         "city": city or "",
     }
-    
+
+    # Add province if provided
+    if province:
+        workflow_input["province"] = province
+
     # Add company_name if provided
     if company_name:
         workflow_input["company_name"] = company_name
@@ -278,15 +282,16 @@ def main(request: Request):
         user_id, auth_error = verify_firebase_token(request)
         if auth_error:
             return jsonify(auth_error), 401, headers
-        
+
         try:
             data = request.get_json() or {}
         except Exception:
             return jsonify({"error": "Invalid JSON"}), 400, headers
-        
+
         email = (data.get("email") or "").strip()
         full_name = (data.get("full_name") or "").strip()
         city = (data.get("city") or "").strip()
+        province = (data.get("province") or "").strip()
         drive_folder_id = (data.get("drive_folder_id") or "").strip()
         company_name = (data.get("company_name") or "").strip()
         
@@ -320,7 +325,7 @@ def main(request: Request):
         
         # Trigger skip trace workflow (async)
         try:
-            trigger_workflow(job_id, email, full_name, city, company_name, workflow_name=SKIPTRACE_WORKFLOW_NAME)
+            trigger_workflow(job_id, email, full_name, city, province, company_name, workflow_name=SKIPTRACE_WORKFLOW_NAME)
         except Exception as e:
             # Update job as failed
             db.collection("jobs").document(job_id).update({
@@ -337,15 +342,16 @@ def main(request: Request):
         user_id, auth_error = verify_firebase_token(request)
         if auth_error:
             return jsonify(auth_error), 401, headers
-        
+
         try:
             data = request.get_json() or {}
         except Exception:
             return jsonify({"error": "Invalid JSON"}), 400, headers
-        
+
         email = (data.get("email") or "").strip()
         full_name = (data.get("full_name") or "").strip()
         city = (data.get("city") or "").strip()
+        province = (data.get("province") or "").strip()
         drive_folder_id = (data.get("drive_folder_id") or "").strip()
         company_name = (data.get("company_name") or "").strip()
         
@@ -379,7 +385,7 @@ def main(request: Request):
         
         # Trigger origination workflow (async)
         try:
-            trigger_workflow(job_id, email, full_name, city, company_name, workflow_name=ORIGINATION_WORKFLOW_NAME)
+            trigger_workflow(job_id, email, full_name, city, province, company_name, workflow_name=ORIGINATION_WORKFLOW_NAME)
         except Exception as e:
             # Update job as failed
             db.collection("jobs").document(job_id).update({

@@ -1,0 +1,3 @@
+functions-framework==3.*
+google-cloud-aiplatform>=1.50.0
+google-cloud-firestore==2.21.*
