@@ -687,6 +687,73 @@
 }
 
 /* ===========================
+   Hits Collapsible Sections
+   =========================== */
+.markdown-content .hits-collapsible {
+    margin-bottom: var(--space-md);
+}
+
+.markdown-content .hits-collapsible summary {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    flex-wrap: wrap;
+    cursor: pointer;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-secondary);
+    box-shadow: var(--shadow-xs);
+}
+
+.markdown-content .hits-collapsible summary:hover {
+    border-color: var(--border-strong);
+}
+
+.markdown-content .hits-collapsible summary::-webkit-details-marker {
+    display: none;
+}
+
+.markdown-content .hits-collapsible summary::marker {
+    content: "";
+}
+
+.markdown-content .hits-collapsible .hits-toggle-icon {
+    width: 0;
+    height: 0;
+    border-left: 6px solid currentColor;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    color: var(--text-secondary);
+    transition: transform 0.2s, color 0.2s;
+}
+
+.markdown-content .hits-collapsible[open] .hits-toggle-icon {
+    transform: rotate(90deg);
+    color: var(--text-primary);
+}
+
+.markdown-content .hits-collapsible .hits-title {
+    font-weight: 600;
+}
+
+.markdown-content .hits-collapsible .hits-toggle-label {
+    font-size: var(--font-xs);
+    color: var(--text-secondary);
+}
+
+.markdown-content .hits-collapsible .hits-count {
+    display: inline-block;
+    padding: 2px 8px;
+    background: var(--accent);
+    color: white;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-left: auto;
+}
+
+/* ===========================
    Task List Checkboxes
    =========================== */
 .task-list-item {
@@ -798,6 +865,21 @@
     /* Add report title at top of each page */
     .report-header {
         page-break-after: avoid;
+    }
+
+    /* Expand hits collapsibles so all content prints */
+    .hits-collapsible,
+    .hits-collapsible[open] {
+        display: block !important;
+    }
+    .hits-collapsible summary ~ * {
+        display: block !important;
+    }
+    .hits-collapsible summary {
+        list-style: none;
+    }
+    .hits-collapsible summary::-webkit-details-marker {
+        display: none;
     }
 }
 
