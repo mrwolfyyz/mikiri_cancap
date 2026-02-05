@@ -61,7 +61,7 @@ variable "function_timeout" {
     phase1_identity              = 180
     domain_enrichment            = 60
     address_geocoding            = 600
-    company_domain_lookup        = 120
+    company_domain_lookup        = 240
     aggregator                   = 30
     contact_extraction           = 300
     report_generator_skiptrace   = 540

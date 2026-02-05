@@ -46,7 +46,7 @@ main:
                       body:
                         company_name: ${company_name}
                         job_id: ${job_id}
-                      timeout: 120
+                      timeout: 240
                     result: company_domain_result
                   retry:
                     max_attempts: 2
