@@ -2086,6 +2086,31 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
     content += "## Identity Confirmation\n\n"
     content += "> [!note] Rationale\n"
     content += f"> {scored.get('rationale', 'No rationale provided')}\n\n"
+    
+    # Grounding metadata section (below Rationale)
+    grounding_metadata = data.get('grounding_metadata', {})
+    grounding_sources = grounding_metadata.get('grounding_sources', [])
+    search_queries = grounding_metadata.get('search_queries', [])
+    
+    if search_queries:
+        content += "### Grounding Searches\n\n"
+        content += "The following searches were performed by the AI to verify identity:\n\n"
+        for query in search_queries:
+            content += f"- `{query}`\n"
+        content += "\n"
+    
+    if grounding_sources:
+        content += "### Grounding Sources\n\n"
+        content += "Sources used by the AI to support identity confirmation:\n\n"
+        for source in grounding_sources:
+            title = source.get('title', 'Untitled')
+            url = source.get('url', '')
+            if url:
+                content += f"- [{title}]({url})\n"
+            else:
+                content += f"- {title}\n"
+        content += "\n"
+    
     content += "---\n\n"
     
     # Social handles section
@@ -2093,7 +2118,7 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
     for handle in top_handles or []:
         platform = handle['platform']
         handle_name = handle['handle']
-        url = handle['url']
+        handle_url = handle['url']
         confidence = handle.get('confidence', 'medium')
         
         
@@ -2101,14 +2126,14 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         content += f"- **{platform}**  \n"
         content += f"  - Handle: `{handle_name}`  \n"
         content += f"  - Confidence: **{confidence}**  \n"
-        content += f"  - URL: <{url}>  \n"
+        content += f"  - URL: <{handle_url}>  \n"
         
         # Try to find a snippet for this handle from the queries
         snippet = None
         for query in data.get('queries', []):
             for hit in query.get('hits', []):
                 hit_url = hit.get('url', '').lower()
-                if url.lower() == hit_url or (hit_url and hit_url.rstrip('/') == url.lower().rstrip('/')):
+                if handle_url.lower() == hit_url or (hit_url and hit_url.rstrip('/') == handle_url.lower().rstrip('/')):
                     snippet = hit.get('snippet', '')
                     break
             if snippet:
@@ -4146,6 +4171,31 @@ def generate_identity_report_skiptrace(data: Dict[str, Any], name: str, output_d
     content += "## Identity Confirmation\n\n"
     content += "> [!note] Rationale\n"
     content += f"> {scored.get('rationale', 'No rationale provided')}\n\n"
+    
+    # Grounding metadata section (below Rationale)
+    grounding_metadata = data.get('grounding_metadata', {})
+    grounding_sources = grounding_metadata.get('grounding_sources', [])
+    search_queries = grounding_metadata.get('search_queries', [])
+    
+    if search_queries:
+        content += "### Grounding Searches\n\n"
+        content += "The following searches were performed by the AI to verify identity:\n\n"
+        for query in search_queries:
+            content += f"- `{query}`\n"
+        content += "\n"
+    
+    if grounding_sources:
+        content += "### Grounding Sources\n\n"
+        content += "Sources used by the AI to support identity confirmation:\n\n"
+        for source in grounding_sources:
+            title = source.get('title', 'Untitled')
+            url = source.get('url', '')
+            if url:
+                content += f"- [{title}]({url})\n"
+            else:
+                content += f"- {title}\n"
+        content += "\n"
+    
     content += "---\n\n"
     
     # Social handles section
@@ -4153,20 +4203,20 @@ def generate_identity_report_skiptrace(data: Dict[str, Any], name: str, output_d
     for handle in top_handles or []:
         platform = handle['platform']
         handle_name = handle['handle']
-        url = handle['url']
+        handle_url = handle['url']
         confidence = handle.get('confidence', 'medium')
         
         content += f"- **{platform}**  \n"
         content += f"  - Handle: `{handle_name}`  \n"
         content += f"  - Confidence: **{confidence}**  \n"
-        content += f"  - URL: <{url}>  \n"
+        content += f"  - URL: <{handle_url}>  \n"
         
         # Try to find a snippet for this handle from the queries
         snippet = None
         for query in data.get('queries', []):
             for hit in query.get('hits', []):
                 hit_url = hit.get('url', '').lower()
-                if url.lower() == hit_url or (hit_url and hit_url.rstrip('/') == url.lower().rstrip('/')):
+                if handle_url.lower() == hit_url or (hit_url and hit_url.rstrip('/') == handle_url.lower().rstrip('/')):
                     snippet = hit.get('snippet', '')
                     break
             if snippet:

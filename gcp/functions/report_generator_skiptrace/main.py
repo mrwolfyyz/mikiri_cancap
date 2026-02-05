@@ -65,6 +65,7 @@ def transform_firestore_to_report_format(firestore_data: Dict[str, Any]) -> Dict
         'contactability': identity.get('contactability', {}),
         'breaches': identity.get('breaches', []),
         'queries': identity.get('queries', []),
+        'grounding_metadata': identity.get('grounding_metadata', {}),
     }
     
     return transformed

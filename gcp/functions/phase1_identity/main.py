@@ -639,6 +639,7 @@ def vertex_ai_score(seed: Dict[str, Any], queries_payload: List[Dict[str, Any]])
         "Do not include any identity clues that contradict the top_handles"
         "People sometimes use variations of their names. For example, their middle and last name. Include these when they match other seed information, like city or same/similiar company."
         "When two sources confirm the same address, prefer the one that includes a property purchase, deed, or asset transaction.\n"
+        "Alway use the Google Search tool to search for: <full name> and <city>. When referencing the search results from this search in your rationale, include the source."
         "Return STRICT JSON only.\n"
         "\nReturn JSON with this exact structure:\n"
         '{"top_handles": [{"platform": str, "handle": str, "url": str, "city": str (optional), "confidence": "high"|"medium"|"low"}], '
