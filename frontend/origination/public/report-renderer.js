@@ -256,7 +256,7 @@
     function countHitsInBlock(siblings) {
       let count = 0;
       siblings.forEach((s) => {
-        const lis = s.querySelectorAll("ol li, ul li");
+        const lis = s.querySelectorAll("ol > li");
         count += lis.length;
       });
       if (count > 0) return count;
@@ -330,7 +330,7 @@
       }
       const olCount = siblings.reduce((acc, s) => {
         const ols = s.querySelectorAll("ol");
-        return acc + Array.from(ols).reduce((a, ol) => a + ol.querySelectorAll("li").length, 0);
+        return acc + Array.from(ols).reduce((a, ol) => a + ol.querySelectorAll(":scope > li").length, 0);
       }, 0);
       if (olCount === 0) return;
       wrapSection(header, siblings, olCount);
