@@ -230,6 +230,113 @@
     return await response.json();
   }
 
+  function makeHitsSectionsCollapsible(markdownEl) {
+    if (!markdownEl || !markdownEl.querySelector) return;
+    const doc = markdownEl.ownerDocument;
+
+    function isHitsMarker(el) {
+      if (!el) return false;
+      const text = (el.textContent || "").trim();
+      if (!/^hits$/i.test(text)) return false;
+      if (el.tagName === "STRONG") return true;
+      const strong = el.querySelector("strong");
+      return !!(strong && /^hits$/i.test((strong.textContent || "").trim()));
+    }
+
+    function getSiblingsUntilNextHeader(header) {
+      const siblings = [];
+      let el = header.nextElementSibling;
+      while (el && el.tagName !== "H2" && el.tagName !== "H3" && !isHitsMarker(el)) {
+        siblings.push(el);
+        el = el.nextElementSibling;
+      }
+      return siblings;
+    }
+
+    function countHitsInBlock(siblings) {
+      let count = 0;
+      siblings.forEach((s) => {
+        const lis = s.querySelectorAll("ol li, ul li");
+        count += lis.length;
+      });
+      if (count > 0) return count;
+      return siblings.filter((s) => s.tagName === "H3").length;
+    }
+
+    function wrapSection(header, siblings, count) {
+      const details = doc.createElement("details");
+      details.className = "collapsible hits-collapsible";
+      const summary = doc.createElement("summary");
+      const icon = doc.createElement("span");
+      icon.className = "hits-toggle-icon";
+      icon.setAttribute("aria-hidden", "true");
+
+      const title = doc.createElement("span");
+      title.className = "hits-title";
+      title.textContent = (header.textContent || "").trim() || "Hits";
+
+      const label = doc.createElement("span");
+      label.className = "hits-toggle-label";
+      label.textContent = "Show hits";
+
+      const countEl = doc.createElement("span");
+      countEl.className = "hits-count";
+      countEl.textContent = count + " hits";
+
+      summary.appendChild(icon);
+      summary.appendChild(title);
+      summary.appendChild(label);
+      summary.appendChild(countEl);
+      details.appendChild(summary);
+      siblings.forEach((s) => details.appendChild(s));
+      header.parentNode.replaceChild(details, header);
+
+      details.addEventListener("toggle", () => {
+        label.textContent = details.open ? "Hide hits" : "Show hits";
+      });
+    }
+
+    const headersRuleA = [];
+    markdownEl.querySelectorAll("h2, h3").forEach((h) => {
+      if (/hits/i.test(h.textContent || "")) headersRuleA.push(h);
+    });
+
+    headersRuleA.forEach((header) => {
+      const siblings = getSiblingsUntilNextHeader(header);
+      const count = countHitsInBlock(siblings);
+      wrapSection(header, siblings, count);
+    });
+
+    const hitsMarkers = [];
+    markdownEl.querySelectorAll("strong").forEach((strong) => {
+      if (!/^hits$/i.test((strong.textContent || "").trim())) return;
+      const marker = strong.closest("p") || strong;
+      if (marker.closest(".hits-collapsible")) return;
+      hitsMarkers.push(marker);
+    });
+
+    hitsMarkers.forEach((marker) => {
+      const siblings = getSiblingsUntilNextHeader(marker);
+      const count = countHitsInBlock(siblings);
+      if (count === 0) return;
+      wrapSection(marker, siblings, count);
+    });
+
+    markdownEl.querySelectorAll("h3").forEach((header) => {
+      if (header.closest(".hits-collapsible")) return;
+      const siblings = getSiblingsUntilNextHeader(header);
+      if (siblings.some((s) => s.classList && s.classList.contains("hits-collapsible"))) {
+        return;
+      }
+      const olCount = siblings.reduce((acc, s) => {
+        const ols = s.querySelectorAll("ol");
+        return acc + Array.from(ols).reduce((a, ol) => a + ol.querySelectorAll("li").length, 0);
+      }, 0);
+      if (olCount === 0) return;
+      wrapSection(header, siblings, olCount);
+    });
+  }
+
   function parseCreatedAt(createdAt) {
     if (!createdAt) return "Unknown date";
     let date;
@@ -359,6 +466,8 @@
             <nav class="report-tabs" id="reportTabs">${tabsHtml}</nav>
             <div class="tab-panels" id="reportTabPanels">${panelsHtml}</div>
         `;
+
+    container.querySelectorAll(".tab-panel .markdown-content").forEach(makeHitsSectionsCollapsible);
 
     // Tab switching
     function switchTab(tabId) {
