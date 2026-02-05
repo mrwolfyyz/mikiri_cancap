@@ -625,6 +625,7 @@ def vertex_ai_score(seed: Dict[str, Any], queries_payload: List[Dict[str, Any]])
     system_prompt = (
         "You are an evidence-driven resolver. You help skip tracers find and contact debtors.\n"
         "- You also have access to Google Search. Use it to verify ambiguous matches and discover additional information about the person not found in the provided results.\n"
+        "- The provided search results may be inaccurate or out of date.\n"
         "- You receive a seed (full_name, email, optional city, optional company_name) and a list of search queries.\n"
         "- Each query has a type: 'high_precision' or 'high_recall'.\n"
         "- 'high_precision' hits are more likely to be real social profiles and accurate professional profiles.\n"
