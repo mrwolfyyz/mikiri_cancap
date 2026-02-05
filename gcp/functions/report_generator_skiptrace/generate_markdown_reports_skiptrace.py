@@ -4218,40 +4218,6 @@ def generate_identity_report_skiptrace(data: Dict[str, Any], name: str, output_d
     
     content += "\n---\n\n"
     
-    # Contact-ability section (informational only, no alerts)
-    content += "## Contact-ability\n\n"
-    content += "> [!note]\n"
-    content += f"> **Score:** {score}  \n"
-    content += f"> **Reason:** {reason}  \n"
-    content += ">  \n"
-    content += f"> - **Social accounts detected:** {num_social}  \n"
-    content += f"> - **Known breaches:** {num_breaches}  \n"
-    if earliest_breach_date:
-        content += f"> - **Earliest breach:** {earliest_breach_date}  \n"
-    content += f"> - **Footprint bucket:** `{footprint_bucket}`  \n"
-    content += f"> - **Breach bucket:** `{breach_bucket}`  \n"
-    content += f"> - **Disposable email domain:** {str(is_disposable).lower()}\n"
-    
-    # Check if Gravatar appears in breach list and Gravatar API returned no results
-    has_gravatar_breach = False
-    gravatar_breach_date = None
-    if breaches:
-        for breach in breaches:
-            breach_name = breach.get('name', '').lower()
-            if 'gravatar' in breach_name:
-                has_gravatar_breach = True
-                gravatar_breach_date = breach.get('date', '')
-                break
-    
-    # Add Digital footprint hygiene field if conditions are met
-    if has_gravatar_breach and gravatar_result and not gravatar_result.get('success'):
-        if gravatar_breach_date:
-            content += f"> - **Digital footprint hygiene:** High (User deleted Gravatar profile after breach of {gravatar_breach_date})  \n"
-        else:
-            content += f"> - **Digital footprint hygiene:** High (User deleted Gravatar profile after breach)  \n"
-    
-    content += "\n\n"
-    
     # Gravatar profile section (if available)
     if gravatar_result and gravatar_result.get('success'):
         content += "### Gravatar Profile\n\n"
