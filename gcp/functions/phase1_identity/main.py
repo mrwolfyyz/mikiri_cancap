@@ -71,6 +71,23 @@ LIFESTYLE_SITES = [
     "t.me",  "theknot.com", "zola.com",
 ]
 
+# Province code to full name mapping
+PROVINCE_NAMES = {
+    "ON": "Ontario",
+    "BC": "British Columbia",
+    "AB": "Alberta",
+    "QC": "Quebec",
+    "MB": "Manitoba",
+    "SK": "Saskatchewan",
+    "NS": "Nova Scotia",
+    "NB": "New Brunswick",
+    "NL": "Newfoundland and Labrador",
+    "PE": "Prince Edward Island",
+    "NT": "Northwest Territories",
+    "YT": "Yukon",
+    "NU": "Nunavut",
+}
+
 
 @dataclass
 class SearchHit:
@@ -951,6 +968,8 @@ def main(request):
     city = req_data.get("city", "").strip()
     company_name = req_data.get("company_name", "").strip()
     precision_query = req_data.get("precision_query", "").strip()
+    province = req_data.get("province", "").strip()
+    generated_names = req_data.get("generated_names", [])
 
     if not email or not full_name:
         return {"error": "email and full_name are required"}, 400
@@ -974,7 +993,7 @@ def main(request):
     # Execute search queries
     # -------------------------
 
-    # Initialize name variables (used later for middle name LinkedIn search)
+    # Initialize name variables (used later for precision query construction)
     name_full, name_variation = generate_name_variations(full_name)
 
     # 1A. Precision query - social platforms with full name
@@ -1031,47 +1050,48 @@ def main(request):
 
         print(f"[Phase1] LLM precision search: {len(llm_precision_hits)} hits (kept separate from basic precision)")
 
-    # Middle name LinkedIn search - if middle name is detected
-    middle_name_linkedin_hits: List[SearchHit] = []
-    middle_name_linkedin_query = ""
+    # Provincial LinkedIn search - uses LLM-generated name variations with province
+    provincial_linkedin_hits: List[SearchHit] = []
+    provincial_linkedin_query = ""
 
-    if name_variation:  # Middle name detected
-        print(f"[Phase1] Middle name detected: {name_variation} - performing LinkedIn search")
-        
-        # Build query with same format as precision query
-        middle_name_linkedin_query = f'"{name_full}" OR "{name_variation}"'
-        if city:
-            middle_name_linkedin_query += f' {city.split(",")[0]}'
-        
+    if generated_names and province:
+        # Convert province code to full name
+        province_full = PROVINCE_NAMES.get(province, province)
+
+        # Build query: "Original Name" OR "Variation1" OR "Variation2" Province
+        all_names = [full_name] + [n for n in generated_names if n.lower() != full_name.lower()]
+        name_parts = ' OR '.join(f'"{name}"' for name in all_names)
+        provincial_linkedin_query = f'{name_parts} {province_full}'
+
+        print(f"[Phase1] Provincial LinkedIn search: {provincial_linkedin_query[:100]}...")
+
         # Execute LinkedIn search using Vertex AI Search
-        middle_name_linkedin_raw = google_search_linkedin_v2(middle_name_linkedin_query, num=10)
-        
+        provincial_linkedin_raw = google_search_linkedin_v2(provincial_linkedin_query, num=10)
+
         # Determine source based on _source marker (set by google_search_linkedin_v2)
-        # This is more reliable than relevance_score since Vertex AI Search may return relevance_score=0.0
-        # when model_scores is empty (as seen in logs: "Keys: []")
-        has_vertex_results = any(h.get("_source") == "vertex_ai_search" for h in middle_name_linkedin_raw if h.get("url"))
+        has_vertex_results = any(h.get("_source") == "vertex_ai_search" for h in provincial_linkedin_raw if h.get("url"))
         source_value = "vertex_ai_linkedin" if has_vertex_results else "google_search"
-        _source_markers = [h.get("_source") for h in middle_name_linkedin_raw if h.get("url")]
-        print(f"[Phase1] Middle name LinkedIn search: results_count={len(middle_name_linkedin_raw)}, _source_markers={_source_markers}, has_vertex_results={has_vertex_results}, source={source_value}")
-        
+        _source_markers = [h.get("_source") for h in provincial_linkedin_raw if h.get("url")]
+        print(f"[Phase1] Provincial LinkedIn search: results_count={len(provincial_linkedin_raw)}, _source_markers={_source_markers}, has_vertex_results={has_vertex_results}, source={source_value}")
+
         # Convert to SearchHit objects
-        middle_name_linkedin_hits = [
+        provincial_linkedin_hits = [
             SearchHit(
                 url=h["url"],
                 title=h["title"],
                 snippet=h["snippet"],
-                source=source_value,  # Differentiate: "vertex_ai_linkedin" or "google_search"
-                query_id="middle_name_linkedin",
+                source=source_value,
+                query_id="provincial_linkedin",
                 query_type="high_precision",
-                relevance_score=h.get("relevance_score", 0.0),  # Extract if present (may be 0.0 even for Vertex AI)
+                relevance_score=h.get("relevance_score", 0.0),
             )
-            for h in middle_name_linkedin_raw if h.get("url")
+            for h in provincial_linkedin_raw if h.get("url")
         ]
-        
+
         # Append to precision_hits (so they're included in precision results)
-        precision_hits.extend(middle_name_linkedin_hits)
-        
-        print(f"[Phase1] Middle name LinkedIn search: {len(middle_name_linkedin_hits)} hits")
+        precision_hits.extend(provincial_linkedin_hits)
+
+        print(f"[Phase1] Provincial LinkedIn search: {len(provincial_linkedin_hits)} hits")
 
     # Business email searches - if email is a business domain
     business_domain_hits: List[SearchHit] = []
@@ -1242,13 +1262,13 @@ def main(request):
             "hits": [asdict(h) for h in company_name_linkedin_hits],
         })
     
-    # Add middle name LinkedIn query if it was executed
-    if middle_name_linkedin_query:
+    # Add provincial LinkedIn query if it was executed
+    if provincial_linkedin_query:
         queries_payload.append({
-            "id": "middle_name_linkedin",
+            "id": "provincial_linkedin",
             "type": "high_precision",
-            "query": middle_name_linkedin_query,
-            "hits": [asdict(h) for h in middle_name_linkedin_hits],
+            "query": provincial_linkedin_query,
+            "hits": [asdict(h) for h in provincial_linkedin_hits],
         })
 
     # Add LLM precision query if it was executed
