@@ -2096,19 +2096,9 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         content += "### Grounding Searches\n\n"
         content += "The following searches were performed by the AI to verify identity:\n\n"
         for query in search_queries:
-            content += f"- `{query}`\n"
-        content += "\n"
-    
-    if grounding_sources:
-        content += "### Grounding Sources\n\n"
-        content += "Sources used by the AI to support identity confirmation:\n\n"
-        for source in grounding_sources:
-            title = source.get('title', 'Untitled')
-            url = source.get('url', '')
-            if url:
-                content += f"- [{title}]({url})\n"
-            else:
-                content += f"- {title}\n"
+            encoded_query = quote_plus(query)
+            google_url = f"https://www.google.com/search?q={encoded_query}"
+            content += f"- [{query}]({google_url})\n"
         content += "\n"
     
     content += "---\n\n"
@@ -4181,19 +4171,9 @@ def generate_identity_report_skiptrace(data: Dict[str, Any], name: str, output_d
         content += "### Grounding Searches\n\n"
         content += "The following searches were performed by the AI to verify identity:\n\n"
         for query in search_queries:
-            content += f"- `{query}`\n"
-        content += "\n"
-    
-    if grounding_sources:
-        content += "### Grounding Sources\n\n"
-        content += "Sources used by the AI to support identity confirmation:\n\n"
-        for source in grounding_sources:
-            title = source.get('title', 'Untitled')
-            url = source.get('url', '')
-            if url:
-                content += f"- [{title}]({url})\n"
-            else:
-                content += f"- {title}\n"
+            encoded_query = quote_plus(query)
+            google_url = f"https://www.google.com/search?q={encoded_query}"
+            content += f"- [{query}]({google_url})\n"
         content += "\n"
     
     content += "---\n\n"
