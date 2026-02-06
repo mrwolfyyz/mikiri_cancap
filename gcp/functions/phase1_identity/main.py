@@ -734,12 +734,31 @@ Return valid JSON with all required fields."""
                 )
             )
 
-            # Check for empty response
-            if not response or not hasattr(response, 'text') or not response.text:
+            # Check for empty/blocked response
+            if not response:
                 raise EmptyLLMResponseError("Empty response from Vertex AI")
 
+            # Check for blocked content or missing candidates
+            if hasattr(response, 'candidates') and not response.candidates:
+                block_reason = ""
+                if hasattr(response, 'prompt_feedback'):
+                    block_reason = getattr(response.prompt_feedback, 'block_reason', '') or ''
+                raise EmptyLLMResponseError(
+                    f"No candidates returned from Vertex AI (block_reason={block_reason})"
+                )
+
+            # Access response.text safely - SDK raises ValueError when
+            # candidates are blocked by safety filters
+            try:
+                response_text = response.text
+            except ValueError as e:
+                raise EmptyLLMResponseError(f"Could not extract text from response: {e}")
+
+            if not response_text:
+                raise EmptyLLMResponseError("Empty response text from Vertex AI")
+
             # Parse JSON response
-            content = response.text.strip()
+            content = response_text.strip()
 
             # Strip markdown code blocks if present
             if content.startswith("```"):
@@ -755,6 +774,17 @@ Return valid JSON with all required fields."""
                 raise EmptyLLMResponseError("Empty content after stripping markdown")
 
             result = json.loads(content)
+
+            # Validate the response is structurally meaningful (not just {})
+            # An empty result across all fields likely means the LLM
+            # returned a degenerate response worth retrying
+            if (not result.get("top_handles") and
+                not result.get("rationale") and
+                not result.get("identity_clues") and
+                not result.get("location")):
+                raise EmptyLLMResponseError(
+                    "LLM returned structurally empty JSON (no handles, rationale, clues, or location)"
+                )
 
             # Extract grounding metadata for audit trail
             grounding_metadata = extract_grounding_metadata(response)
