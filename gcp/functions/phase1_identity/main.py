@@ -773,7 +773,18 @@ Return valid JSON with all required fields."""
             if not content.strip():
                 raise EmptyLLMResponseError("Empty content after stripping markdown")
 
-            result = json.loads(content)
+            # Parse JSON - if it fails due to empty/invalid content, treat as retryable
+            try:
+                result = json.loads(content)
+            except json.JSONDecodeError as e:
+                # JSON decode errors often indicate empty or malformed responses
+                # that should be retried (similar to EmptyLLMResponseError)
+                # Check if the error suggests an empty response
+                error_msg = str(e).lower()
+                if "expecting value" in error_msg or "empty" in error_msg or len(content.strip()) == 0:
+                    raise EmptyLLMResponseError(f"JSON decode error (likely empty response): {e}")
+                # For other JSON decode errors (malformed JSON), still retry as it might be transient
+                raise EmptyLLMResponseError(f"JSON decode error (malformed response): {e}")
 
             # Validate the response is structurally meaningful (not just {})
             # An empty result across all fields likely means the LLM
