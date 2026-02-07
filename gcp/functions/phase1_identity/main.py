@@ -834,7 +834,7 @@ Return valid JSON with all required fields."""
     try:
         return retry_with_backoff(
             _call_vertex_ai,
-            RetryConfig(max_attempts=3, base_delay_seconds=2.0, max_delay_seconds=60.0),
+            RetryConfig(max_attempts=5, base_delay_seconds=3.0, max_delay_seconds=60.0),
             operation_name="Vertex AI identity scoring"
         )
     except json.JSONDecodeError as e:
