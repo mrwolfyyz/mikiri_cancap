@@ -46,7 +46,6 @@
     const prefix = pageName.split("___")[0].toLowerCase();
     const tabMap = {
       identity: "identity",
-      skiptrace: "skiptrace",
       regulator: "regulator",
       corporate: "corporate",
       adverse_media: "adverse_media",
@@ -74,24 +73,6 @@
       tip: "💡",
     };
     return icons[type] || "ℹ️";
-  }
-
-  function countCheckboxes(markdown) {
-    const matches = markdown ? markdown.match(/- \[ \]/g) : null;
-    return matches ? matches.length : 0;
-  }
-
-  // ===========================
-  // Checkbox State
-  // ===========================
-  function getTaskState(jobId, taskId) {
-    const key = `checklist_${jobId}`;
-    const state = JSON.parse(global.localStorage.getItem(key) || "{}");
-    return state[taskId] !== undefined ? state[taskId] : null;
-  }
-
-  function generateTaskId(text) {
-    return text.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 50);
   }
 
   // ===========================
@@ -136,23 +117,6 @@
     };
 
     renderer.listitem = function (text, task, checked) {
-      if (task === true) {
-        const strippedText = text
-          .replace(
-            /(^\s*|<p>\s*)<input\s[^>]*type\s*=\s*["']checkbox["'][^>]*>\s*/i,
-            "$1"
-          )
-          .trim();
-        const taskId = generateTaskId(strippedText);
-        const savedState = getTaskState(jobId, taskId);
-        const isChecked = savedState !== null ? savedState : checked;
-        return `<li class="task-list-item">
-                    <input type="checkbox" ${
-                      isChecked ? "checked" : ""
-                    } data-task-id="${taskId}" data-job-id="${jobId}" />
-                    <span>${strippedText}</span>
-                </li>`;
-      }
       return `<li>${text}</li>`;
     };
 
@@ -184,14 +148,6 @@
     }
     if (markdownReports.identity) {
       tabs.push({ id: "identity", label: "Identity" });
-    }
-    if (markdownReports.skiptrace) {
-      const taskCount = countCheckboxes(markdownReports.skiptrace);
-      tabs.push({
-        id: "skiptrace",
-        label: "Skip Trace Checklist",
-        badge: taskCount > 0 ? taskCount : null,
-      });
     }
     if (markdownReports.corporate)
       tabs.push({ id: "corporate", label: "Corporate" });
@@ -414,21 +370,6 @@
       .join("");
 
     const isSkiptrace = workflowType === "skiptrace";
-    const skipTraceHtml = isSkiptrace
-      ? `
-            <div class="skip-trace-actions" id="reportSkipTraceActions">
-                <label class="toggle-control">
-                    <input type="checkbox" id="reportChecklistToggle" checked>
-                    <span>Show Checklist</span>
-                </label>
-                <div class="progress-indicator"><span id="reportChecklistProgress">0/0 completed</span></div>
-                <button id="reportResetProgress" class="button-secondary">
-                    <svg class="button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14 8C14 11.3137 11.3137 14 8 14C4.68629 14 2 11.3137 2 8C2 4.68629 4.68629 2 8 2" stroke="currentColor" stroke-width="1.5"/><path d="M12 2V4.5H9.5" stroke="currentColor" stroke-width="1.5"/></svg>
-                    Reset Progress
-                </button>
-            </div>
-        `
-      : "";
 
     const originationHtml = !isSkiptrace
       ? `
@@ -447,7 +388,6 @@
                     <p class="report-meta" id="reportMeta">Generated on ${createdAt}</p>
                 </div>
                 <div class="action-bar">
-                    ${skipTraceHtml}
                     ${originationHtml}
                     <div class="common-actions">
                         <a id="reportOpenChatButton" href="${
@@ -498,68 +438,7 @@
       }
     });
 
-    // Skip trace: checklist toggle, reset, checkbox state
-    if (isSkiptrace) {
-      const checklistToggle = container.querySelector("#reportChecklistToggle");
-      const resetBtn = container.querySelector("#reportResetProgress");
-      const progressEl = container.querySelector("#reportChecklistProgress");
-
-      const savedToggle = global.localStorage.getItem(
-        "skipTraceChecklistVisible"
-      );
-      if (savedToggle !== null)
-        checklistToggle.checked = savedToggle === "true";
-
-      function applyVisibility() {
-        const visible = checklistToggle.checked;
-        global.localStorage.setItem("skipTraceChecklistVisible", visible);
-        const panel = container.querySelector('[data-tab="skiptrace"]');
-        if (panel) panel.style.display = visible ? "block" : "none";
-        progressEl.parentElement.style.display = visible ? "block" : "none";
-        resetBtn.style.display = visible ? "inline-block" : "none";
-        const firstTab = tabs[0]?.id;
-        if (!visible && panel?.classList.contains("active") && firstTab)
-          switchTab(firstTab);
-      }
-
-      checklistToggle.addEventListener("change", applyVisibility);
-      applyVisibility();
-
-      function updateProgress() {
-        const cbs = container.querySelectorAll(
-          '.task-list-item input[type="checkbox"]'
-        );
-        const total = cbs.length;
-        const completed = Array.from(cbs).filter((cb) => cb.checked).length;
-        progressEl.textContent = `${completed}/${total} completed (${
-          total ? Math.round((completed / total) * 100) : 0
-        }%)`;
-      }
-
-      container
-        .querySelectorAll('.task-list-item input[type="checkbox"]')
-        .forEach((cb) => {
-          cb.addEventListener("change", function () {
-            const key = `checklist_${jobId}`;
-            const state = JSON.parse(global.localStorage.getItem(key) || "{}");
-            state[this.dataset.taskId] = this.checked;
-            global.localStorage.setItem(key, JSON.stringify(state));
-            updateProgress();
-          });
-        });
-      updateProgress();
-
-      resetBtn.addEventListener("click", () => {
-        if (!global.confirm("Reset all checkbox progress?")) return;
-        global.localStorage.removeItem(`checklist_${jobId}`);
-        container
-          .querySelectorAll('.task-list-item input[type="checkbox"]')
-          .forEach((cb) => {
-            cb.checked = false;
-          });
-        updateProgress();
-      });
-    } else {
+    if (!isSkiptrace) {
       // Origination: risk level
       let dangerCount = 0,
         warningCount = 0;

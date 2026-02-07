@@ -24,7 +24,7 @@ GCP_PROJECT = os.environ.get("GCP_PROJECT", os.environ.get("GOOGLE_CLOUD_PROJECT
 GCP_LOCATION = os.environ.get("GCP_LOCATION", "global")
 
 # System prompt for skip tracing assistant
-SYSTEM_PROMPT = """You are a skip tracing assistant helping locate individuals. You have access to investigation reports (identity clues and skip tracing checklist). Use the provided markdown context to understand what's already been found. The skip tracer may provide additional context in their messages - use this information to guide your searches and responses.
+SYSTEM_PROMPT = """You are a skip tracing assistant helping locate individuals. You have access to investigation reports (identity clues). Use the provided markdown context to understand what's already been found. The skip tracer may provide additional context in their messages - use this information to guide your searches and responses.
 
 When to Search:
 - Search when the user asks for updated information
@@ -81,11 +81,7 @@ def build_prompt(
             prompt_parts.append("### Identity Report\n")
             prompt_parts.append(markdown_context["identity"])
             prompt_parts.append("\n")
-        if markdown_context.get("skiptrace"):
-            prompt_parts.append("### Skip Trace Checklist\n")
-            prompt_parts.append(markdown_context["skiptrace"])
-            prompt_parts.append("\n")
-    
+
     # Add conversation history if present
     if conversation_history:
         prompt_parts.append("\n## Previous Conversation\n")
