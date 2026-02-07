@@ -2,7 +2,7 @@
 Skip Trace Report Generator Cloud Function
 
 Triggered by Firestore document updates when status == "post_processing" and workflow_type == "skiptrace".
-Generates 2 markdown reports (Identity and Skip Trace Checklist) and uploads them to Google Drive.
+Generates the Identity markdown report and uploads it to Google Drive.
 """
 
 from functions_framework import cloud_event
@@ -298,9 +298,8 @@ def on_job_updated(event: CloudEvent) -> None:
             
             print(f"[SkipTraceReportGenerator] Generating reports to: {output_dir}")
             
-            # Generate only Identity and Skip Trace reports (no salaries, no alerts in Identity)
+            # Generate Identity report (no salaries, no alerts)
             md_gen.generate_identity_report_skiptrace(report_data, borrower_name, output_dir, company_domain=company_domain, enrichment_data=enrichment_data)
-            md_gen.generate_skiptrace_checklist_skiptrace(report_data, borrower_name, output_dir, enrichment_data=enrichment_data)
             
             print(f"[SkipTraceReportGenerator] ✓ All reports generated")
             
@@ -326,7 +325,6 @@ def on_job_updated(event: CloudEvent) -> None:
                     report_urls = {}
                     report_files = [
                         f"Identity___{borrower_name.replace(' ', '_')}.md",
-                        f"Skiptrace___{borrower_name.replace(' ', '_')}.md",
                     ]
                     
                     # Filter to only files that exist
@@ -394,8 +392,7 @@ def on_job_updated(event: CloudEvent) -> None:
             # Read markdown files and store in Firestore for chat feature
             markdown_reports = {}
             identity_file = output_dir / f"Identity___{borrower_name.replace(' ', '_')}.md"
-            skiptrace_file = output_dir / f"Skiptrace___{borrower_name.replace(' ', '_')}.md"
-            
+
             try:
                 if identity_file.exists():
                     with open(identity_file, 'r', encoding='utf-8') as f:
@@ -403,13 +400,6 @@ def on_job_updated(event: CloudEvent) -> None:
                     print(f"[SkipTraceReportGenerator] ✓ Read Identity markdown ({len(markdown_reports['identity'])} chars)")
                 else:
                     print(f"[SkipTraceReportGenerator] WARNING: Identity markdown file not found: {identity_file}")
-                
-                if skiptrace_file.exists():
-                    with open(skiptrace_file, 'r', encoding='utf-8') as f:
-                        markdown_reports['skiptrace'] = f.read()
-                    print(f"[SkipTraceReportGenerator] ✓ Read Skiptrace markdown ({len(markdown_reports['skiptrace'])} chars)")
-                else:
-                    print(f"[SkipTraceReportGenerator] WARNING: Skiptrace markdown file not found: {skiptrace_file}")
             except Exception as e:
                 print(f"[SkipTraceReportGenerator] WARNING: Failed to read markdown files for chat storage: {e}")
                 # Continue anyway - markdown storage is optional for chat feature
