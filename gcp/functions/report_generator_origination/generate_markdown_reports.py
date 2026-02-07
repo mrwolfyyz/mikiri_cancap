@@ -111,10 +111,9 @@ def geocode_address(address: str) -> tuple:
 def generate_street_view_url(address: str, geocode: bool = True, cached_coords: Dict[str, float] = None) -> str:
     """
     Generate a Google Maps Street View URL for a given address.
-    If geocode=True, attempts to geocode the address using free Nominatim API
-    to get exact coordinates for direct Street View link.
-    Falls back to search URL if geocoding fails.
-    
+    When coordinates are available, uses official map_action=pano format to open Street View directly.
+    Falls back to search URL if no coordinates (search does not open Street View; user must click pegman).
+
     Args:
         address: Address string
         geocode: Whether to attempt geocoding
@@ -125,16 +124,15 @@ def generate_street_view_url(address: str, geocode: bool = True, cached_coords: 
         lat = cached_coords['lat']
         lon = cached_coords['lon']
         print(f"    ✓ Using cached coordinates: {lat:.6f}, {lon:.6f}")
-        return f"https://www.google.com/maps/@{lat},{lon},3a,75y,0h,90t/data=!3m6!1e1!3m4!1s0!2e0!7i16384!8i8192"
+        return f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}"
     
     if geocode:
         # Clean the address to improve geocoding accuracy
         cleaned = clean_address_for_geocoding(address)
         lat, lon = geocode_address(cleaned)
         if lat and lon:
-            # Direct Street View URL with coordinates
-            # Format: /maps/@lat,lon,zoom,streetview_params
-            return f"https://www.google.com/maps/@{lat},{lon},3a,75y,0h,90t/data=!3m6!1e1!3m4!1s0!2e0!7i16384!8i8192"
+            # Direct Street View URL with coordinates (official map_action=pano format)
+            return f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}"
     
     # Fallback: search URL (one click to Street View via pegman)
     encoded = quote_plus(address)
@@ -2634,6 +2632,9 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         if enrichment_data and enrichment_data.get('addresses'):
             geocoding_data = enrichment_data['addresses']
 
+        # Build normalized lookup for fuzzy address matching (contact_extraction and address_geocoding use separate LLM calls)
+        geocoding_normalized = {normalize_address(k): v for k, v in geocoding_data.items()}
+
         for i, a in enumerate(addresses, start=1):
             raw_addr = a['address_raw']
             cleaned_addr = clean_address_for_geocoding(raw_addr)
@@ -2641,10 +2642,11 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
             if raw_addr != cleaned_addr:
                 print(f"       Cleaned: {cleaned_addr[:60]}...")
 
-            # Use cached coordinates if available
+            # Use cached coordinates if available (normalized matching)
             cached_coords = None
-            if raw_addr in geocoding_data:
-                geocode_result = geocoding_data[raw_addr]
+            normalized_key = normalize_address(raw_addr)
+            if normalized_key in geocoding_normalized:
+                geocode_result = geocoding_normalized[normalized_key]
                 if geocode_result.get('lat') and geocode_result.get('lon'):
                     cached_coords = {
                         'lat': geocode_result['lat'],
@@ -3289,17 +3291,20 @@ def generate_corporate_report(data: Dict[str, Any], name: str, output_dir: Path,
         if enrichment_data and enrichment_data.get('addresses'):
             geocoding_data = enrichment_data['addresses']
         
+        # Build normalized lookup for fuzzy address matching
+        geocoding_normalized = {normalize_address(k): v for k, v in geocoding_data.items()}
+        
         for i, a in enumerate(corp_addresses_raw, start=1):
             cleaned = clean_address(a['address_raw'])
             print(f"  [{i}/{len(corp_addresses_raw)}] Corporate address: {cleaned[:60]}...")
             
-            # Use cached coordinates if available
-            # Try lookup with the exact address_raw key first
+            # Use cached coordinates if available (normalized matching)
             cached_coords = None
             lookup_key = a['address_raw']
+            normalized_key = normalize_address(lookup_key)
             
-            if lookup_key in geocoding_data:
-                geocode_result = geocoding_data[lookup_key]
+            if normalized_key in geocoding_normalized:
+                geocode_result = geocoding_normalized[normalized_key]
                 if geocode_result.get('lat') and geocode_result.get('lon'):
                     cached_coords = {
                         'lat': geocode_result['lat'],
@@ -3309,12 +3314,7 @@ def generate_corporate_report(data: Dict[str, Any], name: str, output_dir: Path,
                 else:
                     print(f"    ⚠️  Cached entry found but no coordinates (error: {geocode_result.get('error', 'unknown')})")
             else:
-                # Debug: check if any keys are similar
-                matching_keys = [k for k in geocoding_data.keys() if lookup_key.lower() in k.lower() or k.lower() in lookup_key.lower()]
-                if matching_keys:
-                    print(f"    ⚠️  No exact match for '{lookup_key[:50]}...', but found {len(matching_keys)} similar keys")
-                else:
-                    print(f"    ⚠️  No cached coordinates found for '{lookup_key[:50]}...' (total cached: {len(geocoding_data)})")
+                print(f"    ⚠️  No cached coordinates found for '{lookup_key[:50]}...' (normalized: '{normalized_key[:50]}...', total cached: {len(geocoding_data)})")
             
             # Never geocode inline during report generation - only use cached coordinates or fall back to search URL
             street_view_url = generate_street_view_url(cleaned, geocode=False, cached_coords=cached_coords)
