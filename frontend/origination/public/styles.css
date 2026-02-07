@@ -194,17 +194,45 @@
 }
 
 .spinner {
-    width: 56px;
-    height: 56px;
-    border: 4px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
     margin: 0 auto var(--space-md);
+    height: 56px;
 }
 
-@keyframes spin {
-    to { transform: rotate(360deg); }
+.spinner-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 1.8s ease-in-out infinite;
+}
+
+.spinner-dot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.spinner-dot:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        transform: scale(0.6);
+        opacity: 0.35;
+    }
+    50% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .spinner-dot {
+        animation-duration: 3s;
+    }
 }
 
 #progressStatus {
