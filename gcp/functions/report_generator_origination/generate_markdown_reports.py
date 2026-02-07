@@ -2303,7 +2303,9 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         content += f"  - Handle: `{handle_name}`  \n"
         content += f"  - Confidence: **{confidence}**  \n"
         content += f"  - URL: <{url}>  \n"
-        
+        whatsmyname_url = f"https://whatsmyname.app/?q={quote_plus(handle_name)}"
+        content += f"  - [🔍 Search handle on 500 sites]({whatsmyname_url})  \n"
+
         # Try to find a snippet for this handle from the queries
         snippet = None
         for query in data.get('queries', []):
@@ -2586,6 +2588,8 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
 
         for i, p in enumerate(phones, start=1):
             content += f"{i}. **{p['number_raw']}**  \n"
+            google_url = generate_google_search_url_for_phone(p)
+            content += f"   - [🔍 Search Google]({google_url})  \n"
             if p.get("source_url"):
                 content += f"   - **Source:** {p['source_url']}  \n"
             if p.get("snippet"):
@@ -2605,7 +2609,8 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         content += "> Automatically detected email addresses from open-web sources.\n\n"
 
         for i, e in enumerate(emails, start=1):
-            content += f"{i}. **`{e['email']}`**  \n"
+            google_url = generate_google_search_url_for_email(e['email'])
+            content += f"{i}. **[{e['email']}]({google_url})**  \n"
             if e.get("source_url"):
                 content += f"   - **Source:** {e['source_url']}  \n"
             if e.get("snippet"):
@@ -2628,14 +2633,14 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         geocoding_data = {}
         if enrichment_data and enrichment_data.get('addresses'):
             geocoding_data = enrichment_data['addresses']
-        
+
         for i, a in enumerate(addresses, start=1):
             raw_addr = a['address_raw']
             cleaned_addr = clean_address_for_geocoding(raw_addr)
             print(f"  [{i}/{len(addresses)}] Raw: {raw_addr[:60]}...")
             if raw_addr != cleaned_addr:
                 print(f"       Cleaned: {cleaned_addr[:60]}...")
-            
+
             # Use cached coordinates if available
             cached_coords = None
             if raw_addr in geocoding_data:
@@ -2645,11 +2650,13 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
                         'lat': geocode_result['lat'],
                         'lon': geocode_result['lon']
                     }
-            
+
             # Never geocode inline during report generation - only use cached coordinates or fall back to search URL
             street_view_url = generate_street_view_url(raw_addr, geocode=False, cached_coords=cached_coords)
             content += f"{i}. **{raw_addr}**  \n"
             content += f"   - [📍 View Property]({street_view_url})  \n"
+            google_url = generate_google_search_url(a)
+            content += f"   - [🔍 Search Google]({google_url})  \n"
             if a.get("source_url"):
                 content += f"   - **Source:** {a['source_url']}  \n"
             if a.get("snippet"):
