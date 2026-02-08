@@ -330,6 +330,32 @@
       jobData?.created_at ?? jobData?.started_at ?? jobData?.completed_at
     );
 
+    // Humorous feedback response messages
+    const positiveFeedbackMessages = [
+      "You're making us blush! 🎉",
+      "High five! We'll keep the good vibes coming.",
+      "Aw shucks, you're too kind! 🌟",
+      "We knew you'd love it. Okay, we hoped. Okay, we prayed.",
+      "Nailed it! Our algorithm just did a little victory dance.",
+      "Thanks! We'll add this to our 'Wall of Awesome' 🏆",
+      "You just made an AI very happy. Possibly sentient now.",
+      "We're blushing harder than a first date. Thanks! 💕",
+      "This feedback is chef's kiss. You rock!",
+      "Outstanding! We're basically best friends now.",
+    ];
+    const negativeFeedbackMessages = [
+      "Ouch. But we appreciate the honesty! 🔧",
+      "Noted. Our engineers are already stress-eating. We'll do better!",
+      "Fair enough. Back to the drawing board we go! 📐",
+      "Thanks for keeping us humble. We'll level up! 💪",
+      "Constructive criticism accepted. Coffee consumed. Improvements incoming.",
+      "We hear you loud and clear. Time to work our magic! ✨",
+      "Challenge accepted. We're on it! 🚀",
+      "Your feedback = our fuel. Let's make this better!",
+      "Not our best work? Let's fix that. Stand by! 🔨",
+      "Thanks for the reality check. Improvement mode: activated.",
+    ];
+
     const tabs = getTabsForWorkflow(markdownReports);
     if (tabs.length === 0) {
       container.innerHTML = "<p>No report content available.</p>";
@@ -493,6 +519,10 @@
             await onSubmitFeedback(jobId, selectedRating, comment);
             if (feedbackPrompt) feedbackPrompt.style.display = "none";
             if (feedbackComment) feedbackComment.style.display = "none";
+            const messages = selectedRating === "positive" ? positiveFeedbackMessages : negativeFeedbackMessages;
+            const randomMessage = messages[Math.floor(Math.random() * messages.length)];
+            const thanksText = feedbackThanks ? feedbackThanks.querySelector("span") : null;
+            if (thanksText) thanksText.textContent = randomMessage;
             if (feedbackThanks) feedbackThanks.style.display = "flex";
           } catch (e) {
             console.error("Feedback submission failed:", e);
