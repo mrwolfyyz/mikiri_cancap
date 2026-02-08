@@ -277,12 +277,12 @@ function validateCompanyName(companyName) {
 }
 
 function validateProvince(province) {
-  // Province is optional, so empty is valid
+  // Province is required
   if (!province || province.trim().length === 0) {
-    return null;
+    return "Province is required";
   }
 
-  // If provided, must be a valid province code
+  // Must be a valid province code
   const validProvinces = ["ON", "BC", "AB", "QC", "MB", "SK", "NS", "NB", "NL", "PE", "NT", "YT", "NU"];
   if (!validProvinces.includes(province)) {
     return "Invalid province selected";
@@ -1024,9 +1024,10 @@ function populateFromURLParams() {
     const email = urlParams.get("email");
     const city = urlParams.get("city");
     const companyName = urlParams.get("companyName");
+    const province = urlParams.get("province");
 
     // Check if we have any parameters to populate
-    if (!fullName && !email && !city && !companyName) {
+    if (!fullName && !email && !city && !companyName && !province) {
       return; // No URL parameters, nothing to do
     }
 
@@ -1035,6 +1036,7 @@ function populateFromURLParams() {
     const emailInput = document.getElementById("email");
     const cityInput = document.getElementById("city");
     const companyNameInput = document.getElementById("companyName");
+    const provinceInput = document.getElementById("province");
 
     // Populate form fields if values exist
     let populated = false;
@@ -1061,6 +1063,12 @@ function populateFromURLParams() {
       companyNameInput.value = decodeURIComponent(companyName);
       populated = true;
       console.log("Populated companyName:", companyName);
+    }
+
+    if (province && provinceInput) {
+      provinceInput.value = decodeURIComponent(province);
+      populated = true;
+      console.log("Populated province:", province);
     }
 
     // If any fields were populated, clean the URL (remove query params)
