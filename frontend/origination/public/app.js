@@ -752,12 +752,30 @@ async function showResults(job) {
     elements.progressSection.style.display = "none";
     elements.resultsSection.style.display = "block";
 
+    async function submitFeedback(jobId, rating, comment) {
+      const token = await getAuthToken();
+      const response = await fetch(`${API_URL}/jobs/${jobId}/feedback`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ rating, comment }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to submit feedback");
+      }
+      return await response.json();
+    }
+
     window.ReportRenderer.renderReport(elements.inlineReportContainer, {
       jobId: currentJobId,
       workflowType,
       jobData,
       markdownReports,
       chatUrl: `chat.html?job_id=${currentJobId}`,
+      onSubmitFeedback: submitFeedback,
     });
 
     document.querySelector(".container")?.classList.add("report-expanded");
