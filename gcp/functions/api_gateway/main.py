@@ -122,6 +122,18 @@ def validate_city(city: str) -> tuple[bool, str]:
     return True, ""
 
 
+VALID_PROVINCES = ["ON", "BC", "AB", "QC", "MB", "SK", "NS", "NB", "NL", "PE", "NT", "YT", "NU"]
+
+
+def validate_province(province: str) -> tuple[bool, str]:
+    """Validate province (required, must be valid Canadian province code)."""
+    if not province:
+        return False, "Province is required"
+    if province not in VALID_PROVINCES:
+        return False, "Invalid province. Must be a valid Canadian province code"
+    return True, ""
+
+
 def create_job(email: str, full_name: str, city: str, drive_folder_id: str = None, company_name: str = None, user_id: str = None) -> str:
     """Create a new job in Firestore."""
     job_id = uuid.uuid4().hex[:12]
@@ -153,7 +165,7 @@ def create_job(email: str, full_name: str, city: str, drive_folder_id: str = Non
     return job_id
 
 
-def trigger_workflow(job_id: str, email: str, full_name: str, city: str, province: str = None, company_name: str = None, workflow_name: str = None) -> str:
+def trigger_workflow(job_id: str, email: str, full_name: str, city: str, province: str, company_name: str = None, workflow_name: str = None) -> str:
     """Trigger the investigate workflow."""
     if workflow_name is None:
         workflow_name = SKIPTRACE_WORKFLOW_NAME
@@ -170,11 +182,8 @@ def trigger_workflow(job_id: str, email: str, full_name: str, city: str, provinc
         "email": email,
         "full_name": full_name,
         "city": city or "",
+        "province": province,
     }
-
-    # Add province if provided
-    if province:
-        workflow_input["province"] = province
 
     # Add company_name if provided
     if company_name:
@@ -314,6 +323,10 @@ def main(request: Request):
         if not valid:
             errors.append({"field": "city", "message": msg})
         
+        valid, msg = validate_province(province)
+        if not valid:
+            errors.append({"field": "province", "message": msg})
+        
         if not company_name:
             errors.append({"field": "company_name", "message": "Company name is required"})
         
@@ -373,6 +386,10 @@ def main(request: Request):
         valid, msg = validate_city(city)
         if not valid:
             errors.append({"field": "city", "message": msg})
+        
+        valid, msg = validate_province(province)
+        if not valid:
+            errors.append({"field": "province", "message": msg})
         
         if not company_name:
             errors.append({"field": "company_name", "message": "Company name is required"})
