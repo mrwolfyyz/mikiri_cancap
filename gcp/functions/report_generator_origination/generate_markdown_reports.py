@@ -2298,11 +2298,10 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         
         
         content += f"- **{platform}**  \n"
-        content += f"  - Handle: `{handle_name}`  \n"
+        whatsmyname_url = f"https://whatsmyname.app/?q={quote_plus(handle_name)}"
+        content += f"  - Handle: [`{handle_name}`]({whatsmyname_url})  \n"
         content += f"  - Confidence: **{confidence}**  \n"
         content += f"  - URL: <{url}>  \n"
-        whatsmyname_url = f"https://whatsmyname.app/?q={quote_plus(handle_name)}"
-        content += f"  - [🔍 Search handle on 500 sites]({whatsmyname_url})  \n"
 
         # Try to find a snippet for this handle from the queries
         snippet = None
@@ -2585,9 +2584,8 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         content += "> Automatically detected phone numbers from open-web sources.\n\n"
 
         for i, p in enumerate(phones, start=1):
-            content += f"{i}. **{p['number_raw']}**  \n"
             google_url = generate_google_search_url_for_phone(p)
-            content += f"   - [🔍 Search Google]({google_url})  \n"
+            content += f"{i}. **[{p['number_raw']}]({google_url})**  \n"
             if p.get("source_url"):
                 content += f"   - **Source:** {p['source_url']}  \n"
             if p.get("snippet"):
@@ -2655,10 +2653,9 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
 
             # Never geocode inline during report generation - only use cached coordinates or fall back to search URL
             street_view_url = generate_street_view_url(raw_addr, geocode=False, cached_coords=cached_coords)
-            content += f"{i}. **{raw_addr}**  \n"
-            content += f"   - [📍 View Property]({street_view_url})  \n"
             google_url = generate_google_search_url(a)
-            content += f"   - [🔍 Search Google]({google_url})  \n"
+            content += f"{i}. **[{raw_addr}]({google_url})**  \n"
+            content += f"   - [📍 View Property]({street_view_url})  \n"
             if a.get("source_url"):
                 content += f"   - **Source:** {a['source_url']}  \n"
             if a.get("snippet"):
@@ -2769,12 +2766,12 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
             source_label = source.replace('_', ' ').title()
             source_url = ""
         
-        if source_url:
-            content += f"Source: [{source_label}]({source_url}) ·Timestamp: {report_timestamp}\n\n"
-        else:
-            content += f"Source: {source_label} ·Timestamp: {report_timestamp}\n\n"
+        content += f"Source: {source_label} · Timestamp: {report_timestamp}\n\n"
         content += "**Query**\n\n"
-        content += f"`{query_text}`\n\n"
+        if source_url:
+            content += f"[`{query_text}`]({source_url})\n\n"
+        else:
+            content += f"`{query_text}`\n\n"
         content += "**Hits**\n\n"
         
         if hits:

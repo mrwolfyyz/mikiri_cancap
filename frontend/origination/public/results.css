@@ -460,6 +460,10 @@
     text-decoration: underline;
 }
 
+.markdown-content a code {
+    color: inherit;
+}
+
 .markdown-content code {
     background: var(--bg-primary);
     padding: 2px 6px;
