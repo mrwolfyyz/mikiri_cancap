@@ -322,7 +322,7 @@
   }
 
   function renderReport(container, options) {
-    const { jobId, workflowType, jobData, markdownReports, chatUrl } = options;
+    const { jobId, workflowType, jobData, markdownReports, chatUrl, onSubmitFeedback, existingFeedback } = options;
     const input = jobData?.input || {};
     const name = input.full_name || jobData?.full_name || "Unknown";
     const city = input.city || jobData?.city || "";
@@ -379,6 +379,32 @@
         `
       : "";
 
+    const feedbackAlreadySubmitted = !!(existingFeedback && existingFeedback.rating);
+    const feedbackWidgetHtml = `
+                <div class="feedback-widget" id="feedbackWidget">
+                    <div class="feedback-prompt" id="feedbackPrompt" ${feedbackAlreadySubmitted ? 'style="display:none"' : ""}>
+                        <span class="feedback-label">Was this report helpful?</span>
+                        <div class="feedback-buttons">
+                            <button class="feedback-btn" data-rating="positive" title="Yes, helpful">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M6 9V17M2 11V17C2 17.5523 2.44772 18 3 18H5.5C5.77614 18 6 17.7761 6 17.5V9.5C6 9.22386 5.77614 9 5.5 9H3C2.44772 9 2 9.44772 2 10V11ZM9.5 18H14.382C15.177 18 15.871 17.454 16.062 16.682L17.809 9.682C18.072 8.628 17.277 7.6 16.189 7.6H12.4L13.1 4.11C13.169 3.763 13.074 3.405 12.842 3.133L12 2.2L7.7 7.87C7.254 8.44 7 9.15 7 9.883V16C7 17.105 7.895 18 9 18H9.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </button>
+                            <button class="feedback-btn" data-rating="negative" title="Not helpful">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M14 11V3M18 9V3C18 2.44772 17.5523 2 17 2H14.5C14.2239 2 14 2.22386 14 2.5V10.5C14 10.7761 14.2239 11 14.5 11H17C17.5523 11 18 10.5523 18 10V9ZM10.5 2H5.618C4.823 2 4.129 2.546 3.938 3.318L2.191 10.318C1.928 11.372 2.723 12.4 3.811 12.4H7.6L6.9 15.89C6.831 16.237 6.926 16.595 7.158 16.867L8 17.8L12.3 12.13C12.746 11.56 13 10.85 13 10.117V4C13 2.895 12.105 2 11 2H10.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="feedback-comment" id="feedbackComment" style="display:none">
+                        <textarea class="feedback-textarea" id="feedbackTextarea" placeholder="Any additional comments? (optional)" maxlength="1000" rows="3"></textarea>
+                        <div class="feedback-comment-actions">
+                            <button class="button-secondary feedback-submit" id="feedbackSubmitBtn">Submit Feedback</button>
+                        </div>
+                    </div>
+                    <div class="feedback-thanks" id="feedbackThanks" ${feedbackAlreadySubmitted ? "" : 'style="display:none"'}>
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M13.5 4.5L6 12L2.5 8.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        <span>Thank you for your feedback!</span>
+                    </div>
+                </div>`;
+
     container.innerHTML = `
             <div class="report-header">
                 <div class="report-info">
@@ -402,6 +428,7 @@
                         </button>
                     </div>
                 </div>
+                ${feedbackWidgetHtml}
             </div>
             <nav class="report-tabs" id="reportTabs">${tabsHtml}</nav>
             <div class="tab-panels" id="reportTabPanels">${panelsHtml}</div>
@@ -437,6 +464,44 @@
         switchTab(tabId);
       }
     });
+
+    // Feedback widget event handling
+    if (onSubmitFeedback && !feedbackAlreadySubmitted) {
+      let selectedRating = null;
+      const feedbackPrompt = container.querySelector("#feedbackPrompt");
+      const feedbackComment = container.querySelector("#feedbackComment");
+      const feedbackThanks = container.querySelector("#feedbackThanks");
+      const feedbackTextarea = container.querySelector("#feedbackTextarea");
+      const feedbackSubmitBtn = container.querySelector("#feedbackSubmitBtn");
+
+      container.querySelectorAll(".feedback-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          selectedRating = btn.dataset.rating;
+          container.querySelectorAll(".feedback-btn").forEach((b) => b.classList.remove("selected"));
+          btn.classList.add("selected");
+          if (feedbackComment) feedbackComment.style.display = "block";
+        });
+      });
+
+      if (feedbackSubmitBtn) {
+        feedbackSubmitBtn.addEventListener("click", async () => {
+          if (!selectedRating) return;
+          feedbackSubmitBtn.disabled = true;
+          feedbackSubmitBtn.textContent = "Submitting...";
+          try {
+            const comment = feedbackTextarea ? feedbackTextarea.value.trim() : "";
+            await onSubmitFeedback(jobId, selectedRating, comment);
+            if (feedbackPrompt) feedbackPrompt.style.display = "none";
+            if (feedbackComment) feedbackComment.style.display = "none";
+            if (feedbackThanks) feedbackThanks.style.display = "flex";
+          } catch (e) {
+            console.error("Feedback submission failed:", e);
+            feedbackSubmitBtn.disabled = false;
+            feedbackSubmitBtn.textContent = "Submit Feedback";
+          }
+        });
+      }
+    }
 
     if (!isSkiptrace) {
       // Origination: risk level

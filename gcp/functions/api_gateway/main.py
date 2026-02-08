@@ -621,6 +621,59 @@ def main(request: Request):
         except requests.exceptions.RequestException as e:
             return jsonify({"error": f"Chat handler origination failed: {str(e)}"}), 500, headers
     
+    # POST /jobs/{job_id}/feedback
+    if request.method == "POST" and "/jobs/" in path and path.endswith("/feedback"):
+        # Extract job_id from path: /jobs/{job_id}/feedback
+        path_parts = path.strip("/").split("/")
+        if len(path_parts) != 3 or path_parts[0] != "jobs" or path_parts[2] != "feedback":
+            return jsonify({"error": "Invalid feedback path"}), 400, headers
+        
+        job_id = path_parts[1]
+        if not job_id:
+            return jsonify({"error": "Job ID required"}), 400, headers
+        
+        # Verify authentication
+        user_id, auth_error = verify_firebase_token(request)
+        if auth_error:
+            return jsonify(auth_error), 401, headers
+        
+        # Get job and verify ownership
+        job = get_job(job_id)
+        if not job:
+            return jsonify({"error": "Job not found"}), 404, headers
+        
+        job_user_id = job.get("user_id")
+        if job_user_id is not None and job_user_id != user_id:
+            return jsonify({"error": "Unauthorized"}), 403, headers
+        
+        # Parse and validate request body
+        try:
+            data = request.get_json() or {}
+        except Exception:
+            return jsonify({"error": "Invalid JSON"}), 400, headers
+        
+        rating = (data.get("rating") or "").strip()
+        comment = (data.get("comment") or "").strip()
+        
+        if rating not in ("positive", "negative"):
+            return jsonify({"error": "rating must be 'positive' or 'negative'"}), 400, headers
+        
+        if len(comment) > 1000:
+            return jsonify({"error": "comment must be 1000 characters or fewer"}), 400, headers
+        
+        # Write feedback to the job document
+        try:
+            feedback_data = {
+                "rating": rating,
+                "comment": comment,
+                "submitted_at": datetime.utcnow(),
+                "user_id": user_id,
+            }
+            db.collection("jobs").document(job_id).update({"feedback": feedback_data})
+            return jsonify({"status": "ok"}), 200, headers
+        except Exception as e:
+            return jsonify({"error": f"Failed to save feedback: {str(e)}"}), 500, headers
+    
     # Health check
     if request.method == "GET" and path in ("/health", "/"):
         return jsonify({
