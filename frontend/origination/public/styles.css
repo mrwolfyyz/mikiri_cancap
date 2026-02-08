@@ -63,6 +63,31 @@
     margin-bottom: var(--space-md);
 }
 
+.form-row {
+    display: flex;
+    gap: var(--space-md);
+}
+
+.form-row .form-group {
+    flex: 1;
+    min-width: 0;
+}
+
+.form-row .form-group.city {
+    flex: 3;
+}
+
+.form-row .form-group.province {
+    flex: 2;
+}
+
+@media (max-width: 500px) {
+    .form-row {
+        flex-direction: column;
+        gap: 0;
+    }
+}
+
 .form-group label {
     display: block;
     font-weight: 600;

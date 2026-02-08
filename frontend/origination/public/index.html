@@ -53,42 +53,44 @@
                     <span class="error-message" id="fullNameError"></span>
                 </div>
 
-                <div class="form-group">
-                    <label for="city">Last Known City *</label>
-                    <input
-                        type="text"
-                        id="city"
-                        name="city"
-                        placeholder="e.g., Toronto"
-                        required
-                    >
-                    <span class="helper-text">Where they were last located</span>
-                    <span class="error-message" id="cityError"></span>
-                </div>
+                <div class="form-row">
+                    <div class="form-group city">
+                        <label for="city">Last Known City *</label>
+                        <input
+                            type="text"
+                            id="city"
+                            name="city"
+                            placeholder="e.g., Toronto"
+                            required
+                        >
+                        <span class="helper-text">Where they were last located</span>
+                        <span class="error-message" id="cityError"></span>
+                    </div>
 
-                <div class="form-group">
-                    <label for="province">Province</label>
-                    <select
-                        id="province"
-                        name="province"
-                    >
-                        <option value="">Select Province (Optional)</option>
-                        <option value="ON">Ontario</option>
-                        <option value="BC">British Columbia</option>
-                        <option value="AB">Alberta</option>
-                        <option value="QC">Quebec</option>
-                        <option value="MB">Manitoba</option>
-                        <option value="SK">Saskatchewan</option>
-                        <option value="NS">Nova Scotia</option>
-                        <option value="NB">New Brunswick</option>
-                        <option value="NL">Newfoundland and Labrador</option>
-                        <option value="PE">Prince Edward Island</option>
-                        <option value="NT">Northwest Territories</option>
-                        <option value="YT">Yukon</option>
-                        <option value="NU">Nunavut</option>
-                    </select>
-                    <span class="helper-text">Optional - helps improve search precision</span>
-                    <span class="error-message" id="provinceError"></span>
+                    <div class="form-group province">
+                        <label for="province">Province</label>
+                        <select
+                            id="province"
+                            name="province"
+                        >
+                            <option value="">Select Province (Optional)</option>
+                            <option value="ON">Ontario</option>
+                            <option value="BC">British Columbia</option>
+                            <option value="AB">Alberta</option>
+                            <option value="QC">Quebec</option>
+                            <option value="MB">Manitoba</option>
+                            <option value="SK">Saskatchewan</option>
+                            <option value="NS">Nova Scotia</option>
+                            <option value="NB">New Brunswick</option>
+                            <option value="NL">Newfoundland and Labrador</option>
+                            <option value="PE">Prince Edward Island</option>
+                            <option value="NT">Northwest Territories</option>
+                            <option value="YT">Yukon</option>
+                            <option value="NU">Nunavut</option>
+                        </select>
+                        <span class="helper-text">Optional - helps improve search precision</span>
+                        <span class="error-message" id="provinceError"></span>
+                    </div>
                 </div>
 
                 <div class="form-group">
@@ -209,41 +211,43 @@
                     <span class="error-message" id="suiteUnitError"></span>
                 </div>
 
-                <div class="form-group">
-                    <label for="addressCity">City *</label>
-                    <input 
-                        type="text" 
-                        id="addressCity" 
-                        name="city" 
-                        placeholder="e.g., Toronto"
-                        required
-                    >
-                    <span class="error-message" id="addressCityError"></span>
-                </div>
+                <div class="form-row">
+                    <div class="form-group city">
+                        <label for="addressCity">City *</label>
+                        <input 
+                            type="text" 
+                            id="addressCity" 
+                            name="city" 
+                            placeholder="e.g., Toronto"
+                            required
+                        >
+                        <span class="error-message" id="addressCityError"></span>
+                    </div>
 
-                <div class="form-group">
-                    <label for="addressProvince">Province *</label>
-                    <select 
-                        id="addressProvince" 
-                        name="province" 
-                        required
-                    >
-                        <option value="">Select Province</option>
-                        <option value="ON">Ontario</option>
-                        <option value="BC">British Columbia</option>
-                        <option value="AB">Alberta</option>
-                        <option value="QC">Quebec</option>
-                        <option value="MB">Manitoba</option>
-                        <option value="SK">Saskatchewan</option>
-                        <option value="NS">Nova Scotia</option>
-                        <option value="NB">New Brunswick</option>
-                        <option value="NL">Newfoundland and Labrador</option>
-                        <option value="PE">Prince Edward Island</option>
-                        <option value="NT">Northwest Territories</option>
-                        <option value="YT">Yukon</option>
-                        <option value="NU">Nunavut</option>
-                    </select>
-                    <span class="error-message" id="addressProvinceError"></span>
+                    <div class="form-group province">
+                        <label for="addressProvince">Province *</label>
+                        <select 
+                            id="addressProvince" 
+                            name="province" 
+                            required
+                        >
+                            <option value="">Select Province</option>
+                            <option value="ON">Ontario</option>
+                            <option value="BC">British Columbia</option>
+                            <option value="AB">Alberta</option>
+                            <option value="QC">Quebec</option>
+                            <option value="MB">Manitoba</option>
+                            <option value="SK">Saskatchewan</option>
+                            <option value="NS">Nova Scotia</option>
+                            <option value="NB">New Brunswick</option>
+                            <option value="NL">Newfoundland and Labrador</option>
+                            <option value="PE">Prince Edward Island</option>
+                            <option value="NT">Northwest Territories</option>
+                            <option value="YT">Yukon</option>
+                            <option value="NU">Nunavut</option>
+                        </select>
+                        <span class="error-message" id="addressProvinceError"></span>
+                    </div>
                 </div>
 
                 <div class="form-group">
