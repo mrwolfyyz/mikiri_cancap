@@ -565,13 +565,13 @@ async function submitAddressVerification(
 // ===========================
 // UI State Management
 // ===========================
-function showProgress(jobId, status = "pending") {
+function showProgress(fullName, status = "pending") {
   elements.form.style.display = "none";
   elements.resultsSection.style.display = "none";
   elements.errorSection.style.display = "none";
   elements.progressSection.style.display = "block";
 
-  elements.jobIdDisplay.textContent = jobId;
+  elements.jobIdDisplay.textContent = fullName;
   updateProgressStatus(status);
   startStatusMessageTimer();
 }
@@ -977,7 +977,7 @@ async function handleSubmit(e) {
     lastRequestTime = Date.now();
 
     // Show progress and start polling
-    showProgress(result.job_id);
+    showProgress(fullName);
     await startPolling(result.job_id);
   } catch (error) {
     console.error("Submission error:", error);
