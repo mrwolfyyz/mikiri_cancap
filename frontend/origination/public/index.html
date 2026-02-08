@@ -173,7 +173,7 @@
             </div>
 
             <!-- Address Verification Form -->
-            <form id="addressVerificationForm" class="investigation-form" action="#" method="post">
+            <form id="addressVerificationForm" class="investigation-form">
                 <div class="form-group">
                     <label for="businessName">Business Name *</label>
                     <input 
@@ -182,6 +182,7 @@
                         name="business_name" 
                         placeholder="e.g., Acme Corporation"
                         required
+                        autocomplete="organization"
                     >
                     <span class="helper-text">Enter the business name to verify at this address</span>
                     <span class="error-message" id="businessNameError"></span>
@@ -195,6 +196,7 @@
                         name="street_address" 
                         placeholder="e.g., 123 Main Street"
                         required
+                        autocomplete="street-address"
                     >
                     <span class="error-message" id="streetAddressError"></span>
                 </div>
@@ -220,6 +222,7 @@
                             name="city" 
                             placeholder="e.g., Toronto"
                             required
+                            autocomplete="address-level2"
                         >
                         <span class="error-message" id="addressCityError"></span>
                     </div>
@@ -260,6 +263,7 @@
                         pattern="[A-Za-z][0-9][A-Za-z] [0-9][A-Za-z][0-9]"
                         maxlength="7"
                         required
+                        autocomplete="postal-code"
                     >
                     <span class="helper-text">Format: A1A 1A1</span>
                     <span class="error-message" id="postalCodeError"></span>
@@ -273,19 +277,25 @@
             <!-- Loading Display -->
             <div id="addressVerificationLoading" class="progress-section is-hidden">
                 <div class="progress-content">
-                    <div class="spinner"></div>
+                    <div class="spinner" aria-hidden="true">
+                        <div class="spinner-dot"></div>
+                        <div class="spinner-dot"></div>
+                        <div class="spinner-dot"></div>
+                    </div>
                     <h3>Verifying Address...</h3>
                     <p class="progress-time">This may take 15-30 seconds</p>
                 </div>
             </div>
 
             <!-- Results Display -->
-            <div id="addressVerificationResults" class="is-hidden">
-                <div class="results-header-row">
-                    <h3>Verification Results</h3>
+            <div id="addressVerificationResults" class="results-section is-hidden">
+                <div class="results-actions results-actions-top">
                     <button id="addressVerificationNewSearchButton" class="new-report-button">New Verification</button>
                 </div>
                 <div id="addressVerificationResultsContent"></div>
+                <div class="results-actions results-actions-bottom">
+                    <button id="addressVerificationNewSearchButtonBottom" class="new-report-button">New Verification</button>
+                </div>
             </div>
 
             <!-- Error Display -->

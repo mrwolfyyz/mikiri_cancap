@@ -142,6 +142,9 @@ const elements = {
   addressVerificationNewSearchButton: document.getElementById(
     "addressVerificationNewSearchButton"
   ),
+  addressVerificationNewSearchButtonBottom: document.getElementById(
+    "addressVerificationNewSearchButtonBottom"
+  ),
   businessNameError: document.getElementById("businessNameError"),
   streetAddressError: document.getElementById("streetAddressError"),
   suiteUnitError: document.getElementById("suiteUnitError"),
@@ -1186,82 +1189,56 @@ function showAddressVerificationResults(data) {
   const analysis = data.analysis || {};
   let html = "";
 
-  // Business verification status (PRIMARY RESULT)
+  // Combined status + risk card
   const businessAtAddress = analysis.business_at_address;
-  const businessStatus = businessAtAddress ? "✓ Verified" : "✗ Not Found";
-  const businessStatusClass = businessAtAddress ? "success" : "error";
-  html += `<div class="verification-status ${businessStatusClass}" style="padding: var(--space-md); border-radius: 8px; margin-bottom: var(--space-lg); background: ${
-    businessAtAddress
-      ? "var(--success-bg, #d4edda)"
-      : "var(--error-bg, #f8d7da)"
-  }; border: 1px solid ${
-    businessAtAddress
-      ? "var(--success-border, #c3e6cb)"
-      : "var(--error-border, #f5c6cb)"
-  };">`;
-  html += `<h3 style="margin: 0 0 var(--space-sm) 0;">Business Verification: <strong>${escapeHtml(
-    businessStatus
-  )}</strong></h3>`;
-  html += `<p style="margin: 0;">${escapeHtml(
-    analysis.reasoning || "No reasoning provided"
-  )}</p>`;
+  const businessStatus = businessAtAddress ? "Verified" : "Not Found";
+  const businessStatusClass = businessAtAddress ? "verification-verified" : "verification-not-found";
+  const riskLevel = analysis.fraud_risk_level || "unknown";
+  const riskClass = `risk-${riskLevel}`;
+
+  html += `<div class="verification-status-card ${riskClass}">`;
+  html += `<h3>Business: <span class="${businessStatusClass}">${businessAtAddress ? "✓" : "✗"} ${escapeHtml(businessStatus)}</span>`;
+  html += ` · Risk Level: <span class="verification-badge">${escapeHtml(riskLevel.toUpperCase())}</span></h3>`;
+  html += `<p>${escapeHtml(analysis.reasoning || "No reasoning provided")}</p>`;
   html += `</div>`;
 
   // Street View link
   const geocoding = data.geocoding || {};
   const streetViewUrl = geocoding.street_view_url;
   if (streetViewUrl) {
-    html += `<div style="margin-bottom: var(--space-lg);">`;
-    html += `<a href="${escapeHtml(
-      streetViewUrl
-    )}" target="_blank" class="submit-button" style="display: inline-block; text-decoration: none; text-align: center;">`;
-    html += `📍 View Address on Google Street View`;
+    html += `<div class="verification-street-view">`;
+    html += `<a href="${escapeHtml(streetViewUrl)}" target="_blank" rel="noopener noreferrer" class="button-secondary">`;
+    html += `<svg class="button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1C5.24 1 3 3.24 3 6c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5zm0 7a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" stroke="currentColor" stroke-width="1.5"/></svg>`;
+    html += `View on Google Street View`;
     html += `</a>`;
     html += `</div>`;
   }
 
-  // Fraud risk level
-  const riskLevel = analysis.fraud_risk_level || "unknown";
-  const riskColors = {
-    low: "#28a745",
-    medium: "#ffc107",
-    high: "#dc3545",
-  };
-  const riskColor = riskColors[riskLevel] || "#6c757d";
-  html += `<div style="padding: var(--space-md); border-radius: 8px; margin-bottom: var(--space-lg); border-left: 4px solid ${riskColor};">`;
-  html += `<h4 style="margin: 0 0 var(--space-sm) 0;">Verification Risk Level: <span style="color: ${riskColor}; font-weight: bold; text-transform: uppercase;">${escapeHtml(
-    riskLevel
-  )}</span></h4>`;
-  html += `<p style="margin: 0; color: var(--text-secondary);">${escapeHtml(
-    analysis.reasoning || ""
-  )}</p>`;
-  html += `</div>`;
-
   // Fraud indicators
   const fraudIndicators = analysis.fraud_indicators || [];
   if (fraudIndicators.length > 0) {
-    html += `<div style="margin-bottom: var(--space-lg);">`;
-    html += `<h4>⚠️ Verification Concerns:</h4>`;
-    html += `<ul style="margin: var(--space-sm) 0; padding-left: var(--space-lg);">`;
+    html += `<div class="verification-section">`;
+    html += `<h4>Verification Concerns</h4>`;
+    html += `<ul>`;
     fraudIndicators.forEach((indicator) => {
-      html += `<li>${escapeHtml(indicator)}</li>`;
+      html += `<li class="verification-flag-item">⚠️ ${escapeHtml(indicator)}</li>`;
     });
     html += `</ul>`;
     html += `</div>`;
   }
 
   // Address type classifications
-  html += `<div style="margin-bottom: var(--space-lg);">`;
-  html += `<h4>Address Classification:</h4>`;
-  html += `<ul style="margin: var(--space-sm) 0; padding-left: var(--space-lg);">`;
+  html += `<div class="verification-section">`;
+  html += `<h4>Address Classification</h4>`;
+  html += `<ul>`;
   if (analysis.is_virtual_workspace) {
-    html += `<li style="color: var(--error-color, #dc3545);">⚠️ Virtual workspace/co-working space</li>`;
+    html += `<li class="verification-flag-item">⚠️ Virtual workspace/co-working space</li>`;
   }
   if (analysis.is_shipping_location) {
-    html += `<li style="color: var(--error-color, #dc3545);">⚠️ Shipping/mailbox location (UPS/FedEx/PO Box)</li>`;
+    html += `<li class="verification-flag-item">⚠️ Shipping/mailbox location (UPS/FedEx/PO Box)</li>`;
   }
   if (analysis.is_residential) {
-    html += `<li style="color: var(--error-color, #dc3545);">⚠️ Residential address (red flag for business)</li>`;
+    html += `<li class="verification-flag-item">⚠️ Residential address (red flag for business)</li>`;
   }
   if (
     !analysis.is_virtual_workspace &&
@@ -1276,9 +1253,9 @@ function showAddressVerificationResults(data) {
   // Key findings
   const keyFindings = analysis.key_findings || [];
   if (keyFindings.length > 0) {
-    html += `<div style="margin-bottom: var(--space-lg);">`;
-    html += `<h4>Key Findings:</h4>`;
-    html += `<ul style="margin: var(--space-sm) 0; padding-left: var(--space-lg);">`;
+    html += `<div class="verification-section">`;
+    html += `<h4>Key Findings</h4>`;
+    html += `<ul>`;
     keyFindings.forEach((finding) => {
       html += `<li>${escapeHtml(finding)}</li>`;
     });
@@ -1287,16 +1264,13 @@ function showAddressVerificationResults(data) {
   }
 
   // Confidence level
-  html += `<div style="padding: var(--space-sm); background: var(--bg-secondary, #f8f9fa); border-radius: 4px; margin-top: var(--space-lg);">`;
-  html += `<small style="color: var(--text-secondary);">Confidence: <strong>${escapeHtml(
-    analysis.confidence || "unknown"
-  )}</strong></small>`;
+  html += `<div class="verification-confidence">`;
+  html += `Confidence: <strong>${escapeHtml(analysis.confidence || "unknown")}</strong>`;
   html += `</div>`;
 
-  // Search Results Section
+  // Search Results Section (collapsible)
   const searchResults = data.search_results?.queries || [];
   if (searchResults.length > 0) {
-    // Query ID to human-readable labels
     const queryLabels = {
       business_name_and_address: "Business Name + Address (Exact Match)",
       business_name_and_address_flexible: "Business Name + Address (Flexible)",
@@ -1306,120 +1280,87 @@ function showAddressVerificationResults(data) {
       business_complaints_fraud: "Complaints & Fraud Reports",
     };
 
-    // Query type to badge styling
-    const typeStyles = {
-      high_precision: {
-        bg: "#e7f3ff",
-        border: "#b3d9ff",
-        label: "High Precision",
-      },
-      context: {
-        bg: "#fff4e6",
-        border: "#ffd699",
-        label: "Context",
-      },
-      high_recall: {
-        bg: "#e6f7e6",
-        border: "#b3e6b3",
-        label: "High Recall",
-      },
+    const typeClassMap = {
+      high_precision: "type-high-precision",
+      context: "type-context",
+      high_recall: "type-high-recall",
     };
 
-    // Calculate summary statistics
+    const typeLabelMap = {
+      high_precision: "High Precision",
+      context: "Context",
+      high_recall: "High Recall",
+    };
+
     const totalResults = searchResults.reduce(
       (sum, query) => sum + (query.hits?.length || 0),
       0
     );
 
-    html += `<div style="margin-top: var(--space-xl); border-top: 2px solid var(--border-color, #dee2e6); padding-top: var(--space-lg);">`;
-    html += `<h4 style="margin: 0 0 var(--space-sm) 0;">🔍 Search Results</h4>`;
-    html += `<p style="color: var(--text-secondary); font-size: 0.9em; margin: 0 0 var(--space-md) 0;">`;
-    html += `Found ${totalResults} total results across ${
+    html += `<div class="verification-search-section">`;
+    html += `<details class="verification-search-collapsible">`;
+    html += `<summary>`;
+    html += `<span class="search-toggle-icon" aria-hidden="true"></span>`;
+    html += `<span>Search Results</span>`;
+    html += `<span class="search-toggle-label">Show evidence</span>`;
+    html += `<span class="search-count-badge">${totalResults} results</span>`;
+    html += `</summary>`;
+    html += `<div class="verification-search-content">`;
+    html += `<p class="verification-search-summary">Found ${totalResults} total results across ${
       searchResults.length
-    } search ${searchResults.length === 1 ? "query" : "queries"}.`;
-    html += `</p>`;
+    } search ${searchResults.length === 1 ? "query" : "queries"}.</p>`;
 
-    // Display each query
     searchResults.forEach((query, queryIndex) => {
       const queryId = query.id || `query_${queryIndex}`;
       const queryLabel =
         queryLabels[queryId] ||
         queryId.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
       const queryType = query.type || "unknown";
-      const typeStyle = typeStyles[queryType] || {
-        bg: "#f0f0f0",
-        border: "#d0d0d0",
-        label: queryType,
-      };
+      const typeClass = typeClassMap[queryType] || "";
+      const typeLabel = typeLabelMap[queryType] || queryType;
       const hits = query.hits || [];
       const queryString = query.query || "";
 
-      html += `<div style="margin-bottom: var(--space-lg); border: 1px solid ${typeStyle.border}; border-radius: 8px; background: ${typeStyle.bg}; overflow: hidden;">`;
+      html += `<div class="verification-query-card ${typeClass}">`;
 
       // Query header
-      html += `<div style="padding: var(--space-md); border-bottom: 1px solid ${typeStyle.border};">`;
-      html += `<div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--space-sm);">`;
-      html += `<div style="flex: 1; min-width: 200px;">`;
-      html += `<h5 style="margin: 0 0 var(--space-xs) 0; font-size: 1em;">${escapeHtml(
-        queryLabel
-      )}</h5>`;
-      html += `<span style="display: inline-block; padding: 2px 8px; background: ${
-        typeStyle.border
-      }; border-radius: 4px; font-size: 0.75em; font-weight: 500; color: #333;">${escapeHtml(
-        typeStyle.label
-      )}</span>`;
+      html += `<div class="verification-query-header">`;
+      html += `<div class="verification-query-header-row">`;
+      html += `<div>`;
+      html += `<h5>${escapeHtml(queryLabel)}</h5>`;
+      html += `<span class="verification-query-badge">${escapeHtml(typeLabel)}</span>`;
       html += `</div>`;
-      html += `<div style="text-align: right; flex-shrink: 0;">`;
-      html += `<div style="font-size: 0.85em; color: var(--text-secondary);">${
-        hits.length
-      } result${hits.length === 1 ? "" : "s"}</div>`;
+      html += `<div class="verification-query-count">${hits.length} result${hits.length === 1 ? "" : "s"}</div>`;
       html += `</div>`;
-      html += `</div>`;
-      html += `<div style="margin-top: var(--space-sm); font-size: 0.85em; color: var(--text-secondary); font-family: monospace; word-break: break-all;">`;
-      html += `<strong>Query:</strong> ${escapeHtml(queryString)}`;
-      html += `</div>`;
+      html += `<div class="verification-query-string"><strong>Query:</strong> ${escapeHtml(queryString)}</div>`;
       html += `</div>`;
 
       // Query results
       if (hits.length > 0) {
-        html += `<div style="padding: var(--space-md);">`;
+        html += `<div class="verification-hits-body">`;
         hits.forEach((hit, hitIndex) => {
           const title = hit.title || "Untitled";
           const url = hit.url || "#";
           const snippet = hit.snippet || "";
 
-          html += `<div style="margin-bottom: var(--space-md); padding-bottom: var(--space-md); border-bottom: ${
-            hitIndex < hits.length - 1
-              ? "1px solid var(--border-color, #e0e0e0)"
-              : "none"
-          };">`;
-          html += `<div style="margin-bottom: var(--space-xs);">`;
-          html += `<a href="${escapeHtml(
-            url
-          )}" target="_blank" rel="noopener noreferrer" style="color: #0066cc; text-decoration: none; font-weight: 500; font-size: 0.95em;">`;
-          html += `${hitIndex + 1}. ${escapeHtml(title)}`;
-          html += `</a>`;
-          html += `</div>`;
-          html += `<div style="font-size: 0.8em; color: #006621; margin-bottom: var(--space-xs); word-break: break-all;">`;
-          html += `${escapeHtml(url)}`;
-          html += `</div>`;
+          html += `<div class="verification-hit">`;
+          html += `<div><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="verification-hit-link">${hitIndex + 1}. ${escapeHtml(title)}</a></div>`;
+          html += `<div class="verification-hit-url">${escapeHtml(url)}</div>`;
           if (snippet) {
-            html += `<div style="font-size: 0.85em; color: var(--text-secondary); line-height: 1.4;">`;
-            html += `${escapeHtml(snippet)}`;
-            html += `</div>`;
+            html += `<div class="verification-hit-snippet">${escapeHtml(snippet)}</div>`;
           }
           html += `</div>`;
         });
         html += `</div>`;
       } else {
-        html += `<div style="padding: var(--space-md); color: var(--text-secondary); font-style: italic;">`;
-        html += `No results found for this query.`;
-        html += `</div>`;
+        html += `<div class="verification-no-results">No results found for this query.</div>`;
       }
 
       html += `</div>`;
     });
 
+    html += `</div>`;
+    html += `</details>`;
     html += `</div>`;
   }
 
@@ -1679,9 +1620,15 @@ function initEventListeners() {
     );
   }
 
-  // Address verification new search button
+  // Address verification new search buttons (top and bottom)
   if (elements.addressVerificationNewSearchButton) {
     elements.addressVerificationNewSearchButton.addEventListener(
+      "click",
+      resetAddressVerificationForm
+    );
+  }
+  if (elements.addressVerificationNewSearchButtonBottom) {
+    elements.addressVerificationNewSearchButtonBottom.addEventListener(
       "click",
       resetAddressVerificationForm
     );
