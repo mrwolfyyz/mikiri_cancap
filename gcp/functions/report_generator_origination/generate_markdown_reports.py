@@ -2749,7 +2749,7 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         
         content += f"### {section_name}\n\n"
         
-        # Determine source from hits (check first hit's source field, or default to google_search)
+        # Determine source label from hits (check first hit's source field, or default to google_search)
         source = "google_search"
         if hits and len(hits) > 0:
             source = hits[0].get('source', 'google_search')
@@ -2757,27 +2757,25 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         # Map source values to display labels
         if source == "vertex_ai_linkedin":
             source_label = "Vertex AI Search (LinkedIn)"
-            source_url = ""
         elif source == "vertex_ai_precision":
             source_label = "Vertex AI Search (Social)"
-            source_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
         elif source == "vertex_ai_recall":
             source_label = "Vertex AI Search (Lifestyle)"
-            source_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
         elif source == "google_search":
             source_label = "Google"
-            google_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
-            source_url = google_url
         else:
             source_label = source.replace('_', ' ').title()
-            source_url = ""
+
+        # Always generate a Google link; use site:linkedin.com for LinkedIn queries
+        is_linkedin_query = "linkedin" in query_id
+        if is_linkedin_query:
+            source_url = f"https://www.google.com/search?q=site%3Alinkedin.com+{quote_plus(query_text)}"
+        else:
+            source_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
         
         content += f"Source: {source_label} · Timestamp: {report_timestamp}\n\n"
         content += "**Query**\n\n"
-        if source_url:
-            content += f"[`{query_text}`]({source_url})\n\n"
-        else:
-            content += f"`{query_text}`\n\n"
+        content += f"[`{query_text}`]({source_url})\n\n"
         content += "**Hits**\n\n"
         
         if hits:
