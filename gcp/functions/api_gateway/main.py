@@ -15,6 +15,7 @@ Note: This version has hardcoded values removed for deployment flexibility.
 Configuration is loaded from environment variables set by Terraform.
 """
 import json
+import logging
 import os
 import re
 import uuid
@@ -31,6 +32,9 @@ from firebase_admin import initialize_app, auth
 
 # Import retry utilities (local copy for deployment)
 from retry_utils import retry_with_backoff, RetryConfig
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Initialize Firebase Admin SDK (same pattern as report_generator functions)
 try:
@@ -61,6 +65,10 @@ ADDRESS_VERIFICATION_URL = os.environ.get("ADDRESS_VERIFICATION_URL")
 CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "*")
 
 
+# =============================================================================
+# Authentication & Validation Helpers
+# =============================================================================
+
 def verify_firebase_token(request: Request) -> tuple[str | None, dict | None]:
     """
     Verify Firebase ID token from Authorization header.
@@ -78,13 +86,13 @@ def verify_firebase_token(request: Request) -> tuple[str | None, dict | None]:
         user_id = decoded_token.get("uid")
         return user_id, None
     except auth.InvalidIdTokenError:
-        print("Invalid token received")  # Log internally
+        logger.warning("Invalid token received")
         return None, {"error": "Authentication failed. Please refresh the page."}
     except auth.ExpiredIdTokenError:
-        print("Expired token received")  # Log internally
+        logger.warning("Expired token received")
         return None, {"error": "Session expired. Please refresh the page."}
     except Exception as e:
-        print(f"Token verification error: {e}")  # Log internally
+        logger.error("Token verification error: %s", e)
         return None, {"error": "Authentication failed. Please refresh the page."}
 
 
@@ -134,7 +142,11 @@ def validate_province(province: str) -> tuple[bool, str]:
     return True, ""
 
 
-def create_job(email: str, full_name: str, city: str, drive_folder_id: str = None, company_name: str = None, user_id: str = None) -> str:
+# =============================================================================
+# Data Access Helpers
+# =============================================================================
+
+def create_job(email: str, full_name: str, city: str, province: str = None, drive_folder_id: str = None, company_name: str = None, user_id: str = None) -> str:
     """Create a new job in Firestore."""
     job_id = uuid.uuid4().hex[:12]
     now = datetime.utcnow()
@@ -149,6 +161,7 @@ def create_job(email: str, full_name: str, city: str, drive_folder_id: str = Non
             "email": email,
             "full_name": full_name,
             "city": city or None,
+            "province": province or None,
             "drive_folder_id": drive_folder_id,
             "company_name": company_name or None,
         },
@@ -241,6 +254,10 @@ def format_job_response(job_id: str, job: dict[str, Any]) -> dict[str, Any]:
     return response
 
 
+# =============================================================================
+# CORS & Ownership Helpers
+# =============================================================================
+
 def get_cors_headers(request: Request):
     """Get CORS headers based on configuration and request origin."""
     origin = request.headers.get("Origin", "")
@@ -261,24 +278,163 @@ def get_cors_headers(request: Request):
     return {"Access-Control-Allow-Origin": allowed_origins[0] if allowed_origins else "*"}
 
 
+def verify_job_ownership(request: Request, job_id: str, headers: dict) -> tuple[dict | None, str | None, tuple | None]:
+    """
+    Verify job exists and caller owns it (backward-compatible).
+    
+    For jobs with user_id: requires auth and ownership match.
+    For legacy jobs without user_id: allows access without auth.
+    
+    Returns: (job, user_id, error_response)
+        - On success: (job_dict, user_id_or_None, None)
+        - On error: (None, None, (jsonify_response, status_code, headers))
+    """
+    job = get_job(job_id)
+    if not job:
+        return None, None, (jsonify({"error": "Job not found"}), 404, headers)
+    
+    job_user_id = job.get("user_id")
+    if job_user_id is not None:
+        user_id, auth_error = verify_firebase_token(request)
+        if auth_error:
+            return None, None, (jsonify(auth_error), 401, headers)
+        if job_user_id != user_id:
+            return None, None, (jsonify({"error": "Unauthorized"}), 403, headers)
+        return job, user_id, None
+    
+    return job, None, None  # Legacy job, no ownership check
+
+
+# =============================================================================
+# Route Handlers
+# =============================================================================
+
+def handle_investigation(request: Request, headers: dict, workflow_name: str):
+    """Handle POST /investigate-skiptrace and /investigate-origination."""
+    # Verify authentication
+    user_id, auth_error = verify_firebase_token(request)
+    if auth_error:
+        return jsonify(auth_error), 401, headers
+
+    try:
+        data = request.get_json() or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON"}), 400, headers
+
+    email = (data.get("email") or "").strip()
+    full_name = (data.get("full_name") or "").strip()
+    city = (data.get("city") or "").strip()
+    province = (data.get("province") or "").strip()
+    drive_folder_id = (data.get("drive_folder_id") or "").strip()
+    company_name = (data.get("company_name") or "").strip()
+    
+    # Validate
+    errors = []
+    
+    # Optional: Validate drive_folder_id format if provided
+    if drive_folder_id and (len(drive_folder_id) < 10 or len(drive_folder_id) > 100 or not drive_folder_id.replace('_', '').replace('-', '').isalnum()):
+        errors.append({"field": "drive_folder_id", "message": "Invalid Drive folder ID format"})
+    
+    valid, msg = validate_email(email)
+    if not valid:
+        errors.append({"field": "email", "message": msg})
+    
+    valid, msg = validate_full_name(full_name)
+    if not valid:
+        errors.append({"field": "full_name", "message": msg})
+    
+    valid, msg = validate_city(city)
+    if not valid:
+        errors.append({"field": "city", "message": msg})
+    
+    valid, msg = validate_province(province)
+    if not valid:
+        errors.append({"field": "province", "message": msg})
+    
+    if not company_name:
+        errors.append({"field": "company_name", "message": "Company name is required"})
+    
+    if errors:
+        return jsonify({"error": "validation_error", "details": errors}), 400, headers
+    
+    # Create job with user_id
+    job_id = create_job(email, full_name, city, province, drive_folder_id, company_name, user_id=user_id)
+    
+    # Trigger workflow (async)
+    try:
+        trigger_workflow(job_id, email, full_name, city, province, company_name, workflow_name=workflow_name)
+    except Exception as e:
+        # Update job as failed
+        db.collection("jobs").document(job_id).update({
+            "status": "failed",
+            "error": f"Failed to start workflow: {str(e)}"
+        })
+        return jsonify({"error": f"Failed to start investigation: {str(e)}"}), 500, headers
+    
+    return jsonify({"job_id": job_id}), 202, headers
+
+
+def proxy_chat_request(request: Request, headers: dict, target_url: str, service_name: str):
+    """Handle POST /chat_handler and /chat_handler_origination."""
+    # Verify authentication
+    user_id, auth_error = verify_firebase_token(request)
+    if auth_error:
+        return jsonify(auth_error), 401, headers
+    
+    # Check that target URL is configured
+    if not target_url:
+        return jsonify({"error": f"{service_name} service not configured"}), 500, headers
+    
+    try:
+        data = request.get_json() or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON"}), 400, headers
+    
+    # If job_id is provided, verify ownership
+    job_id = data.get("job_id")
+    if job_id:
+        job = get_job(job_id)
+        if not job:
+            return jsonify({"error": "Job not found"}), 404, headers
+        if job.get("user_id") != user_id:
+            return jsonify({"error": "Unauthorized"}), 403, headers
+    
+    def _call_service():
+        response = requests.post(
+            target_url,
+            json=data,
+            headers={"Content-Type": "application/json"},
+            timeout=120  # Handle longer conversations with more history
+        )
+        response.raise_for_status()
+        return response
+    
+    try:
+        response = retry_with_backoff(
+            _call_service,
+            RetryConfig(max_attempts=2, base_delay_seconds=1.0, max_delay_seconds=5.0),
+            operation_name=f"{service_name} API call"
+        )
+        return jsonify(response.json()), response.status_code, headers
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"{service_name} failed: {str(e)}"}), 500, headers
+
+
+# =============================================================================
+# Main Entry Point
+# =============================================================================
+
 @functions_framework.http
 def main(request: Request):
     """Main HTTP handler."""
-    # Enable CORS
+    # Handle CORS preflight
     if request.method == "OPTIONS":
-        origin = request.headers.get("Origin", "")
-        if CORS_ALLOWED_ORIGINS == "*":
-            allow_origin = "*"
-        else:
-            allowed_origins = [o.strip() for o in CORS_ALLOWED_ORIGINS.split(",")]
-            allow_origin = origin if origin in allowed_origins else (allowed_origins[0] if allowed_origins else "*")
-        
-        headers = {
-            "Access-Control-Allow-Origin": allow_origin,
+        headers = get_cors_headers(request)
+        headers.update({
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type, Authorization",
             "Access-Control-Max-Age": "3600",
-        }
+        })
         return ("", 204, headers)
     
     headers = get_cors_headers(request)
@@ -287,131 +443,11 @@ def main(request: Request):
     
     # POST /investigate-skiptrace
     if request.method == "POST" and path == "/investigate-skiptrace":
-        # Verify authentication
-        user_id, auth_error = verify_firebase_token(request)
-        if auth_error:
-            return jsonify(auth_error), 401, headers
-
-        try:
-            data = request.get_json() or {}
-        except Exception:
-            return jsonify({"error": "Invalid JSON"}), 400, headers
-
-        email = (data.get("email") or "").strip()
-        full_name = (data.get("full_name") or "").strip()
-        city = (data.get("city") or "").strip()
-        province = (data.get("province") or "").strip()
-        drive_folder_id = (data.get("drive_folder_id") or "").strip()
-        company_name = (data.get("company_name") or "").strip()
-        
-        # Validate
-        errors = []
-        
-        # Optional: Validate drive_folder_id format if provided
-        if drive_folder_id and (len(drive_folder_id) < 10 or len(drive_folder_id) > 100 or not drive_folder_id.replace('_', '').replace('-', '').isalnum()):
-            errors.append({"field": "drive_folder_id", "message": "Invalid Drive folder ID format"})
-        
-        valid, msg = validate_email(email)
-        if not valid:
-            errors.append({"field": "email", "message": msg})
-        
-        valid, msg = validate_full_name(full_name)
-        if not valid:
-            errors.append({"field": "full_name", "message": msg})
-        
-        valid, msg = validate_city(city)
-        if not valid:
-            errors.append({"field": "city", "message": msg})
-        
-        valid, msg = validate_province(province)
-        if not valid:
-            errors.append({"field": "province", "message": msg})
-        
-        if not company_name:
-            errors.append({"field": "company_name", "message": "Company name is required"})
-        
-        if errors:
-            return jsonify({"error": "validation_error", "details": errors}), 400, headers
-        
-        # Create job with user_id
-        job_id = create_job(email, full_name, city, drive_folder_id, company_name, user_id=user_id)
-        
-        # Trigger skip trace workflow (async)
-        try:
-            trigger_workflow(job_id, email, full_name, city, province, company_name, workflow_name=SKIPTRACE_WORKFLOW_NAME)
-        except Exception as e:
-            # Update job as failed
-            db.collection("jobs").document(job_id).update({
-                "status": "failed",
-                "error": f"Failed to start workflow: {str(e)}"
-            })
-            return jsonify({"error": f"Failed to start investigation: {str(e)}"}), 500, headers
-        
-        return jsonify({"job_id": job_id}), 202, headers
+        return handle_investigation(request, headers, SKIPTRACE_WORKFLOW_NAME)
     
     # POST /investigate-origination
     if request.method == "POST" and path == "/investigate-origination":
-        # Verify authentication
-        user_id, auth_error = verify_firebase_token(request)
-        if auth_error:
-            return jsonify(auth_error), 401, headers
-
-        try:
-            data = request.get_json() or {}
-        except Exception:
-            return jsonify({"error": "Invalid JSON"}), 400, headers
-
-        email = (data.get("email") or "").strip()
-        full_name = (data.get("full_name") or "").strip()
-        city = (data.get("city") or "").strip()
-        province = (data.get("province") or "").strip()
-        drive_folder_id = (data.get("drive_folder_id") or "").strip()
-        company_name = (data.get("company_name") or "").strip()
-        
-        # Validate
-        errors = []
-        
-        # Optional: Validate drive_folder_id format if provided
-        if drive_folder_id and (len(drive_folder_id) < 10 or len(drive_folder_id) > 100 or not drive_folder_id.replace('_', '').replace('-', '').isalnum()):
-            errors.append({"field": "drive_folder_id", "message": "Invalid Drive folder ID format"})
-        
-        valid, msg = validate_email(email)
-        if not valid:
-            errors.append({"field": "email", "message": msg})
-        
-        valid, msg = validate_full_name(full_name)
-        if not valid:
-            errors.append({"field": "full_name", "message": msg})
-        
-        valid, msg = validate_city(city)
-        if not valid:
-            errors.append({"field": "city", "message": msg})
-        
-        valid, msg = validate_province(province)
-        if not valid:
-            errors.append({"field": "province", "message": msg})
-        
-        if not company_name:
-            errors.append({"field": "company_name", "message": "Company name is required"})
-        
-        if errors:
-            return jsonify({"error": "validation_error", "details": errors}), 400, headers
-        
-        # Create job with user_id
-        job_id = create_job(email, full_name, city, drive_folder_id, company_name, user_id=user_id)
-        
-        # Trigger origination workflow (async)
-        try:
-            trigger_workflow(job_id, email, full_name, city, province, company_name, workflow_name=ORIGINATION_WORKFLOW_NAME)
-        except Exception as e:
-            # Update job as failed
-            db.collection("jobs").document(job_id).update({
-                "status": "failed",
-                "error": f"Failed to start workflow: {str(e)}"
-            })
-            return jsonify({"error": f"Failed to start investigation: {str(e)}"}), 500, headers
-        
-        return jsonify({"job_id": job_id}), 202, headers
+        return handle_investigation(request, headers, ORIGINATION_WORKFLOW_NAME)
     
     # GET /jobs/{job_id}
     if request.method == "GET" and path.startswith("/jobs/"):
@@ -420,22 +456,9 @@ def main(request: Request):
         if not job_id:
             return jsonify({"error": "Job ID required"}), 400, headers
         
-        job = get_job(job_id)
-        if not job:
-            return jsonify({"error": "Job not found"}), 404, headers
-        
-        # Backward compatibility: If job has user_id, require auth and verify ownership
-        # If job has no user_id (old jobs from main frontend), allow without auth
-        job_user_id = job.get("user_id")
-        if job_user_id is not None:
-            # Job has user_id - require authentication
-            user_id, auth_error = verify_firebase_token(request)
-            if auth_error:
-                return jsonify(auth_error), 401, headers
-            
-            # CRITICAL: Verify ownership
-            if job_user_id != user_id:
-                return jsonify({"error": "Unauthorized"}), 403, headers
+        job, _, error_response = verify_job_ownership(request, job_id, headers)
+        if error_response:
+            return error_response
         
         return jsonify(format_job_response(job_id, job)), 200, headers
     
@@ -447,26 +470,11 @@ def main(request: Request):
             return jsonify({"error": "Job ID required"}), 400, headers
         
         try:
-            job_doc = db.collection("jobs").document(job_id).get()
-            if not job_doc.exists:
-                return jsonify({"error": "Job not found"}), 404, headers
+            job, _, error_response = verify_job_ownership(request, job_id, headers)
+            if error_response:
+                return error_response
             
-            job_data = job_doc.to_dict()
-            
-            # Backward compatibility: If job has user_id, require auth and verify ownership
-            # If job has no user_id (old jobs from main frontend), allow without auth
-            job_user_id = job_data.get("user_id")
-            if job_user_id is not None:
-                # Job has user_id - require authentication
-                user_id, auth_error = verify_firebase_token(request)
-                if auth_error:
-                    return jsonify(auth_error), 401, headers
-                
-                # CRITICAL: Verify ownership
-                if job_user_id != user_id:
-                    return jsonify({"error": "Unauthorized"}), 403, headers
-            
-            markdown_reports = job_data.get("markdown_reports", {})
+            markdown_reports = job.get("markdown_reports", {})
             
             if not markdown_reports:
                 return jsonify({"error": "Markdown reports not available for this job"}), 404, headers
@@ -546,97 +554,11 @@ def main(request: Request):
     
     # POST /chat_handler
     if request.method == "POST" and path == "/chat_handler":
-        # Verify authentication
-        user_id, auth_error = verify_firebase_token(request)
-        if auth_error:
-            return jsonify(auth_error), 401, headers
-        
-        # Check that CHAT_HANDLER_URL is configured
-        if not CHAT_HANDLER_URL:
-            return jsonify({"error": "Chat handler service not configured"}), 500, headers
-        
-        try:
-            data = request.get_json() or {}
-        except Exception:
-            return jsonify({"error": "Invalid JSON"}), 400, headers
-        
-        # If job_id is provided, verify ownership
-        job_id = data.get("job_id")
-        if job_id:
-            job_doc = db.collection("jobs").document(job_id).get()
-            if not job_doc.exists:
-                return jsonify({"error": "Job not found"}), 404, headers
-            
-            job_data = job_doc.to_dict()
-            if job_data.get("user_id") != user_id:
-                return jsonify({"error": "Unauthorized"}), 403, headers
-        
-        def _call_chat_handler():
-            response = requests.post(
-                CHAT_HANDLER_URL,
-                json=data,
-                headers={"Content-Type": "application/json"},
-                timeout=120  # Increased to handle longer conversations with more history
-            )
-            response.raise_for_status()
-            return response
-        
-        try:
-            response = retry_with_backoff(
-                _call_chat_handler,
-                RetryConfig(max_attempts=2, base_delay_seconds=1.0, max_delay_seconds=5.0),
-                operation_name="Chat handler API call"
-            )
-            return jsonify(response.json()), response.status_code, headers
-        except requests.exceptions.RequestException as e:
-            return jsonify({"error": f"Chat handler failed: {str(e)}"}), 500, headers
+        return proxy_chat_request(request, headers, CHAT_HANDLER_URL, "Chat handler")
     
     # POST /chat_handler_origination
     if request.method == "POST" and path == "/chat_handler_origination":
-        # Verify authentication
-        user_id, auth_error = verify_firebase_token(request)
-        if auth_error:
-            return jsonify(auth_error), 401, headers
-        
-        # Check that CHAT_HANDLER_ORIGINATION_URL is configured
-        if not CHAT_HANDLER_ORIGINATION_URL:
-            return jsonify({"error": "Chat handler origination service not configured"}), 500, headers
-        
-        try:
-            data = request.get_json() or {}
-        except Exception:
-            return jsonify({"error": "Invalid JSON"}), 400, headers
-        
-        # If job_id is provided, verify ownership
-        job_id = data.get("job_id")
-        if job_id:
-            job_doc = db.collection("jobs").document(job_id).get()
-            if not job_doc.exists:
-                return jsonify({"error": "Job not found"}), 404, headers
-            
-            job_data = job_doc.to_dict()
-            if job_data.get("user_id") != user_id:
-                return jsonify({"error": "Unauthorized"}), 403, headers
-        
-        def _call_chat_handler_origination():
-            response = requests.post(
-                CHAT_HANDLER_ORIGINATION_URL,
-                json=data,
-                headers={"Content-Type": "application/json"},
-                timeout=120  # Increased to handle longer conversations with more history
-            )
-            response.raise_for_status()
-            return response
-        
-        try:
-            response = retry_with_backoff(
-                _call_chat_handler_origination,
-                RetryConfig(max_attempts=2, base_delay_seconds=1.0, max_delay_seconds=5.0),
-                operation_name="Chat handler origination API call"
-            )
-            return jsonify(response.json()), response.status_code, headers
-        except requests.exceptions.RequestException as e:
-            return jsonify({"error": f"Chat handler origination failed: {str(e)}"}), 500, headers
+        return proxy_chat_request(request, headers, CHAT_HANDLER_ORIGINATION_URL, "Chat handler origination")
     
     # POST /jobs/{job_id}/feedback
     if request.method == "POST" and "/jobs/" in path and path.endswith("/feedback"):
@@ -649,7 +571,7 @@ def main(request: Request):
         if not job_id:
             return jsonify({"error": "Job ID required"}), 400, headers
         
-        # Verify authentication
+        # Verify authentication (always required for feedback - need user_id)
         user_id, auth_error = verify_firebase_token(request)
         if auth_error:
             return jsonify(auth_error), 401, headers
