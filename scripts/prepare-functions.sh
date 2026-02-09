@@ -31,16 +31,44 @@ FUNCTIONS_NEEDING_RETRY=(
   "contact_extraction"
 )
 
-# Source file location
-RETRY_UTILS_SOURCE="$ROOT_DIR/gcp/shared/retry_utils.py"
+# Functions that require address_utils.py
+FUNCTIONS_NEEDING_ADDRESS_UTILS=(
+  "contact_extraction"
+  "address_geocoding"
+  "address_verification"
+  "report_generator_skiptrace"
+  "report_generator_origination"
+)
 
-# Check if source file exists
-if [[ ! -f "$RETRY_UTILS_SOURCE" ]]; then
-  echo "❌ ERROR: Source file not found: $RETRY_UTILS_SOURCE"
+# Functions that require contact_extraction_utils.py
+FUNCTIONS_NEEDING_CONTACT_EXTRACTION=(
+  "contact_extraction"
+  "report_generator_skiptrace"
+  "report_generator_origination"
+)
+
+# Source file locations
+RETRY_UTILS_SOURCE="$ROOT_DIR/gcp/shared/retry_utils.py"
+ADDRESS_UTILS_SOURCE="$ROOT_DIR/gcp/shared/address_utils.py"
+CONTACT_EXTRACTION_UTILS_SOURCE="$ROOT_DIR/gcp/shared/contact_extraction_utils.py"
+
+# Check if source files exist
+ALL_SOURCES_OK=true
+for source_file in "$RETRY_UTILS_SOURCE" "$ADDRESS_UTILS_SOURCE" "$CONTACT_EXTRACTION_UTILS_SOURCE"; do
+  if [[ ! -f "$source_file" ]]; then
+    echo "❌ ERROR: Source file not found: $source_file"
+    ALL_SOURCES_OK=false
+  fi
+done
+
+if [[ "$ALL_SOURCES_OK" != "true" ]]; then
   exit 1
 fi
 
-echo "Source: $RETRY_UTILS_SOURCE"
+echo "Sources:"
+echo "  $RETRY_UTILS_SOURCE"
+echo "  $ADDRESS_UTILS_SOURCE"
+echo "  $CONTACT_EXTRACTION_UTILS_SOURCE"
 echo ""
 
 # Copy retry_utils.py to each function that needs it
@@ -59,6 +87,40 @@ for func in "${FUNCTIONS_NEEDING_RETRY[@]}"; do
 done
 
 echo ""
+
+# Copy address_utils.py to each function that needs it
+echo "Copying address_utils.py to functions..."
+for func in "${FUNCTIONS_NEEDING_ADDRESS_UTILS[@]}"; do
+  DEST_DIR="$ROOT_DIR/gcp/functions/$func"
+  DEST_FILE="$DEST_DIR/address_utils.py"
+  
+  if [[ ! -d "$DEST_DIR" ]]; then
+    echo "  ⚠️  Directory not found: $DEST_DIR"
+    continue
+  fi
+  
+  cp "$ADDRESS_UTILS_SOURCE" "$DEST_FILE"
+  echo "  ✓ $func/address_utils.py"
+done
+
+echo ""
+
+# Copy contact_extraction_utils.py to each function that needs it
+echo "Copying contact_extraction_utils.py to functions..."
+for func in "${FUNCTIONS_NEEDING_CONTACT_EXTRACTION[@]}"; do
+  DEST_DIR="$ROOT_DIR/gcp/functions/$func"
+  DEST_FILE="$DEST_DIR/contact_extraction_utils.py"
+  
+  if [[ ! -d "$DEST_DIR" ]]; then
+    echo "  ⚠️  Directory not found: $DEST_DIR"
+    continue
+  fi
+  
+  cp "$CONTACT_EXTRACTION_UTILS_SOURCE" "$DEST_FILE"
+  echo "  ✓ $func/contact_extraction_utils.py"
+done
+
+echo ""
 echo "=========================================="
 echo "Verification"
 echo "=========================================="
@@ -73,6 +135,32 @@ for func in "${FUNCTIONS_NEEDING_RETRY[@]}"; do
     echo "  ✓ $func/retry_utils.py"
   else
     echo "  ❌ $func/retry_utils.py - MISSING!"
+    ALL_OK=false
+  fi
+done
+
+echo ""
+
+echo "Verifying address_utils.py presence..."
+for func in "${FUNCTIONS_NEEDING_ADDRESS_UTILS[@]}"; do
+  DEST_FILE="$ROOT_DIR/gcp/functions/$func/address_utils.py"
+  if [[ -f "$DEST_FILE" ]]; then
+    echo "  ✓ $func/address_utils.py"
+  else
+    echo "  ❌ $func/address_utils.py - MISSING!"
+    ALL_OK=false
+  fi
+done
+
+echo ""
+
+echo "Verifying contact_extraction_utils.py presence..."
+for func in "${FUNCTIONS_NEEDING_CONTACT_EXTRACTION[@]}"; do
+  DEST_FILE="$ROOT_DIR/gcp/functions/$func/contact_extraction_utils.py"
+  if [[ -f "$DEST_FILE" ]]; then
+    echo "  ✓ $func/contact_extraction_utils.py"
+  else
+    echo "  ❌ $func/contact_extraction_utils.py - MISSING!"
     ALL_OK=false
   fi
 done
