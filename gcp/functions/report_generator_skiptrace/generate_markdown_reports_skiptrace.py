@@ -2688,6 +2688,12 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         if source == "vertex_ai_linkedin":
             source_label = "Vertex AI Search (LinkedIn)"
             source_url = ""
+        elif source == "vertex_ai_precision":
+            source_label = "Vertex AI Search (Social)"
+            source_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
+        elif source == "vertex_ai_recall":
+            source_label = "Vertex AI Search (Lifestyle)"
+            source_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
         elif source == "google_search":
             source_label = "Google"
             source_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
@@ -4084,6 +4090,12 @@ def generate_identity_report_skiptrace(data: Dict[str, Any], name: str, output_d
         if source == "vertex_ai_linkedin":
             source_label = "Vertex AI Search (LinkedIn)"
             source_url = ""
+        elif source == "vertex_ai_precision":
+            source_label = "Vertex AI Search (Social)"
+            source_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
+        elif source == "vertex_ai_recall":
+            source_label = "Vertex AI Search (Lifestyle)"
+            source_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
         elif source == "google_search":
             source_label = "Google"
             source_url = f"https://www.google.com/search?q={quote_plus(query_text)}"

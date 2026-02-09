@@ -33,44 +33,6 @@ GCP_PROJECT = os.environ.get("GCP_PROJECT", os.environ.get("GOOGLE_CLOUD_PROJECT
 GCP_LOCATION = os.environ.get("GCP_LOCATION", "global")
 HIBP_API_KEY = os.environ.get("HIBP_API_KEY", "")
 
-# Social platforms for precision queries
-PLATFORMS = [
-    "instagram.com",
-    "twitter.com",
-    "x.com",
-    "facebook.com",
-   
-    "github.com",
-    "tiktok.com",
-    "linkedin.com/in",
-   
-   
-   
-    "gravatar.com",
-   
-   
-    
-    
-    
-    "chess.com/member",
-   
-   
-  
-    
-    "theknot.com",
-    "zola.com",
-]
-
-# Lifestyle sites for recall queries
-LIFESTYLE_SITES = [
-    "inaturalist.org/people", "alltrails.com", "github.com", "gravatar.com",
-    "ravelry.com/designers",  "varagesale.com/store", 
-    "poshmark.ca/closet", "chess.com/member",  
-     "flickr.com/people", "goodreads.com/user", 
-    "discogs.com/user", "untappd.com", "fiverr.com", "upwork.com",
-    "t.me",  "theknot.com", "zola.com",
-]
-
 # Province code to full name mapping
 PROVINCE_NAMES = {
     "ON": "Ontario",
@@ -192,7 +154,6 @@ COMMON_CANADIAN_EMAIL_DOMAINS = [
     "videotron.qc.ca",
 
     # Apple localized
-    "icloud.com",
     "me.com",
     "mac.com",
     
@@ -232,15 +193,6 @@ def is_business_email(email: str) -> bool:
 # -------------------------
 # External API calls
 # -------------------------
-def google_search_recall_v2(query: str, num: int = 5) -> List[Dict[str, str]]:
-    """
-    Recall search using Vertex AI Search.
-
-    Returns dict format compatible with existing call site that converts to SearchHit.
-    """
-    return vertex_ai_search_recall(query, num)
-
-
 def vertex_ai_search_linkedin(query: str, num: int = 5) -> List[Dict[str, str]]:
     """
     Search LinkedIn profiles using Vertex AI Search.
@@ -301,7 +253,7 @@ def vertex_ai_search_linkedin(query: str, num: int = 5) -> List[Dict[str, str]]:
         
         # Transform results to standard format (List[Dict])
         results = []
-        for idx, result in enumerate(response.results):
+        for result in response.results:
             # Extract fields from derivedStructData
             doc = result.document
             derived = doc.derived_struct_data
@@ -544,35 +496,6 @@ def vertex_ai_search_recall(query: str, num: int = 5) -> List[Dict[str, str]]:
         return []
 
 
-def google_search_linkedin_v2(query: str, num: int = 5) -> List[Dict[str, str]]:
-    """
-    LinkedIn search using Vertex AI Search.
-
-    Returns dict format compatible with existing call site that converts to SearchHit.
-    """
-    return vertex_ai_search_linkedin(query, num)
-
-
-def google_search_precision_v2(query: str, num: int = 5) -> List[Dict[str, str]]:
-    """
-    Precision search using Vertex AI Search.
-
-    Returns dict format compatible with existing call site that converts to SearchHit.
-    """
-    return vertex_ai_search_precision(query, num)
-
-
-def google_search_recall_2_v2(query: str, num: int = 5) -> List[Dict[str, str]]:
-    """
-    Recall_2 search using Vertex AI Search.
-
-    Uses the same Vertex AI engine as precision (precision-search-engine).
-
-    Returns dict format compatible with existing call site that converts to SearchHit.
-    """
-    return vertex_ai_search_precision(query, num)
-
-
 def extract_grounding_metadata(response) -> Dict[str, Any]:
     """
     Extract grounding metadata from Google Gen AI SDK response for audit trail.
@@ -645,55 +568,7 @@ def vertex_ai_score(seed: Dict[str, Any], queries_payload: List[Dict[str, Any]])
         '"location": {"city": str, "confidence": "high"|"medium"|"low"}, '
         '"rationale": str}\n'
     )
-    
-    schema = {
-        "type": "object",
-        "properties": {
-            "top_handles": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "platform": {"type": "string"},
-                        "handle": {"type": "string"},
-                        "url": {"type": "string"},
-                        "city": {"type": "string"},
-                        "confidence": {
-                            "type": "string",
-                            "enum": ["high", "medium", "low"],
-                        },
-                    },
-                    "required": ["platform", "handle", "url", "confidence"],
-                },
-            },
-            "identity_clues": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "title": {"type": "string"},
-                        "url": {"type": "string"},
-                        "snippet": {"type": "string"},
-                        "source_query_id": {"type": "string"},
-                    },
-                    "required": ["title", "url"],
-                },
-            },
-            "location": {
-                "type": "object",
-                "properties": {
-                    "city": {"type": "string"},
-                    "confidence": {
-                        "type": "string",
-                        "enum": ["high", "medium", "low"],
-                    },
-                },
-            },
-            "rationale": {"type": "string"},
-        },
-        "required": ["top_handles"],
-    }
-    
+
     user_prompt = f"""Analyze the following identity resolution request:
 
 Seed Information:
@@ -1053,17 +928,15 @@ def main(request):
         precision_query_base += f' {city.split(",")[0]}'
 
     print(f"[Phase1] Running precision search: {precision_query_base[:100]}...")
-    precision_raw = google_search_precision_v2(precision_query_base, num=10)
+    precision_raw = vertex_ai_search_precision(precision_query_base, num=10)
 
     # Convert to SearchHit objects
-    has_vertex_results = any(h.get("_source") == "vertex_ai_search" for h in precision_raw if h.get("url"))
-    source_value = "vertex_ai_precision" if has_vertex_results else "google_search"
     precision_hits = [
         SearchHit(
             url=h["url"],
             title=h["title"],
             snippet=h["snippet"],
-            source=source_value,
+            source="vertex_ai_precision",
             query_id="precision",
             query_type="high_precision",
             relevance_score=h.get("relevance_score", 0.0),
@@ -1076,17 +949,15 @@ def main(request):
     llm_precision_hits: List[SearchHit] = []
     if precision_query:
         print(f"[Phase1] Running ADDITIONAL LLM precision search: {precision_query[:100]}...")
-        llm_precision_raw = google_search_precision_v2(precision_query, num=10)
+        llm_precision_raw = vertex_ai_search_precision(precision_query, num=10)
 
         # Convert to SearchHit objects
-        has_vertex_results = any(h.get("_source") == "vertex_ai_search" for h in llm_precision_raw if h.get("url"))
-        source_value = "vertex_ai_precision" if has_vertex_results else "google_search"
         llm_precision_hits = [
             SearchHit(
                 url=h["url"],
                 title=h["title"],
                 snippet=h["snippet"],
-                source=source_value,
+                source="vertex_ai_precision",
                 query_id="precision_llm",
                 query_type="high_precision",
                 relevance_score=h.get("relevance_score", 0.0),
@@ -1112,13 +983,7 @@ def main(request):
         print(f"[Phase1] Provincial LinkedIn search: {provincial_linkedin_query[:100]}...")
 
         # Execute LinkedIn search using Vertex AI Search
-        provincial_linkedin_raw = google_search_linkedin_v2(provincial_linkedin_query, num=10)
-
-        # Determine source based on _source marker (set by google_search_linkedin_v2)
-        has_vertex_results = any(h.get("_source") == "vertex_ai_search" for h in provincial_linkedin_raw if h.get("url"))
-        source_value = "vertex_ai_linkedin" if has_vertex_results else "google_search"
-        _source_markers = [h.get("_source") for h in provincial_linkedin_raw if h.get("url")]
-        print(f"[Phase1] Provincial LinkedIn search: results_count={len(provincial_linkedin_raw)}, _source_markers={_source_markers}, has_vertex_results={has_vertex_results}, source={source_value}")
+        provincial_linkedin_raw = vertex_ai_search_linkedin(provincial_linkedin_query, num=10)
 
         # Convert to SearchHit objects
         provincial_linkedin_hits = [
@@ -1126,7 +991,7 @@ def main(request):
                 url=h["url"],
                 title=h["title"],
                 snippet=h["snippet"],
-                source=source_value,
+                source="vertex_ai_linkedin",
                 query_id="provincial_linkedin",
                 query_type="high_precision",
                 relevance_score=h.get("relevance_score", 0.0),
@@ -1139,22 +1004,8 @@ def main(request):
 
         print(f"[Phase1] Provincial LinkedIn search: {len(provincial_linkedin_hits)} hits")
 
-    # Business email searches - if email is a business domain
-    business_domain_hits: List[SearchHit] = []
-    business_linkedin_hits: List[SearchHit] = []
-    business_domain_query = ""
-    business_linkedin_query = ""
-
-    if is_business_email(email):
-        domain = extract_email_domain(email)
-        if domain:
-            print(f"[Phase1] Business email detected: {domain} - performing additional searches")
-
-
     # Company name searches - if company_name is provided
-    company_name_hits: List[SearchHit] = []
     company_name_linkedin_hits: List[SearchHit] = []
-    company_name_query = ""
     company_name_linkedin_query = ""
 
     if company_name:
@@ -1163,25 +1014,17 @@ def main(request):
         # Search 2: Full Name and Company Name on LinkedIn
         # Note: LinkedIn search engine is scoped to linkedin.com profiles
         company_name_linkedin_query = f'"{full_name}" {company_name}'
-        company_name_linkedin_raw = google_search_linkedin_v2(company_name_linkedin_query, num=10)
-        
-        # Determine source based on _source marker (set by google_search_linkedin_v2)
-        # This is more reliable than relevance_score since Vertex AI Search may return relevance_score=0.0
-        # when model_scores is empty (as seen in logs: "Keys: []")
-        has_vertex_results = any(h.get("_source") == "vertex_ai_search" for h in company_name_linkedin_raw if h.get("url"))
-        source_value = "vertex_ai_linkedin" if has_vertex_results else "google_search"
-        _source_markers = [h.get("_source") for h in company_name_linkedin_raw if h.get("url")]
-        print(f"[Phase1] LinkedIn search: results_count={len(company_name_linkedin_raw)}, _source_markers={_source_markers}, has_vertex_results={has_vertex_results}, source={source_value}")
+        company_name_linkedin_raw = vertex_ai_search_linkedin(company_name_linkedin_query, num=10)
         
         company_name_linkedin_hits = [
             SearchHit(
                 url=h["url"],
                 title=h["title"],
                 snippet=h["snippet"],
-                source=source_value,  # Differentiate: "vertex_ai_linkedin" or "google_search"
+                source="vertex_ai_linkedin",
                 query_id="company_name_linkedin",
                 query_type="high_precision",
-                relevance_score=h.get("relevance_score", 0.0),  # Extract if present (may be 0.0 even for Vertex AI)
+                relevance_score=h.get("relevance_score", 0.0),
             )
             for h in company_name_linkedin_raw if h.get("url")
         ]
@@ -1195,19 +1038,14 @@ def main(request):
         if len(company_name_linkedin_hits) == 0 and city:
             print(f"[Phase1] Company name LinkedIn search returned 0 results - trying city search: {city}")
             city_linkedin_query = f'"{full_name}" {city.split(",")[0]}'
-            city_linkedin_raw = google_search_linkedin_v2(city_linkedin_query, num=10)
-
-            has_vertex_results = any(h.get("_source") == "vertex_ai_search" for h in city_linkedin_raw if h.get("url"))
-            source_value = "vertex_ai_linkedin" if has_vertex_results else "google_search"
-            _source_markers = [h.get("_source") for h in city_linkedin_raw if h.get("url")]
-            print(f"[Phase1] City LinkedIn search: results_count={len(city_linkedin_raw)}, _source_markers={_source_markers}, has_vertex_results={has_vertex_results}, source={source_value}")
+            city_linkedin_raw = vertex_ai_search_linkedin(city_linkedin_query, num=10)
 
             city_linkedin_hits = [
                 SearchHit(
                     url=h["url"],
                     title=h["title"],
                     snippet=h["snippet"],
-                    source=source_value,
+                    source="vertex_ai_linkedin",
                     query_id="city_linkedin",
                     query_type="high_precision",
                     relevance_score=h.get("relevance_score", 0.0),
@@ -1218,25 +1056,19 @@ def main(request):
             precision_hits.extend(city_linkedin_hits)
             print(f"[Phase1] City LinkedIn search: {len(city_linkedin_hits)} LinkedIn hits")
 
-    # Context search removed - no longer used
-    context_hits: List[SearchHit] = []
-
     # 3. Recall query - lifestyle sites
     # Note: Site restrictions are handled by the Vertex AI recall search engine configuration
     recall_query = ""
     recall_hits: List[SearchHit] = []
     if len(prefix) >= 4:
         recall_query = f'"{full_name}"'
-        recall_raw = google_search_recall_v2(recall_query, num=10)
-        # Detect if results came from Vertex AI
-        has_vertex_results = any(h.get("_source") == "vertex_ai_recall" for h in recall_raw if h.get("url"))
-        source_value = "vertex_ai_recall" if has_vertex_results else "google_search"
+        recall_raw = vertex_ai_search_recall(recall_query, num=10)
         recall_hits = [
             SearchHit(
                 url=h["url"],
                 title=h["title"],
                 snippet=h["snippet"],
-                source=source_value,
+                source="vertex_ai_recall",
                 query_id="recall",
                 query_type="high_recall",
                 relevance_score=h.get("relevance_score", 0.0),
@@ -1250,15 +1082,13 @@ def main(request):
     recall_2_hits: List[SearchHit] = []
     if len(prefix) >= 4:
         recall_2_query = f'{prefix} OR "{full_name}"'
-        recall_2_raw = google_search_recall_2_v2(recall_2_query, num=10)
-        has_vertex_results = any(h.get("_source") == "vertex_ai_search" for h in recall_2_raw if h.get("url"))
-        source_value = "vertex_ai_precision" if has_vertex_results else "google_search"
+        recall_2_raw = vertex_ai_search_precision(recall_2_query, num=10)
         recall_2_hits = [
             SearchHit(
                 url=h["url"],
                 title=h["title"],
                 snippet=h["snippet"],
-                source=source_value,
+                source="vertex_ai_precision",
                 query_id="recall_2",
                 query_type="high_recall",
                 relevance_score=h.get("relevance_score", 0.0),
@@ -1266,13 +1096,10 @@ def main(request):
             for h in recall_2_raw if h.get("url")
         ]
 
-    # Name search removed - no longer used
-    name_hits: List[SearchHit] = []
-
     # Deduplicate hits
     seen = set()
     combined_hits: List[SearchHit] = []
-    for hit in precision_hits + llm_precision_hits + context_hits + recall_hits + recall_2_hits + name_hits:
+    for hit in precision_hits + llm_precision_hits + recall_hits + recall_2_hits:
         if hit.url not in seen:
             seen.add(hit.url)
             combined_hits.append(hit)
@@ -1359,18 +1186,17 @@ def main(request):
 
         new_city_token = llm_city.split(",")[0].strip()
         rerun_query = f'"{full_name}" {new_city_token}'
-        rerun_raw = google_search_precision_v2(rerun_query, num=10)
+        rerun_raw = vertex_ai_search_precision(rerun_query, num=10)
 
         rerun_hits = []
         for h in rerun_raw:
             url = h.get("url")
             if url and url not in seen:
-                source_value = h.get("_source", "google_search")
                 hit = SearchHit(
                     url=url,
                     title=h.get("title", ""),
                     snippet=h.get("snippet", ""),
-                    source=source_value,
+                    source="vertex_ai_precision",
                     query_id="precision_rerun",
                     query_type="high_precision",
                     relevance_score=h.get("relevance_score", 0.0),
@@ -1378,7 +1204,6 @@ def main(request):
                 rerun_hits.append(hit)
                 seen.add(url)
                 combined_hits.append(hit)
-                name_hits.append(hit)
 
         queries_payload.append({
             "id": "precision_rerun",
