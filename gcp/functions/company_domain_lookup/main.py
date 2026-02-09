@@ -9,6 +9,7 @@ Performs:
 import functions_framework
 import os
 import json
+import traceback
 from typing import Dict, Any
 from flask import jsonify
 from google.cloud import firestore
@@ -18,9 +19,6 @@ from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError
 from google import genai
 from google.genai.types import GenerateContentConfig, Tool, GoogleSearch
 
-# Initialize clients
-db = firestore.Client()
-
 # -------------------------
 # Config
 # -------------------------
@@ -28,60 +26,14 @@ GCP_PROJECT = os.environ.get("GCP_PROJECT", os.environ.get("GOOGLE_CLOUD_PROJECT
 # Use global endpoint for Gemini models (Terraform sets GCP_LOCATION for deployment)
 GCP_LOCATION = os.environ.get("GCP_LOCATION", "global")
 
+# Initialize clients
+db = firestore.Client()
+genai_client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
+
 
 # -------------------------
 # Vertex AI Gemini Integration with Google Search Grounding
 # -------------------------
-def extract_grounding_metadata(response) -> Dict[str, Any]:
-    """
-    Extract grounding metadata from Google Gen AI SDK response for audit trail.
-    Similar to address_verification implementation.
-    """
-    metadata = {
-        "grounding_sources": [],
-        "search_queries": [],
-        "search_entry_point": ""
-    }
-    
-    try:
-        # Google Gen AI SDK response structure
-        if hasattr(response, 'candidates') and response.candidates:
-            candidate = response.candidates[0]
-            
-            # Extract grounding metadata if available
-            if hasattr(candidate, 'grounding_metadata'):
-                grounding = candidate.grounding_metadata
-                
-                # Extract search queries
-                if hasattr(grounding, 'web_search_queries'):
-                    metadata["search_queries"] = list(grounding.web_search_queries)
-                
-                # Extract grounding chunks (sources)
-                if hasattr(grounding, 'grounding_chunks'):
-                    for chunk in grounding.grounding_chunks:
-                        if hasattr(chunk, 'web'):
-                            metadata["grounding_sources"].append({
-                                "url": getattr(chunk.web, 'uri', ''),
-                                "title": getattr(chunk.web, 'title', ''),
-                                "snippet": ""  # Grounding doesn't return snippets
-                            })
-                
-                # Extract search entry point if available
-                if hasattr(grounding, 'search_entry_point'):
-                    entry_point = grounding.search_entry_point
-                    if hasattr(entry_point, 'rendered_content'):
-                        metadata["search_entry_point"] = entry_point.rendered_content
-                    elif hasattr(entry_point, 'html'):
-                        metadata["search_entry_point"] = entry_point.html
-        
-    except Exception as e:
-        print(f"[Grounding Metadata] Error extracting metadata: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    return metadata
-
-
 def vertex_ai_domain_resolution_grounded(company_name: str) -> Dict[str, Any]:
     """
     Use Gemini 2.5 Flash with Google Search grounding to determine official company domain.
@@ -118,13 +70,6 @@ Return JSON only."""
 
     def _call_vertex_ai_grounded():
         try:
-            # Initialize Google Gen AI client with Vertex AI backend
-            client = genai.Client(
-                vertexai=True,
-                project=GCP_PROJECT,
-                location=GCP_LOCATION
-            )
-            
             # Configure Google Search grounding tool
             google_search_tool = Tool(google_search=GoogleSearch())
             
@@ -134,7 +79,7 @@ Return JSON only."""
             # NOTE: Structured output with grounding may be available in Gemini 3;
             # we parse JSON manually from text response for compatibility.
             # Use system_instruction parameter to match Google AI Studio behavior
-            response = client.models.generate_content(
+            response = genai_client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=user_prompt,
                 config=GenerateContentConfig(
@@ -166,17 +111,7 @@ Return JSON only."""
             try:
                 result = json.loads(content)
             except json.JSONDecodeError as e:
-                # JSON decode errors often indicate empty or malformed responses
-                # that should be retried (similar to EmptyLLMResponseError)
-                error_msg = str(e).lower()
-                if "expecting value" in error_msg or "empty" in error_msg or len(content.strip()) == 0:
-                    raise EmptyLLMResponseError(f"JSON decode error (likely empty response): {e}")
-                # For other JSON decode errors (malformed JSON), still retry as it might be transient
-                raise EmptyLLMResponseError(f"JSON decode error (malformed response): {e}")
-            
-            # Extract grounding metadata for audit trail (optional, for future use)
-            grounding_metadata = extract_grounding_metadata(response)
-            result["_grounding_metadata"] = grounding_metadata
+                raise EmptyLLMResponseError(f"JSON decode error: {e}")
             
             # Validate and provide defaults for required fields
             if "domain" not in result:
@@ -196,7 +131,6 @@ Return JSON only."""
             
         except Exception as e:
             print(f"[Vertex AI] Error: {e}")
-            import traceback
             traceback.print_exc()
             raise
     
@@ -249,6 +183,14 @@ def main(request):
     print(f"[CompanyDomainLookup] Processing company_name='{company_name}', job_id='{job_id}'")
     
     try:
+        # Validate job exists before expensive LLM call
+        job_ref = db.collection("jobs").document(job_id)
+        job_doc = job_ref.get()
+        
+        if not job_doc.exists:
+            print(f"[CompanyDomainLookup] Job {job_id} not found in Firestore")
+            return jsonify({"status": "error", "error": "Job not found"}), 404, headers
+        
         # Use Vertex AI Gemini with Google Search grounding to determine domain
         print(f"[CompanyDomainLookup] Calling Vertex AI with Google Search grounding for domain resolution")
         llm_result = vertex_ai_domain_resolution_grounded(company_name)
@@ -258,12 +200,9 @@ def main(request):
             print(f"[CompanyDomainLookup] LLM error: {llm_result['error']}")
             return jsonify({"status": "error", "error": llm_result["error"]}), 200, headers
         
-        # Extract grounding metadata (for future use, not currently returned in response)
-        grounding_metadata = llm_result.pop("_grounding_metadata", {})
-        
-        domain = llm_result.get("domain", "").strip()
-        confidence = llm_result.get("confidence", "low")
-        rationale = llm_result.get("rationale", "")
+        domain = llm_result["domain"].strip()
+        confidence = llm_result["confidence"]
+        rationale = llm_result["rationale"]
         
         if not domain:
             print(f"[CompanyDomainLookup] No domain determined by LLM")
@@ -274,17 +213,8 @@ def main(request):
         domain = domain.split("/")[0].strip()
         
         print(f"[CompanyDomainLookup] Determined domain: {domain} (confidence: {confidence})")
-        print(f"[CompanyDomainLookup] Grounding sources: {len(grounding_metadata.get('grounding_sources', []))}")
         
-        # Update Firestore job document
-        job_ref = db.collection("jobs").document(job_id)
-        job_doc = job_ref.get()
-        
-        if not job_doc.exists:
-            print(f"[CompanyDomainLookup] Job {job_id} not found in Firestore")
-            return jsonify({"status": "error", "error": "Job not found"}), 404, headers
-        
-        # Update input.company_domain and input.company_domain_confidence
+        # Update Firestore job document with resolved domain
         job_ref.update({
             "input.company_domain": domain,
             "input.company_domain_confidence": confidence,
@@ -301,7 +231,6 @@ def main(request):
         
     except Exception as e:
         print(f"[CompanyDomainLookup] Unexpected error: {e}")
-        import traceback
         traceback.print_exc()
         # Don't fail the job - domain lookup is optional
         return jsonify({
