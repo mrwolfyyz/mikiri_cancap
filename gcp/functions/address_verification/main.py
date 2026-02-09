@@ -9,8 +9,9 @@ Performs fraud detection analysis on Canadian business addresses for auto loan a
 import functions_framework
 import os
 import json
-import re
 import time
+import traceback
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Any, Optional
 from flask import Request, jsonify
 from urllib.parse import quote_plus
@@ -29,6 +30,17 @@ from google.genai.types import GenerateContentConfig, Tool, GoogleSearch
 GCP_PROJECT = os.environ.get("GCP_PROJECT", os.environ.get("GOOGLE_CLOUD_PROJECT", ""))
 # Use global endpoint for Gemini models (Terraform sets GCP_LOCATION for deployment)
 GCP_LOCATION = os.environ.get("GCP_LOCATION", "global")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+
+# Module-level Vertex AI client (reused across invocations, matches company_domain_lookup pattern)
+_genai_client = genai.Client(
+    vertexai=True,
+    project=GCP_PROJECT,
+    location=GCP_LOCATION
+)
+
+# Nominatim rate limiter: tracks last request time to avoid unnecessary sleeps
+_last_nominatim_call = 0.0
 
 
 # -------------------------
@@ -38,15 +50,20 @@ def geocode_address(address: str) -> tuple:
     """
     Geocode an address using free Nominatim (OpenStreetMap) API.
     Returns (lat, lon) tuple or (None, None) if geocoding fails.
-    Respects rate limits with a small delay.
+    Uses timestamp-based rate limiting to respect Nominatim's 1 req/sec policy
+    without unnecessary sleeping on the first call.
     """
+    global _last_nominatim_call
     try:
         # Nominatim requires a User-Agent
         url = f"https://nominatim.openstreetmap.org/search?q={quote_plus(address)}&format=json&limit=1"
         req = URLRequest(url, headers={'User-Agent': 'BorrowerIntelligence/1.0'})
         
-        # Respect Nominatim rate limit (1 req/sec)
-        time.sleep(1.1)
+        # Respect Nominatim rate limit (1 req/sec) - only sleep if needed
+        elapsed = time.time() - _last_nominatim_call
+        if elapsed < 1.1:
+            time.sleep(1.1 - elapsed)
+        _last_nominatim_call = time.time()
         
         with urlopen(req, timeout=30) as response:
             data = json.loads(response.read().decode())
@@ -66,26 +83,19 @@ def geocode_address(address: str) -> tuple:
 def generate_street_view_url(address: str, lat: Optional[float] = None, lon: Optional[float] = None) -> str:
     """
     Generate a Google Maps Street View URL for a given address.
-    If coordinates are provided, uses them directly. Otherwise attempts geocoding.
-    Falls back to search URL if geocoding fails.
+    If coordinates are provided, uses the official pano format to open Street View directly.
+    Falls back to search URL if no coordinates (user must click pegman).
+    
+    Geocoding is the caller's responsibility -- this function only builds URLs.
     
     Args:
-        address: Address string
-        lat: Optional latitude (if already geocoded)
-        lon: Optional longitude (if already geocoded)
+        address: Address string (used for fallback search URL)
+        lat: Optional latitude (from prior geocoding)
+        lon: Optional longitude (from prior geocoding)
     """
-    # Use provided coordinates if available
     if lat is not None and lon is not None:
-        print(f"[Street View] Using provided coordinates: {lat:.6f}, {lon:.6f}")
-        # Use the official Google Maps Street View URL format
+        print(f"[Street View] Using coordinates: {lat:.6f}, {lon:.6f}")
         return f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}"
-    
-    # Try geocoding
-    cleaned = clean_address_for_geocoding(address)
-    geocode_lat, geocode_lon = geocode_address(cleaned)
-    if geocode_lat is not None and geocode_lon is not None:
-        # Direct Street View URL with coordinates using official format
-        return f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={geocode_lat},{geocode_lon}"
     
     # Fallback: search URL (one click to Street View via pegman)
     encoded = quote_plus(address)
@@ -140,7 +150,6 @@ def extract_grounding_metadata(response) -> Dict[str, Any]:
         
     except Exception as e:
         print(f"[Grounding Metadata] Error extracting metadata: {e}")
-        import traceback
         traceback.print_exc()
     
     return metadata
@@ -171,13 +180,99 @@ def map_grounding_to_queries_payload(grounding_metadata: Dict[str, Any]) -> List
     return queries_payload
 
 
+def _parse_and_validate_analysis(content: str, response) -> Dict[str, Any]:
+    """
+    Parse LLM text response into a validated analysis dict with grounding metadata.
+    
+    Strips markdown fencing, parses JSON, fills missing fields with safe defaults,
+    and validates enum values and array types.
+    
+    Args:
+        content: Raw text content from LLM response
+        response: Full API response object (for grounding metadata extraction)
+    
+    Returns:
+        Validated analysis dict with _grounding_metadata attached
+    
+    Raises:
+        EmptyLLMResponseError: If content is empty or JSON is malformed (retryable)
+    """
+    # Strip markdown code blocks if present
+    if content.startswith("```"):
+        lines = content.split("\n")
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        content = "\n".join(lines)
+    
+    if not content.strip():
+        raise EmptyLLMResponseError("Empty content after stripping markdown")
+    
+    # Parse JSON - treat all decode errors as retryable
+    try:
+        result = json.loads(content)
+    except json.JSONDecodeError as e:
+        error_msg = str(e).lower()
+        if "expecting value" in error_msg or "empty" in error_msg or len(content.strip()) == 0:
+            raise EmptyLLMResponseError(f"JSON decode error (likely empty response): {e}")
+        raise EmptyLLMResponseError(f"JSON decode error (malformed response): {e}")
+    
+    # Extract grounding metadata for audit trail
+    grounding_metadata = extract_grounding_metadata(response)
+    result["_grounding_metadata"] = grounding_metadata
+    
+    # Validate and provide defaults for required fields
+    required_fields = {
+        "business_at_address": False,
+        "is_virtual_workspace": False,
+        "is_shipping_location": False,
+        "is_residential": False,
+        "is_suspicious": False,
+        "fraud_risk_level": "medium",
+        "fraud_indicators": [],
+        "confidence": "medium",
+        "reasoning": "Analysis completed but some fields were missing from response.",
+        "key_findings": []
+    }
+    
+    missing_fields = []
+    for field, default_value in required_fields.items():
+        if field not in result:
+            result[field] = default_value
+            missing_fields.append(field)
+    
+    if missing_fields:
+        print(f"[Vertex AI] ⚠️  Missing fields filled with defaults: {missing_fields}")
+    
+    # Validate enum values
+    if result.get("fraud_risk_level") not in ["low", "medium", "high"]:
+        result["fraud_risk_level"] = "medium"
+    if result.get("confidence") not in ["low", "medium", "high"]:
+        result["confidence"] = "medium"
+    
+    # Ensure arrays are actually arrays
+    if not isinstance(result.get("fraud_indicators"), list):
+        result["fraud_indicators"] = []
+    if not isinstance(result.get("key_findings"), list):
+        result["key_findings"] = []
+    
+    return result
+
+
 def vertex_ai_analyze_address_grounded(address: str, business_name: str) -> Dict[str, Any]:
     """
-    Analyze address using Gemini 2.5 Flash with Google Search grounding.
+    Analyze address using Gemini with Google Search grounding.
     The model performs its own searches and returns grounded analysis.
+    
+    Uses module-level _genai_client for connection reuse across invocations.
+    
+    Raises:
+        ValueError: If GCP_PROJECT is not configured
+        Exception: If all retry attempts fail (propagated from retry_with_backoff)
     """
     if not GCP_PROJECT:
-        return {"error": "GCP_PROJECT not set"}
+        raise ValueError("GCP_PROJECT not set")
     
     system_prompt = """You are a fraud detection expert analyzing Canadian business information and addresses for auto loan applications. Your goal is to verify that the claimed business actually exists at the provided address and identify fraudulent or suspicious information and addresses that may indicate loan application fraud.
 
@@ -221,25 +316,17 @@ Return JSON only."""
 
     def _call_vertex_ai_grounded():
         try:
-            # Initialize Google Gen AI client with Vertex AI backend
-            client = genai.Client(
-                vertexai=True,
-                project=GCP_PROJECT,
-                location=GCP_LOCATION
-            )
-            
             # Configure Google Search grounding tool
             google_search_tool = Tool(google_search=GoogleSearch())
             
-            print(f"[Vertex AI] Calling Gemini 2.5 Flash with Google Search grounding...")
+            print(f"[Vertex AI] Calling {GEMINI_MODEL} with Google Search grounding...")
             
             # Generate response with grounding
             # NOTE: Cannot use response_schema with grounding in Gemini 2.5 Flash
             # (Structured outputs with tools only available in Gemini 3)
             # Must parse JSON manually from text response
-            # Use system_instruction parameter to match Google AI Studio behavior
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
+            response = _genai_client.models.generate_content(
+                model=GEMINI_MODEL,
                 contents=user_prompt,
                 config=GenerateContentConfig(
                     system_instruction=system_prompt,
@@ -253,90 +340,20 @@ Return JSON only."""
             if not response or not hasattr(response, 'text') or not response.text:
                 raise EmptyLLMResponseError("Empty response from Vertex AI")
             
-            # Parse JSON response
-            content = response.text.strip()
-            
-            # Strip markdown code blocks if present
-            if content.startswith("```"):
-                lines = content.split("\n")
-                if lines[0].startswith("```"):
-                    lines = lines[1:]
-                if lines and lines[-1].strip() == "```":
-                    lines = lines[:-1]
-                content = "\n".join(lines)
-            
-            if not content.strip():
-                raise EmptyLLMResponseError("Empty content after stripping markdown")
-            
-            # Parse JSON - if it fails due to empty/invalid content, treat as retryable
-            try:
-                result = json.loads(content)
-            except json.JSONDecodeError as e:
-                # JSON decode errors often indicate empty or malformed responses
-                # that should be retried (similar to EmptyLLMResponseError)
-                error_msg = str(e).lower()
-                if "expecting value" in error_msg or "empty" in error_msg or len(content.strip()) == 0:
-                    raise EmptyLLMResponseError(f"JSON decode error (likely empty response): {e}")
-                # For other JSON decode errors (malformed JSON), still retry as it might be transient
-                raise EmptyLLMResponseError(f"JSON decode error (malformed response): {e}")
-            
-            # Extract grounding metadata for audit trail
-            grounding_metadata = extract_grounding_metadata(response)
-            result["_grounding_metadata"] = grounding_metadata
-            
-            # Validate and provide defaults for required fields
-            required_fields = {
-                "business_at_address": False,
-                "is_virtual_workspace": False,
-                "is_shipping_location": False,
-                "is_residential": False,
-                "is_suspicious": False,
-                "fraud_risk_level": "medium",
-                "fraud_indicators": [],
-                "confidence": "medium",
-                "reasoning": "Analysis completed but some fields were missing from response.",
-                "key_findings": []
-            }
-            
-            missing_fields = []
-            for field, default_value in required_fields.items():
-                if field not in result:
-                    result[field] = default_value
-                    missing_fields.append(field)
-            
-            if missing_fields:
-                print(f"[Vertex AI] ⚠️  Missing fields filled with defaults: {missing_fields}")
-            
-            # Validate enum values
-            if result.get("fraud_risk_level") not in ["low", "medium", "high"]:
-                result["fraud_risk_level"] = "medium"
-            
-            if result.get("confidence") not in ["low", "medium", "high"]:
-                result["confidence"] = "medium"
-            
-            # Ensure arrays are actually arrays
-            if not isinstance(result.get("fraud_indicators"), list):
-                result["fraud_indicators"] = []
-            if not isinstance(result.get("key_findings"), list):
-                result["key_findings"] = []
-            
+            result = _parse_and_validate_analysis(response.text.strip(), response)
             print(f"[Vertex AI] ✅ Successfully analyzed address with grounding")
             return result
             
         except Exception as e:
             print(f"[Vertex AI] Error: {e}")
-            import traceback
             traceback.print_exc()
             raise
     
-    try:
-        return retry_with_backoff(
-            _call_vertex_ai_grounded,
-            RetryConfig(max_attempts=3, base_delay_seconds=2.0, max_delay_seconds=60.0),
-            operation_name="Vertex AI grounded address analysis"
-        )
-    except Exception as e:
-        return {"error": str(e)}
+    return retry_with_backoff(
+        _call_vertex_ai_grounded,
+        RetryConfig(max_attempts=3, base_delay_seconds=2.0, max_delay_seconds=60.0),
+        operation_name="Vertex AI grounded address analysis"
+    )
 
 
 # -------------------------
@@ -410,13 +427,19 @@ def main(request: Request):
     print(f"[Address Verification] Starting verification: {business_name} at {address}")
     
     try:
-        # Analyze with Vertex AI Gemini using Google Search grounding
-        print(f"[Address Verification] Analyzing with Gemini 2.5 Flash + Google Search grounding...")
-        analysis = vertex_ai_analyze_address_grounded(address, business_name)
+        # Clean address for geocoding (remove copyright text, junk prefixes, etc.)
+        cleaned_address = clean_address_for_geocoding(address)
         
-        if "error" in analysis:
-            print(f"[Address Verification] Vertex AI analysis error: {analysis['error']}")
-            return jsonify({"error": f"Analysis failed: {analysis['error']}"}), 500, headers
+        # Run LLM analysis and geocoding in parallel (they are independent)
+        print(f"[Address Verification] Starting parallel analysis + geocoding...")
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            analysis_future = executor.submit(
+                vertex_ai_analyze_address_grounded, address, business_name
+            )
+            geocode_future = executor.submit(geocode_address, cleaned_address)
+            
+            analysis = analysis_future.result()
+            lat, lon = geocode_future.result()
         
         # Extract grounding metadata and map to queries_payload format
         grounding_metadata = analysis.pop("_grounding_metadata", {})
@@ -429,9 +452,7 @@ def main(request: Request):
         print(f"  - grounding_sources: {len(grounding_metadata.get('grounding_sources', []))}")
         print(f"  - reasoning: {analysis.get('reasoning', '')[:200]}")
         
-        # Geocode address for Street View link
-        print(f"[Address Verification] Geocoding address for Street View...")
-        lat, lon = geocode_address(address)
+        # Generate Street View URL from geocoding result
         street_view_url = generate_street_view_url(address, lat, lon)
         print(f"[Address Verification] Street View URL generated: {street_view_url[:80]}...")
         
@@ -457,19 +478,7 @@ def main(request: Request):
         
     except Exception as e:
         print(f"[Address Verification] Error during verification: {e}")
-        import traceback
         traceback.print_exc()
         return jsonify({"error": f"Verification failed: {str(e)}"}), 500, headers
-
-
-
-
-
-
-
-
-
-
-
 
 
