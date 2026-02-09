@@ -230,15 +230,11 @@ main:
     - sanitize_phase2_errors:
         assign:
           - sanitized_phase2_errors:
-              regulator: ""
-              litigation: ""
-              corporate: ""
-              salaries: ""
               domain_enrichment: $${string(default(phase2_errors.domain_enrichment, ""))}
               address_geocoding: $${string(default(phase2_errors.geocoding_identity, ""))}
               contact_extraction: $${string(default(phase2_errors.contact_extraction, ""))}
 
-    # Aggregate results (pass null for regulator, litigation, corporate, salaries)
+    # Aggregate results
     # Note: geocoding_identity_result.body already has {"addresses": {...}} structure
     - aggregate:
         try:
@@ -250,10 +246,6 @@ main:
             body:
               job_id: $${job_id}
               identity: $${identity_result.body}
-              regulator: null
-              litigation: null
-              corporate: null
-              salaries: null
               domain_enrichment: $${default(domain_enrichment_result.body, null)}
               address_geocoding: $${default(geocoding_identity_result.body, null)}
               contact_extraction: $${default(contact_extraction_result.body, null)}
