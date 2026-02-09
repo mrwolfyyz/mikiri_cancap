@@ -2757,7 +2757,13 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         # Map source values to display labels
         if source == "vertex_ai_linkedin":
             source_label = "Vertex AI Search (LinkedIn)"
-            source_url = ""  # No direct URL for Vertex AI Search
+            source_url = ""
+        elif source == "vertex_ai_precision":
+            source_label = "Vertex AI Search (Social)"
+            source_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
+        elif source == "vertex_ai_recall":
+            source_label = "Vertex AI Search (Lifestyle)"
+            source_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
         elif source == "google_search":
             source_label = "Google"
             google_url = f"https://www.google.com/search?q={quote_plus(query_text)}"
