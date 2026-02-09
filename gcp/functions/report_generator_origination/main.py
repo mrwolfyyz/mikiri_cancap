@@ -46,11 +46,7 @@ def transform_firestore_to_report_format(firestore_data: Dict[str, Any]) -> Dict
     
     Firestore structure (from aggregator):
     - result.identity (contains: seed, scored, contactability, breaches, queries)
-    - result.regulator (empty/default structure from aggregator)
-    - result.litigation (empty/default structure from aggregator)
-    - result.corporate (empty/default structure from aggregator)
-    - result.salaries (empty/default structure from aggregator)
-    - result.enrichment (contains: domains, addresses)
+    - result.enrichment (contains: domains, addresses, contacts)
     
     Expected structure:
     - data['seed']
@@ -58,18 +54,9 @@ def transform_firestore_to_report_format(firestore_data: Dict[str, Any]) -> Dict
     - data['contactability']
     - data['breaches']
     - data['queries']
-    - data['regulator_phase2']
-    - data['litigation_phase2']
-    - data['corporate_debug']
-    - data['ontario_salaries']
     """
     identity = firestore_data.get('identity', {})
-    regulator = firestore_data.get('regulator', {})
-    litigation = firestore_data.get('litigation', {})
-    corporate = firestore_data.get('corporate', {})
-    salaries = firestore_data.get('salaries', {})
     
-    # Build transformed structure (aggregator creates empty structures for regulator/litigation/corporate/salaries)
     transformed = {
         'seed': identity.get('seed', {}),
         'scored': identity.get('scored', {}),
@@ -77,28 +64,6 @@ def transform_firestore_to_report_format(firestore_data: Dict[str, Any]) -> Dict
         'breaches': identity.get('breaches', []),
         'queries': identity.get('queries', []),
         'grounding_metadata': identity.get('grounding_metadata', {}),
-        'regulator_phase2': {
-            'confirmed_regulator_hits': regulator.get('confirmed_regulator_hits', []),
-            'regulator_hits': regulator.get('regulator_hits', []),
-            'queries': regulator.get('queries', []),
-            'rationale': regulator.get('llm_output', {}).get('rationale', '') if regulator.get('llm_output') else '',
-        },
-        'litigation_phase2': {
-            'confirmed_litigation_hits': litigation.get('confirmed_litigation_hits', []),
-            'litigation_hits': litigation.get('litigation_hits', []),
-            'queries': litigation.get('queries', []),
-            'rationale': litigation.get('llm_output', {}).get('rationale', '') if litigation.get('llm_output') else '',
-        },
-        'corporate_debug': corporate.get('debug', {
-            'num_direct': 0,
-            'num_family': 0,
-            'full_hits_raw': [],
-            'last_hits_raw': [],
-            'borrower_addresses': [],
-            'full_query': '',
-            'last_query': '',
-        }),
-        'ontario_salaries': salaries,
     }
     
     return transformed
