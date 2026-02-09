@@ -17,6 +17,7 @@ from urllib.parse import quote_plus
 from urllib.request import urlopen, Request as URLRequest
 from urllib.error import URLError, HTTPError
 from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError
+from address_utils import clean_address_for_geocoding
 
 # Google Gen AI SDK imports (for Gemini 2.5 Flash with grounding support)
 from google import genai
@@ -30,34 +31,9 @@ GCP_PROJECT = os.environ.get("GCP_PROJECT", os.environ.get("GOOGLE_CLOUD_PROJECT
 GCP_LOCATION = os.environ.get("GCP_LOCATION", "global")
 
 
-
 # -------------------------
 # Geocoding Functions
 # -------------------------
-def clean_address_for_geocoding(address: str) -> str:
-    """
-    Clean address string to improve geocoding accuracy.
-    Removes copyright text, years, company names, and other junk
-    that appears before the actual civic address.
-    """
-    # Remove common prefixes
-    patterns_to_remove = [
-        r'^.*?©.*?Reserved\.\s*',  # Copyright text
-        r'^.*?\d{4}\s+.*?Reserved\.\s*',  # Year + Reserved
-        r'^.*?HEAD OFFICE\.\s*',  # HEAD OFFICE label
-        r'^.*?OFFICE\.\s*',  # OFFICE label
-        r'^.*?Contact:\s*',  # Contact: prefix
-    ]
-    
-    for pattern in patterns_to_remove:
-        address = re.sub(pattern, '', address, flags=re.IGNORECASE)
-    
-    # Trim and clean up
-    address = address.strip()
-    
-    return address
-
-
 def geocode_address(address: str) -> tuple:
     """
     Geocode an address using free Nominatim (OpenStreetMap) API.
