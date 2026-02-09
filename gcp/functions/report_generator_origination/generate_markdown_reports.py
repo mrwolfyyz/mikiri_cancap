@@ -109,78 +109,15 @@ def generate_street_view_url(address: str, geocode: bool = True, cached_coords: 
 
 
 # ------------------------------
-# Personal Email Domains
+# Personal Email Domains (shared utilities from gcp/shared/domain_utils.py)
 # ------------------------------
 
-COMMON_CANADIAN_EMAIL_DOMAINS = [
-    # Global free providers (extremely common in Canada)
-    "gmail.com",
-    "hotmail.com",
-    "outlook.com",
-    "live.com",
-    "yahoo.com",
-    "icloud.com",
-    
-    # Canada-specific ISP / telco domains
-    "bell.net",
-    "sympatico.ca",
-    "rogers.com",
-    "rogers.ca",
-    "shaw.ca",
-    "telus.net",
-    "videotron.ca",
-    "mts.net",        # Manitoba
-    "eastlink.ca",    # Atlantic provinces
-    "nb.sympatico.ca",  # Older regional Sympatico domains
-    "ns.sympatico.ca",
-    "qc.sympatico.ca",
-    "on.sympatico.ca",
-    
-    # Smaller / legacy Canadian consumer ISPs
-    "primus.ca",
-    "ciaccess.com",
-    "execulink.com",
-    "persona.ca",
-    "nbnet.nb.ca",
-    
-    # French-Canada / Québec usage
-    "hotmail.ca",
-    "live.ca",
-    "videotron.qc.ca",
-    
-    # Apple localized
-    "icloud.com",
-    "me.com",
-    "mac.com",
-    
-    # Privacy-oriented (common among tech users)
-    "proton.me",
-    "protonmail.com",
-    "tutanota.com",
-    "pm.me",
-]
+from domain_utils import COMMON_CANADIAN_EMAIL_DOMAINS, extract_email_domain, is_personal_email_domain
 
 
 # ------------------------------
 # Domain Whois Functions
 # ------------------------------
-
-def extract_email_domain(email: str) -> str:
-    """Extract domain from email address."""
-    try:
-        if "@" in email:
-            return email.split("@")[1].lower().strip()
-        return ""
-    except Exception:
-        return ""
-
-
-def is_personal_email_domain(domain: str) -> bool:
-    """Check if domain is in the personal email domains list."""
-    if not domain:
-        return False
-    return domain.lower().strip() in COMMON_CANADIAN_EMAIL_DOMAINS
-
 
 def load_disposable_email_blocklist(blocklist_path: Path) -> set:
     """Load disposable email domains from blocklist file."""
@@ -1003,10 +940,10 @@ def generate_borrower_summary(data: Dict[str, Any], name: str, output_dir: Path,
     print(f"[Borrower Summary] Is business domain: {is_business_domain}")
     if is_business_domain:
         if not whois_result:
-            print(f"[Borrower Summary] Performing whois lookup for business domain: {domain_to_check}")
+            print(f"[Borrower Summary] WARNING: Falling back to inline whois lookup for {domain_to_check} (domain_enrichment data missing)")
             whois_result = get_domain_registration_date(domain_to_check)
         if not mx_result:
-            print(f"[Borrower Summary] Performing MX record lookup for business domain: {domain_to_check}")
+            print(f"[Borrower Summary] WARNING: Falling back to inline MX lookup for {domain_to_check} (domain_enrichment data missing)")
             mx_result = check_domain_mx_records(domain_to_check)
     
     num_regulator_hits = len(data['regulator_phase2']['confirmed_regulator_hits'])
@@ -1501,10 +1438,10 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
     # Fallback to inline lookups if enrichment data not available
     if domain and not is_personal_email_domain(domain):
         if not whois_result:
-            print(f"[Identity Report] Performing whois lookup for business domain: {domain}")
+            print(f"[Identity Report] WARNING: Falling back to inline whois lookup for {domain} (domain_enrichment data missing)")
             whois_result = get_domain_registration_date(domain)
         if not mx_result:
-            print(f"[Identity Report] Performing MX record lookup for business domain: {domain}")
+            print(f"[Identity Report] WARNING: Falling back to inline MX lookup for {domain} (domain_enrichment data missing)")
             mx_result = check_domain_mx_records(domain)
     
     # Perform company domain checks if provided
@@ -1523,10 +1460,10 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
                 company_mx_result = company_enrichment.get('mx')
                 print(f"[Identity Report] Using pre-fetched enrichment data for company domain: {company_domain}")
             else:
-                print(f"[Identity Report] Performing whois lookup for company domain: {company_domain}")
+                print(f"[Identity Report] WARNING: Falling back to inline whois lookup for company domain {company_domain} (domain_enrichment data missing)")
                 company_whois_result = get_domain_registration_date(company_domain)
                 print(f"[Identity Report] DEBUG: whois_result: success={company_whois_result.get('success') if company_whois_result else None}, registration_date={company_whois_result.get('registration_date') if company_whois_result else None}")
-                print(f"[Identity Report] Performing MX record lookup for company domain: {company_domain}")
+                print(f"[Identity Report] WARNING: Falling back to inline MX lookup for company domain {company_domain} (domain_enrichment data missing)")
                 company_mx_result = check_domain_mx_records(company_domain)
                 print(f"[Identity Report] DEBUG: mx_result: success={company_mx_result.get('success') if company_mx_result else None}, status={company_mx_result.get('status') if company_mx_result else None}, error={company_mx_result.get('error') if company_mx_result else None}")
         else:

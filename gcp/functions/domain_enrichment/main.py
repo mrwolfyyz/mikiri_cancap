@@ -7,50 +7,98 @@ Called from workflow as part of phase2 parallel execution.
 Returns enrichment data that gets passed to aggregator.
 """
 
+import logging
+import re
+import time
+
+import dns.resolver
 import functions_framework
-import os
-import json
-import sys
-from typing import Dict, Any, Optional
-from datetime import datetime, timezone
+import whois
+from dateutil import parser as dateutil_parser
+from typing import Dict, Any, Tuple
+from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Import retry utilities (local copy for consistency with other phase2 functions)
-from retry_utils import retry_with_backoff, RetryConfig
+logger = logging.getLogger(__name__)
 
 # -------------------------
-# Config
+# Constants
 # -------------------------
 
-# Import enrichment functions from report generator
-# We'll copy the necessary functions here
-def extract_email_domain(email: str) -> str:
-    """Extract domain from email address."""
-    try:
-        if "@" in email:
-            return email.split("@")[1].lower().strip()
-        return ""
-    except Exception:
-        return ""
+# Import shared domain utilities (copied by prepare-functions.sh from gcp/shared/)
+from domain_utils import COMMON_CANADIAN_EMAIL_DOMAINS, extract_email_domain, is_personal_email_domain
 
+# MX Record Provider Classifications
+HIGH_TRUST_PROVIDERS = {
+    "google.com": "Google Workspace (High Trust)",
+    "googlemail.com": "Google Workspace (High Trust)",
+    "outlook.com": "Microsoft 365 (High Trust)",
+    "microsoft.com": "Microsoft 365 (High Trust)",
+    "pphosted.com": "Proofpoint (Enterprise Security - High Trust)",
+    "mimecast.com": "Mimecast (Enterprise Security - High Trust)",
+    "messagelabs.com": "Symantec/Broadcom (Enterprise Security - High Trust)",
+    "barracudanetworks.com": "Barracuda Networks (Enterprise Security - High Trust)",
+    "barracuda.com": "Barracuda Networks (Enterprise Security - High Trust)",
+    "ironport.com": "Cisco IronPort (Enterprise Security - High Trust)",
+    "mailcontrol.com": "Forcepoint (Enterprise Security - High Trust)",
+    "trendmicro.com": "Trend Micro (Enterprise Security - High Trust)",
+    "sophos.com": "Sophos (Enterprise Security - High Trust)",
+    "fortinet.com": "Fortinet (Enterprise Security - High Trust)",
+    "checkpoint.com": "Check Point (Enterprise Security - High Trust)",
+    "zix.com": "Zix (Enterprise Security - High Trust)",
+    "appriver.com": "AppRiver (Enterprise Security - High Trust)",
+    "reflexion.net": "Reflexion (Enterprise Security - High Trust)",
+}
 
-COMMON_CANADIAN_EMAIL_DOMAINS = [
-    "gmail.com", "hotmail.com", "outlook.com", "live.com", "yahoo.com",
-    "icloud.com", "bell.net", "sympatico.ca", "rogers.com", "rogers.ca",
-    "shaw.ca", "telus.net", "videotron.ca", "mts.net", "eastlink.ca",
-    "nb.sympatico.ca", "ns.sympatico.ca", "qc.sympatico.ca", "on.sympatico.ca",
-    "primus.ca", "ciaccess.com", "execulink.com", "persona.ca", "nbnet.nb.ca",
-    "hotmail.ca", "live.ca", "videotron.qc.ca", "me.com", "mac.com",
-    "proton.me", "protonmail.com", "tutanota.com", "pm.me",
+STANDARD_TRUST_PROVIDERS = {
+    "zoho.com": "Zoho Mail (Standard Business)",
+    "protonmail": "ProtonMail (Privacy/Standard)",
+    "fastmail.com": "Fastmail (Standard)",
+    "rackspace.com": "Rackspace Email (Standard)",
+    "intermedia.net": "Intermedia (Standard)",
+    "hostedemail.com": "OpenSRS/Tucows (Reseller Email - Likely Legit Small Biz)",
+    "dreamhost.com": "DreamHost Email (Hosting Provider - Likely Legit Small Biz)",
+}
+
+LOW_TRUST_FLAGS = {
+    "secureserver.net": "GoDaddy Default (Often unused/forwarding only)",
+    "registrar-servers.com": "Namecheap Default (Forwarding/Parked)",
+    "name-services.com": "eNom Default (Parking/Forwarding)",
+    "domaincontrol.com": "GoDaddy DNS (Generic/Default)",
+    "parked": "Domain Parking Service",
+    "sedoparking": "Sedo (Domain for Sale/Parked)",
+    "parklogic": "ParkLogic (Domain Parking)",
+    "bodis.com": "Bodis (Domain Parking)",
+}
+
+# Transient error patterns for result-based retry
+_TRANSIENT_ERROR_PATTERNS = [
+    "timeout", "timed out", "connection reset", "connection refused",
+    "too many requests", "rate limit", "temporarily unavailable",
+    "try again", "socket error", "network unreachable",
 ]
 
+# Retry configuration
+_MAX_RETRY_ATTEMPTS = 2
+_RETRY_BASE_DELAY = 0.5
+_FUNCTION_TIME_BUDGET_SECONDS = 45  # Leave headroom within 60s function timeout
 
-def is_personal_email_domain(domain: str) -> bool:
-    """Check if domain is in the personal email domains list."""
-    if not domain:
+
+# -------------------------
+# Utility Functions
+# -------------------------
+
+def _is_transient_error(error_msg: str) -> bool:
+    """Check if an error message indicates a transient/retryable failure."""
+    if not error_msg:
         return False
-    return domain.lower().strip() in COMMON_CANADIAN_EMAIL_DOMAINS
+    error_lower = error_msg.lower()
+    return any(pattern in error_lower for pattern in _TRANSIENT_ERROR_PATTERNS)
 
+
+# -------------------------
+# WHOIS Lookup
+# -------------------------
 
 def get_domain_registration_date(domain: str) -> Dict[str, Any]:
     """
@@ -58,12 +106,9 @@ def get_domain_registration_date(domain: str) -> Dict[str, Any]:
     Returns dict with 'success', 'registration_date', and 'error' fields.
     """
     try:
-        import whois
-        from datetime import datetime
-        
-        # Perform whois lookup with timeout
+        # Perform whois lookup
         w = whois.whois(domain)
-        
+
         # Try multiple field names for registration date
         creation_date = None
         for field_name in ['creation_date', 'created', 'registered', 'registration_date', 'domain_date_created']:
@@ -71,17 +116,16 @@ def get_domain_registration_date(domain: str) -> Dict[str, Any]:
             if field_value:
                 creation_date = field_value
                 break
-        
+
         # If no standard field found, check the raw dict
         if not creation_date and hasattr(w, '__dict__'):
             for key in ['creation_date', 'created', 'registered', 'registration_date', 'domain_date_created']:
                 if key in w.__dict__ and w.__dict__[key]:
                     creation_date = w.__dict__[key]
                     break
-        
+
         # For domains that don't parse dates, try parsing raw text
         if not creation_date and hasattr(w, 'text') and w.text:
-            import re
             date_patterns = [
                 r'creation date[:\s]+(\d{4}-\d{2}-\d{2})',
                 r'created[:\s]+(\d{4}-\d{2}-\d{2})',
@@ -103,12 +147,12 @@ def get_domain_registration_date(domain: str) -> Dict[str, Any]:
                             continue
                     if creation_date:
                         break
-        
+
         if creation_date:
             # Handle list of dates (take first)
             if isinstance(creation_date, list):
                 creation_date = creation_date[0]
-            
+
             # Convert to datetime if it's a string
             if isinstance(creation_date, str):
                 for fmt in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%d-%b-%Y', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M:%SZ']:
@@ -119,49 +163,39 @@ def get_domain_registration_date(domain: str) -> Dict[str, Any]:
                         continue
                 else:
                     try:
-                        from dateutil import parser
-                        creation_date = parser.parse(creation_date)
+                        creation_date = dateutil_parser.parse(creation_date)
                     except Exception:
                         pass
-            
+
             # Format as YYYY-MM-DD
             if isinstance(creation_date, datetime):
                 reg_date_str = creation_date.strftime("%Y-%m-%d")
-                print(f"    ✓ Whois lookup successful: {domain} registered {reg_date_str}")
+                logger.info("WHOIS lookup successful: %s registered %s", domain, reg_date_str)
                 return {
                     "success": True,
                     "registration_date": reg_date_str,
                     "error": None
                 }
-        
-        print(f"    ⚠️  No registration date found for {domain}")
+
+        logger.warning("No registration date found for %s", domain)
         return {
             "success": False,
             "registration_date": None,
             "error": "No registration date in whois data"
         }
-        
-    except ImportError:
-        print(f"    ⚠️  Whois lookup failed: python-whois not available")
-        return {
-            "success": False,
-            "registration_date": None,
-            "error": "python-whois library not installed"
-        }
+
     except Exception as e:
         error_msg = str(e)
-        print(f"    ⚠️  Whois lookup failed: {e.__class__.__name__}: {error_msg}")
-        
+        logger.warning("WHOIS lookup failed for %s: %s: %s", domain, e.__class__.__name__, error_msg)
+
         # Try to parse creation date from error message (some whois libraries return data in error)
-        from datetime import datetime
-        import re
         date_patterns = [
-            r'creation date[:\s]+(\d{4}-\d{2}-\d{2})T?\d*:?\d*:?\d*Z?',  # ISO format with optional time
-            r'creation date[:\s]+(\d{4}-\d{2}-\d{2})',  # Date only
+            r'creation date[:\s]+(\d{4}-\d{2}-\d{2})T?\d*:?\d*:?\d*Z?',
+            r'creation date[:\s]+(\d{4}-\d{2}-\d{2})',
             r'created[:\s]+(\d{4}-\d{2}-\d{2})T?\d*:?\d*:?\d*Z?',
             r'created[:\s]+(\d{4}-\d{2}-\d{2})',
         ]
-        
+
         for pattern in date_patterns:
             match = re.search(pattern, error_msg, re.IGNORECASE)
             if match:
@@ -169,7 +203,7 @@ def get_domain_registration_date(domain: str) -> Dict[str, Any]:
                 try:
                     creation_date = datetime.strptime(date_str, "%Y-%m-%d")
                     reg_date_str = creation_date.strftime("%Y-%m-%d")
-                    print(f"    ✓ Extracted registration date from error message: {domain} registered {reg_date_str}")
+                    logger.info("Extracted registration date from error message: %s registered %s", domain, reg_date_str)
                     return {
                         "success": True,
                         "registration_date": reg_date_str,
@@ -177,7 +211,7 @@ def get_domain_registration_date(domain: str) -> Dict[str, Any]:
                     }
                 except ValueError:
                     continue
-        
+
         return {
             "success": False,
             "registration_date": None,
@@ -185,57 +219,16 @@ def get_domain_registration_date(domain: str) -> Dict[str, Any]:
         }
 
 
+# -------------------------
+# MX Record Lookup
+# -------------------------
+
 def check_domain_mx_records(domain: str) -> Dict[str, Any]:
     """
-    Analyze a domain's MX records to determine if it uses legitimate 
+    Analyze a domain's MX records to determine if it uses legitimate
     business email infrastructure or default/parked services.
     Returns dict with 'success', 'status', 'provider_detected', 'mx_records', 'risk_level', and 'error' fields.
     """
-    # High Trust: Enterprise-grade services
-    HIGH_TRUST_PROVIDERS = {
-        "google.com": "Google Workspace (High Trust)",
-        "googlemail.com": "Google Workspace (High Trust)",
-        "outlook.com": "Microsoft 365 (High Trust)",
-        "microsoft.com": "Microsoft 365 (High Trust)",
-        "pphosted.com": "Proofpoint (Enterprise Security - High Trust)",
-        "mimecast.com": "Mimecast (Enterprise Security - High Trust)",
-        "messagelabs.com": "Symantec/Broadcom (Enterprise Security - High Trust)",
-        "barracudanetworks.com": "Barracuda Networks (Enterprise Security - High Trust)",
-        "barracuda.com": "Barracuda Networks (Enterprise Security - High Trust)",
-        "ironport.com": "Cisco IronPort (Enterprise Security - High Trust)",
-        "mailcontrol.com": "Forcepoint (Enterprise Security - High Trust)",
-        "trendmicro.com": "Trend Micro (Enterprise Security - High Trust)",
-        "sophos.com": "Sophos (Enterprise Security - High Trust)",
-        "fortinet.com": "Fortinet (Enterprise Security - High Trust)",
-        "checkpoint.com": "Check Point (Enterprise Security - High Trust)",
-        "zix.com": "Zix (Enterprise Security - High Trust)",
-        "appriver.com": "AppRiver (Enterprise Security - High Trust)",
-        "reflexion.net": "Reflexion (Enterprise Security - High Trust)"
-    }
-
-    # Standard Trust: Legitimate paid/pro email services
-    STANDARD_TRUST_PROVIDERS = {
-        "zoho.com": "Zoho Mail (Standard Business)",
-        "protonmail": "ProtonMail (Privacy/Standard)",
-        "fastmail.com": "Fastmail (Standard)",
-        "rackspace.com": "Rackspace Email (Standard)",
-        "intermedia.net": "Intermedia (Standard)",
-        "hostedemail.com": "OpenSRS/Tucows (Reseller Email - Likely Legit Small Biz)",
-        "dreamhost.com": "DreamHost Email (Hosting Provider - Likely Legit Small Biz)"
-    }
-
-    # Low Trust / Risk Flags: Default registrar pages, parking services, or forwarding
-    LOW_TRUST_FLAGS = {
-        "secureserver.net": "GoDaddy Default (Often unused/forwarding only)",
-        "registrar-servers.com": "Namecheap Default (Forwarding/Parked)",
-        "name-services.com": "eNom Default (Parking/Forwarding)",
-        "domaincontrol.com": "GoDaddy DNS (Generic/Default)",
-        "parked": "Domain Parking Service",
-        "sedoparking": "Sedo (Domain for Sale/Parked)",
-        "parklogic": "ParkLogic (Domain Parking)",
-        "bodis.com": "Bodis (Domain Parking)"
-    }
-
     results = {
         "success": False,
         "domain": domain,
@@ -247,14 +240,12 @@ def check_domain_mx_records(domain: str) -> Dict[str, Any]:
     }
 
     try:
-        import dns.resolver
-        
         # Fetch MX records
         answers = dns.resolver.resolve(domain, 'MX')
-        
+
         # Sort by priority (lowest number is primary)
         sorted_mx = sorted(answers, key=lambda r: r.preference)
-        
+
         for rdata in sorted_mx:
             mx_value = rdata.exchange.to_text().lower().strip('.')
             results["mx_records"].append(mx_value)
@@ -267,7 +258,7 @@ def check_domain_mx_records(domain: str) -> Dict[str, Any]:
             return results
 
         primary_mx = results["mx_records"][0]
-        
+
         # Check High Trust
         for sig, name in HIGH_TRUST_PROVIDERS.items():
             if sig in primary_mx:
@@ -275,7 +266,7 @@ def check_domain_mx_records(domain: str) -> Dict[str, Any]:
                 results["status"] = "Legitimate Business Email"
                 results["provider_detected"] = name
                 results["risk_level"] = "LOW"
-                print(f"    ✓ MX lookup successful: {domain} uses {name}")
+                logger.info("MX lookup: %s uses %s", domain, name)
                 return results
 
         # Check Standard Trust
@@ -285,7 +276,7 @@ def check_domain_mx_records(domain: str) -> Dict[str, Any]:
                 results["status"] = "Standard Business Email"
                 results["provider_detected"] = name
                 results["risk_level"] = "LOW/MEDIUM"
-                print(f"    ✓ MX lookup successful: {domain} uses {name}")
+                logger.info("MX lookup: %s uses %s", domain, name)
                 return results
 
         # Check Low Trust / Parking
@@ -295,17 +286,16 @@ def check_domain_mx_records(domain: str) -> Dict[str, Any]:
                 results["status"] = "Registrar Default / Parked"
                 results["provider_detected"] = name
                 results["risk_level"] = "HIGH"
-                print(f"    ⚠️  MX lookup: {domain} uses {name}")
+                logger.warning("MX lookup: %s uses %s", domain, name)
                 return results
 
         # If it points to the domain itself (e.g., mail.custom-domain.com)
-        # This is likely a private server or cPanel hosting. Harder to verify, but usually not "Parking".
         if domain in primary_mx:
             results["success"] = True
             results["status"] = "Self-Hosted / Local Hosting"
             results["provider_detected"] = "Private Server (e.g., cPanel/Exchange)"
             results["risk_level"] = "MEDIUM"
-            print(f"    ✓ MX lookup: {domain} uses self-hosted email")
+            logger.info("MX lookup: %s uses self-hosted email", domain)
             return results
 
         # Unknown/Unrecognized MX record
@@ -313,124 +303,169 @@ def check_domain_mx_records(domain: str) -> Dict[str, Any]:
         results["status"] = "Unknown Email Provider"
         results["provider_detected"] = f"Unrecognized provider: {primary_mx}"
         results["risk_level"] = "MEDIUM"
-        print(f"    ⚠️  MX lookup: {domain} uses unrecognized provider: {primary_mx}")
+        logger.warning("MX lookup: %s uses unrecognized provider: %s", domain, primary_mx)
         return results
 
-    except ImportError:
-        print(f"    ⚠️  MX lookup failed: dnspython not available")
-        results["error"] = "dnspython library not installed"
-        return results
     except dns.resolver.NoAnswer:
         results["status"] = "No Email Configured"
         results["risk_level"] = "CRITICAL"
         results["error"] = "Domain has no MX records"
-        print(f"    ⚠️  MX lookup: {domain} has no MX records")
+        logger.warning("MX lookup: %s has no MX records", domain)
         return results
     except dns.resolver.NXDOMAIN:
         results["status"] = "Domain Not Found"
         results["risk_level"] = "CRITICAL"
         results["error"] = "Domain does not exist"
-        print(f"    ⚠️  MX lookup failed: {domain} does not exist")
+        logger.warning("MX lookup failed: %s does not exist", domain)
         return results
     except Exception as e:
-        print(f"    ⚠️  MX lookup failed: {e.__class__.__name__}: {str(e)}")
+        logger.warning("MX lookup failed for %s: %s: %s", domain, e.__class__.__name__, str(e))
         results["error"] = str(e)
         return results
 
 
-def enrich_single_domain(domain: str) -> Dict[str, Any]:
-    """Enrich a single domain with WHOIS and MX record lookups."""
+# -------------------------
+# Domain Enrichment
+# -------------------------
+
+def _retry_lookup(lookup_fn, domain: str, lookup_name: str, start_time: float) -> Dict[str, Any]:
+    """
+    Result-based retry for WHOIS/MX lookups.
+
+    Retries when result['success'] is False and the error appears transient,
+    up to _MAX_RETRY_ATTEMPTS times with exponential backoff. Respects the
+    overall function time budget.
+    """
+    last_result = None
+
+    for attempt in range(_MAX_RETRY_ATTEMPTS + 1):  # +1 for initial attempt
+        # Check time budget before retries (not before the first attempt)
+        if attempt > 0:
+            elapsed = time.time() - start_time
+            if elapsed > _FUNCTION_TIME_BUDGET_SECONDS:
+                logger.warning("%s for %s: time budget exceeded (%.1fs), returning last result",
+                               lookup_name, domain, elapsed)
+                break
+
+            delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
+            logger.info("%s for %s: attempt %d/%d failed with transient error, retrying in %.1fs",
+                        lookup_name, domain, attempt, _MAX_RETRY_ATTEMPTS + 1, delay)
+            time.sleep(delay)
+
+        result = lookup_fn(domain)
+        last_result = result
+
+        # Success or definitive failure - don't retry
+        if result.get("success"):
+            return result
+
+        error_msg = result.get("error", "")
+        if not _is_transient_error(error_msg):
+            return result
+
+    # All retries exhausted
+    logger.warning("%s for %s: all %d attempts exhausted",
+                   lookup_name, domain, _MAX_RETRY_ATTEMPTS + 1)
+    return last_result
+
+
+def enrich_single_domain(domain: str, start_time: float) -> Dict[str, Any]:
+    """
+    Enrich a single domain with WHOIS and MX record lookups in parallel.
+
+    Uses result-based retry: if a lookup returns success=False with a
+    transient error, it will be retried up to _MAX_RETRY_ATTEMPTS times.
+    """
     result = {
         'domain': domain,
         'whois': None,
         'mx': None,
         'error': None
     }
-    
-    # WHOIS lookup with retry
-    # Note: retry_utils is designed for requests, but we can wrap urllib exceptions
-    try:
-        whois_result = retry_with_backoff(
-            lambda: get_domain_registration_date(domain),
-            RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=10.0),
-            operation_name=f"WHOIS lookup: {domain}"
-        )
-        result['whois'] = whois_result
-    except Exception as e:
-        result['error'] = f"WHOIS lookup failed: {str(e)}"
-    
-    # MX lookup with retry
-    try:
-        mx_result = retry_with_backoff(
-            lambda: check_domain_mx_records(domain),
-            RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=10.0),
-            operation_name=f"MX lookup: {domain}"
-        )
-        result['mx'] = mx_result
-    except Exception as e:
-        if result['error']:
-            result['error'] += f"; MX lookup failed: {str(e)}"
-        else:
-            result['error'] = f"MX lookup failed: {str(e)}"
-    
+
+    # Run WHOIS and MX lookups in parallel
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        whois_future = executor.submit(_retry_lookup, get_domain_registration_date, domain, "WHOIS", start_time)
+        mx_future = executor.submit(_retry_lookup, check_domain_mx_records, domain, "MX", start_time)
+
+        try:
+            result['whois'] = whois_future.result()
+        except Exception as e:
+            result['error'] = f"WHOIS lookup failed: {str(e)}"
+
+        try:
+            result['mx'] = mx_future.result()
+        except Exception as e:
+            error_msg = f"MX lookup failed: {str(e)}"
+            if result['error']:
+                result['error'] += f"; {error_msg}"
+            else:
+                result['error'] = error_msg
+
     return result
 
 
 @functions_framework.http
-def main(request):
+def main(request) -> Tuple[dict, int]:
     """
     HTTP Cloud Function entry point.
-    
+
     Expects JSON body:
     {
         "email": "user@example.com",
         "company_domain": "example.com"  // optional, from company_domain_lookup
     }
-    
+
     Returns enrichment data dict (consistent with other phase2 functions).
     """
+    start_time = time.time()
+
     # Parse request
     try:
         req_data = request.get_json(silent=True) or {}
     except Exception:
         return {"error": "Invalid JSON"}, 400
-    
+
     email = req_data.get('email', '').strip()
     company_domain = req_data.get('company_domain', '').strip()
-    
+
     if not email:
         return {"error": "email is required"}, 400
-    
-    print(f"[DomainEnrichment] Starting for email: {email}")
+
+    logger.info("Starting domain enrichment for email: %s", email)
     if company_domain:
-        print(f"[DomainEnrichment] Company domain: {company_domain}")
-    
-    # Extract domains to enrich
+        logger.info("Company domain provided: %s", company_domain)
+
+    # Extract domains to enrich (deduplicated)
     domains_to_enrich = []
-    domain = extract_email_domain(email)
-    if domain and not is_personal_email_domain(domain):
-        domains_to_enrich.append(domain)
-        print(f"[DomainEnrichment] Will enrich borrower email domain: {domain}")
-    
-    if company_domain:
+    seen = set()
+
+    email_domain = extract_email_domain(email)
+    if email_domain and not is_personal_email_domain(email_domain):
+        domains_to_enrich.append(email_domain)
+        seen.add(email_domain.lower())
+        logger.info("Will enrich borrower email domain: %s", email_domain)
+
+    if company_domain and company_domain.lower() not in seen:
         domains_to_enrich.append(company_domain)
-        print(f"[DomainEnrichment] Will enrich company domain: {company_domain}")
-    
+        seen.add(company_domain.lower())
+        logger.info("Will enrich company domain: %s", company_domain)
+    elif company_domain:
+        logger.info("Company domain %s same as email domain, skipping duplicate", company_domain)
+
     if not domains_to_enrich:
-        print(f"[DomainEnrichment] No domains to enrich (all personal email domains)")
-        return {
-            'domains': {},
-        }, 200
-    
+        logger.info("No domains to enrich (all personal email domains)")
+        return {'domains': {}}, 200
+
     enrichment_results = {}
-    
+
     # Parallel processing for multiple domains
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=len(domains_to_enrich)) as executor:
         futures = {}
         for domain in domains_to_enrich:
-            future = executor.submit(enrich_single_domain, domain)
+            future = executor.submit(enrich_single_domain, domain, start_time)
             futures[future] = domain
-        
+
         for future in as_completed(futures):
             domain = futures[future]
             try:
@@ -442,37 +477,8 @@ def main(request):
                     'mx': None,
                     'error': f"Enrichment failed: {str(e)}"
                 }
-    
-    print(f"[DomainEnrichment] Complete - enriched {len(domains_to_enrich)} domain(s)")
-    
-    # Return data (like other phase2 functions), not write to Firestore
-    return {
-        'domains': enrichment_results,
-    }, 200
 
+    elapsed = time.time() - start_time
+    logger.info("Domain enrichment complete - enriched %d domain(s) in %.1fs", len(domains_to_enrich), elapsed)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    return {'domains': enrichment_results}, 200
