@@ -109,7 +109,7 @@ main:
               company_name: $${company_name}
               precision_query: $${query_constructor_result.body.vertex_query}
               generated_names: $${query_constructor_result.body.generated_names}
-            timeout: 180
+            timeout: 300
           result: identity_result
         retry:
           max_attempts: 3

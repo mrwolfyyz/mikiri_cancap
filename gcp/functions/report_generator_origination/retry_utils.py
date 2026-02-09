@@ -23,6 +23,16 @@ class EmptyLLMResponseError(Exception):
     pass
 
 
+class RateLimitExhaustedError(Exception):
+    """Exception raised when all retry attempts are exhausted due to rate limiting (429).
+    
+    This is NOT retried internally (retries are already exhausted).
+    Used to signal to the caller (e.g. Cloud Workflow) that a 429 response
+    should be returned so the workflow can retry at a higher level.
+    """
+    pass
+
+
 @dataclass
 class RetryConfig:
     """Configuration for retry behavior."""
