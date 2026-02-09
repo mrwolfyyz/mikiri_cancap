@@ -58,7 +58,7 @@ variable "function_timeout" {
   type        = map(number)
   default = {
     api_gateway                  = 300
-    phase1_identity              = 180
+    phase1_identity              = 300
     domain_enrichment            = 60
     address_geocoding            = 600
     company_domain_lookup        = 240

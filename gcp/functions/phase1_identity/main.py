@@ -21,7 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Any, Tuple, Optional
 from urllib.parse import urlparse
-from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError
+from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError, RateLimitExhaustedError
 
 # Google Gen AI SDK imports (for Gemini with Google Search grounding support)
 from google import genai
@@ -566,7 +566,7 @@ Return valid JSON with all required fields."""
     try:
         return retry_with_backoff(
             _call_vertex_ai,
-            RetryConfig(max_attempts=5, base_delay_seconds=3.0, max_delay_seconds=60.0),
+            RetryConfig(max_attempts=8, base_delay_seconds=3.0, max_delay_seconds=60.0),
             operation_name="Vertex AI identity scoring"
         )
     except json.JSONDecodeError as e:
@@ -576,6 +576,11 @@ Return valid JSON with all required fields."""
         except:
             return {"error": "JSON decode error"}
     except Exception as e:
+        # Detect rate-limiting exhaustion and raise specific error so caller
+        # can return 429 to the workflow (enabling workflow-level retries)
+        error_str = str(e).lower()
+        if "resource_exhausted" in error_str or "429" in error_str or "too many requests" in error_str:
+            raise RateLimitExhaustedError(f"Vertex AI rate limit exhausted after retries: {e}") from e
         return {"error": str(e)}
 
 
@@ -768,6 +773,18 @@ def main(request):
         seed["province"] = province_full
 
     print(f"[Phase1] Starting identity resolution for job {job_id}: {full_name} <{email}>")
+
+    try:
+        return _run_identity_resolution(job_id, email, full_name, city, province, company_name, seed, prefix,
+                                        precision_query, generated_names)
+    except RateLimitExhaustedError as e:
+        print(f"[Phase1] Returning 429 to workflow for retry: {e}")
+        return {"error": str(e), "retryable": True}, 429
+
+
+def _run_identity_resolution(job_id, email, full_name, city, province, company_name, seed, prefix,
+                             precision_query, generated_names):
+    """Core identity resolution logic, separated to allow main() to catch rate limit errors."""
 
     # Eager-init the shared search client before spawning threads
     _get_search_client()
@@ -981,6 +998,11 @@ def main(request):
             scored = llm_future.result()
             scored_error = scored.get("error")
             grounding_metadata = scored.pop("_grounding_metadata", {})
+        except RateLimitExhaustedError as e:
+            # Re-raise rate limit errors so main() can return 429
+            # This allows the workflow to retry the entire function call
+            print(f"[Phase1] Rate limit exhausted for LLM scoring: {e}")
+            raise
         except Exception as e:
             scored = {}
             scored_error = str(e)
