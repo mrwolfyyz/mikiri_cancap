@@ -15,7 +15,9 @@ import functions_framework
 import os
 import json
 import re
+import traceback
 import requests
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Any, Tuple, Optional
 from urllib.parse import urlparse
@@ -24,6 +26,9 @@ from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError
 # Google Gen AI SDK imports (for Gemini with Google Search grounding support)
 from google import genai
 from google.genai.types import GenerateContentConfig, Tool, GoogleSearch
+
+# Vertex AI Search import (module-level for faster warm invocations)
+from google.cloud import discoveryengine_v1 as discoveryengine
 
 # -------------------------
 # Config
@@ -193,51 +198,55 @@ def is_business_email(email: str) -> bool:
 # -------------------------
 # External API calls
 # -------------------------
-def vertex_ai_search_linkedin(query: str, num: int = 5) -> List[Dict[str, str]]:
+
+# Cached Vertex AI Search client (lazy singleton)
+# Initialized once per Cloud Function instance, reused across invocations.
+# Thread-safe for concurrent usage once created (gRPC clients are thread-safe).
+# Eager-init in main() before ThreadPoolExecutor to avoid initialization races.
+_search_client = None
+
+
+def _get_search_client():
+    """Get or create the cached Vertex AI Search client."""
+    global _search_client
+    if _search_client is None:
+        _search_client = discoveryengine.SearchServiceClient()
+    return _search_client
+
+
+def _vertex_ai_search(engine_id: str, query: str, num: int = 5, label: str = "Search") -> List[Dict[str, str]]:
     """
-    Search LinkedIn profiles using Vertex AI Search.
-    
-    Returns same interface as google_search_linkedin() for drop-in replacement.
-    Conversion to SearchHit happens at call site.
-    
+    Core Vertex AI Search implementation shared by precision, recall, and LinkedIn searches.
+
     Args:
-        query: Natural language search query (e.g., "John Smith CanCap Group")
+        engine_id: The Discovery Engine ID to search against
+        query: Natural language search query (operators should be stripped before calling)
         num: Maximum number of results (default 5, max 25 for basic indexing)
-    
+        label: Label for log messages (e.g., "Precision", "Recall", "LinkedIn")
+
     Returns:
         List of dicts with keys: url, title, snippet, relevance_score
     """
-    # Basic website indexing max is 25 results
     num = min(num, 25)
-    
-    # Get configuration from environment
-    engine_id = os.environ.get("LINKEDIN_ENGINE_ID", "linkedin-search-engine")
-    
+
     try:
-        from google.cloud import discoveryengine_v1 as discoveryengine
-        
-        # Client setup - global location uses default endpoint
-        client = discoveryengine.SearchServiceClient()
-        
-        # Serving config path - use engines path with default_search
+        client = _get_search_client()
+
         serving_config = (
             f"projects/{GCP_PROJECT}/locations/global/collections/default_collection"
             f"/engines/{engine_id}/servingConfigs/default_search"
         )
-        
-        # Content search spec - request snippets
+
         content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
             snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
                 return_snippet=True
             )
         )
-        
-        # Relevance score spec - request scores
+
         relevance_score_spec = discoveryengine.SearchRequest.RelevanceScoreSpec(
             return_relevance_score=True
         )
-        
-        # Build request
+
         request = discoveryengine.SearchRequest(
             serving_config=serving_config,
             query=query,
@@ -245,48 +254,45 @@ def vertex_ai_search_linkedin(query: str, num: int = 5) -> List[Dict[str, str]]:
             content_search_spec=content_search_spec,
             relevance_score_spec=relevance_score_spec,
         )
-        
-        # Execute search
-        print(f"[Vertex AI Search LinkedIn] Executing search: query={query}, serving_config={serving_config}")
+
+        print(f"[Vertex AI Search {label}] Executing search: query={query[:80]}..., serving_config={serving_config}")
         response = client.search(request)
-        print(f"[Vertex AI Search LinkedIn] Search completed: {len(response.results)} results returned")
-        
-        # Transform results to standard format (List[Dict])
+
         results = []
         for result in response.results:
-            # Extract fields from derivedStructData
             doc = result.document
             derived = doc.derived_struct_data
             url = derived.get("link", "")
             title = derived.get("title", "")
-            
-            # Extract snippet - may be in snippets array
+
             snippet = ""
             snippets = derived.get("snippets", [])
             if snippets and len(snippets) > 0:
                 snippet = snippets[0].get("snippet", "")
-            
-            # Extract relevance score from Vertex AI Search
-            # Note: model_scores and rank_signals are empty for basic website indexing
-            # So relevance_score will always be 0.0
+
+            # Note: relevance_score is always 0.0 for basic website indexing
             relevance_score = 0.0
-            
-            # Return standard dict format with relevance_score
+
             results.append({
                 "url": url,
                 "title": title,
                 "snippet": snippet,
                 "relevance_score": relevance_score,
             })
-        
-        print(f"[Vertex AI Search LinkedIn] Returning {len(results)} results with relevance_scores: {[r.get('relevance_score', 0.0) for r in results]}")
+
+        print(f"[Vertex AI Search {label}] Returning {len(results)} results")
         return results
-        
+
     except Exception as e:
-        import traceback
-        print(f"[Vertex AI Search LinkedIn] Error: {e}")
-        print(f"[Vertex AI Search LinkedIn] Traceback: {traceback.format_exc()}")
+        print(f"[Vertex AI Search {label}] Error: {e}")
+        print(f"[Vertex AI Search {label}] Traceback: {traceback.format_exc()}")
         return []
+
+
+def vertex_ai_search_linkedin(query: str, num: int = 5) -> List[Dict[str, str]]:
+    """Search LinkedIn profiles using Vertex AI Search."""
+    engine_id = os.environ.get("LINKEDIN_ENGINE_ID", "linkedin-search-engine")
+    return _vertex_ai_search(engine_id, query, num, label="LinkedIn")
 
 
 def transform_pse_query_to_natural_language(pse_query: str) -> str:
@@ -330,170 +336,22 @@ def transform_pse_query_to_natural_language(pse_query: str) -> str:
 
 
 def vertex_ai_search_precision(query: str, num: int = 5) -> List[Dict[str, str]]:
-    """
-    Search social platforms using Vertex AI Search.
-
-    Note: The query parameter may contain search operators (intitle:, intext:).
-    These will be transformed to natural language before sending to Vertex AI.
-
-    Returns same interface as google_search_precision() for drop-in replacement.
-    Conversion to SearchHit happens at call site.
-
-    Args:
-        query: Query with operators (will be transformed) or natural language query
-        num: Maximum number of results (default 5, max 25 for basic indexing)
-
-    Returns:
-        List of dicts with keys: url, title, snippet, relevance_score
-    """
-    # Only transform if query contains search operators (intitle:, intext:)
-    # If no operators, use query as-is to preserve quotes and other formatting
+    """Search social platforms using Vertex AI Search.
+    Transforms search operators (intitle:, intext:) to natural language if present."""
+    # Only transform if query contains search operators
     if 'intitle:' in query or 'intext:' in query:
-        query_nl = transform_pse_query_to_natural_language(query)
-    else:
-        query_nl = query  # Preserve quotes and original formatting
-    num = min(num, 25)
+        query = transform_pse_query_to_natural_language(query)
     engine_id = os.environ.get("PRECISION_ENGINE_ID", "precision-search-engine")
-
-    try:
-        from google.cloud import discoveryengine_v1 as discoveryengine
-
-        client = discoveryengine.SearchServiceClient()
-        serving_config = (
-            f"projects/{GCP_PROJECT}/locations/global/collections/default_collection"
-            f"/engines/{engine_id}/servingConfigs/default_search"
-        )
-        content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
-            snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
-                return_snippet=True
-            )
-        )
-        relevance_score_spec = discoveryengine.SearchRequest.RelevanceScoreSpec(
-            return_relevance_score=True
-        )
-        request = discoveryengine.SearchRequest(
-            serving_config=serving_config,
-            query=query_nl,
-            page_size=num,
-            content_search_spec=content_search_spec,
-            relevance_score_spec=relevance_score_spec,
-        )
-        print(f"[Vertex AI Search Precision] Executing search: query={query_nl[:80]}..., serving_config={serving_config}")
-        response = client.search(request)
-        print(f"[Vertex AI Search Precision] Search completed: {len(response.results)} results returned")
-
-        results = []
-        for result in response.results:
-            doc = result.document
-            derived = doc.derived_struct_data
-            url = derived.get("link", "")
-            title = derived.get("title", "")
-            snippet = ""
-            snippets = derived.get("snippets", [])
-            if snippets:
-                snippet = snippets[0].get("snippet", "")
-            relevance_score = 0.0
-            results.append({
-                "url": url,
-                "title": title,
-                "snippet": snippet,
-                "relevance_score": relevance_score,
-            })
-        return results
-
-    except Exception as e:
-        import traceback
-        print(f"[Vertex AI Search Precision] Error: {e}")
-        print(f"[Vertex AI Search Precision] Traceback: {traceback.format_exc()}")
-        return []
+    return _vertex_ai_search(engine_id, query, num, label="Precision")
 
 
 def vertex_ai_search_recall(query: str, num: int = 5) -> List[Dict[str, str]]:
-    """
-    Search lifestyle/hobby sites using Vertex AI Search.
-
-    Note: The query parameter may contain search operators (intitle:, intext:).
-    These will be transformed to natural language before sending to Vertex AI.
-
-    Returns same interface as google_search_recall() for drop-in replacement.
-    Conversion to SearchHit happens at call site.
-
-    Args:
-        query: Query with operators (will be transformed) or natural language query
-        num: Maximum number of results (default 5, max 25 for basic indexing)
-
-    Returns:
-        List of dicts with keys: url, title, snippet, relevance_score
-    """
-    # Transform query to natural language if needed
+    """Search lifestyle/hobby sites using Vertex AI Search.
+    Transforms search operators (intitle:, intext:) to natural language if present."""
     if 'intitle:' in query or 'intext:' in query:
-        query_nl = transform_pse_query_to_natural_language(query)
-    else:
-        query_nl = query
-
-    num = min(num, 25)
+        query = transform_pse_query_to_natural_language(query)
     engine_id = os.environ.get("RECALL_ENGINE_ID", "recall-search-engine")
-
-    try:
-        from google.cloud import discoveryengine_v1 as discoveryengine
-
-        client = discoveryengine.SearchServiceClient()
-        serving_config = (
-            f"projects/{GCP_PROJECT}/locations/global/collections/default_collection"
-            f"/engines/{engine_id}/servingConfigs/default_search"
-        )
-
-        content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
-            snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
-                return_snippet=True
-            )
-        )
-
-        relevance_score_spec = discoveryengine.SearchRequest.RelevanceScoreSpec(
-            return_relevance_score=True
-        )
-
-        request = discoveryengine.SearchRequest(
-            serving_config=serving_config,
-            query=query_nl,
-            page_size=num,
-            content_search_spec=content_search_spec,
-            relevance_score_spec=relevance_score_spec,
-        )
-
-        print(f"[Vertex AI Search Recall] Executing search: query={query_nl[:80]}..., serving_config={serving_config}")
-        response = client.search(request)
-        print(f"[Vertex AI Search Recall] Search completed: {len(response.results)} results returned")
-
-        results = []
-        for result in response.results:
-            doc = result.document
-            derived = doc.derived_struct_data
-            url = derived.get("link", "")
-            title = derived.get("title", "")
-
-            snippet = ""
-            snippets = derived.get("snippets", [])
-            if snippets and len(snippets) > 0:
-                snippet = snippets[0].get("snippet", "")
-
-            relevance_score = 0.0
-
-            results.append({
-                "url": url,
-                "title": title,
-                "snippet": snippet,
-                "relevance_score": relevance_score,
-            })
-
-        print(f"[Vertex AI Search Recall] Returning {len(results)} results")
-        return results
-
-    except Exception as e:
-        import traceback
-        print(f"[Vertex AI Search Recall] Error: {e}")
-        print(f"[Vertex AI Search Recall] Traceback: {traceback.format_exc()}")
-        return []
+    return _vertex_ai_search(engine_id, query, num, label="Recall")
 
 
 def extract_grounding_metadata(response) -> Dict[str, Any]:
@@ -579,15 +437,16 @@ Search Results from {len(queries_payload)} queries:
 
 Return valid JSON with all required fields."""
     
+    # Initialize Google Gen AI client once, outside retry closure.
+    # This avoids re-creating the client (and its gRPC channel) on every retry attempt.
+    gemini_client = genai.Client(
+        vertexai=True,
+        project=GCP_PROJECT,
+        location=GCP_LOCATION
+    )
+
     def _call_vertex_ai():
         try:
-            # Initialize Google Gen AI client with Vertex AI backend
-            client = genai.Client(
-                vertexai=True,
-                project=GCP_PROJECT,
-                location=GCP_LOCATION
-            )
-
             # Configure Google Search grounding tool
             google_search_tool = Tool(google_search=GoogleSearch())
 
@@ -597,7 +456,7 @@ Return valid JSON with all required fields."""
             # NOTE: Structured output (response_schema) is not compatible with grounding tools.
             # We parse JSON manually from text response, following the same pattern as
             # company_domain_lookup and address_verification.
-            response = client.models.generate_content(
+            response = gemini_client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=user_prompt,
                 config=GenerateContentConfig(
@@ -910,8 +769,11 @@ def main(request):
 
     print(f"[Phase1] Starting identity resolution for job {job_id}: {full_name} <{email}>")
 
+    # Eager-init the shared search client before spawning threads
+    _get_search_client()
+
     # -------------------------
-    # Execute search queries
+    # Build search queries (string construction only, no API calls)
     # -------------------------
 
     # Initialize name variables (used later for precision query construction)
@@ -927,174 +789,127 @@ def main(request):
     if city:
         precision_query_base += f' {city.split(",")[0]}'
 
-    print(f"[Phase1] Running precision search: {precision_query_base[:100]}...")
-    precision_raw = vertex_ai_search_precision(precision_query_base, num=10)
-
-    # Convert to SearchHit objects
-    precision_hits = [
-        SearchHit(
-            url=h["url"],
-            title=h["title"],
-            snippet=h["snippet"],
-            source="vertex_ai_precision",
-            query_id="precision",
-            query_type="high_precision",
-            relevance_score=h.get("relevance_score", 0.0),
-        )
-        for h in precision_raw if h.get("url")
-    ]
-
-    # 1B. LLM-generated precision query - ADDITIONAL search (NEW)
-    # This runs when precision_query is provided from query_constructor
-    llm_precision_hits: List[SearchHit] = []
-    if precision_query:
-        print(f"[Phase1] Running ADDITIONAL LLM precision search: {precision_query[:100]}...")
-        llm_precision_raw = vertex_ai_search_precision(precision_query, num=10)
-
-        # Convert to SearchHit objects
-        llm_precision_hits = [
-            SearchHit(
-                url=h["url"],
-                title=h["title"],
-                snippet=h["snippet"],
-                source="vertex_ai_precision",
-                query_id="precision_llm",
-                query_type="high_precision",
-                relevance_score=h.get("relevance_score", 0.0),
-            )
-            for h in llm_precision_raw if h.get("url")
-        ]
-
-        print(f"[Phase1] LLM precision search: {len(llm_precision_hits)} hits (kept separate from basic precision)")
-
-    # Provincial LinkedIn search - uses LLM-generated name variations with province
-    provincial_linkedin_hits: List[SearchHit] = []
+    # Provincial LinkedIn query
     provincial_linkedin_query = ""
-
     if generated_names and province:
-        # Convert province code to full name
         province_full = PROVINCE_NAMES.get(province, province)
-
-        # Build query: "Original Name" OR "Variation1" OR "Variation2" Province
         all_names = [full_name] + [n for n in generated_names if n.lower() != full_name.lower()]
         name_parts = ' OR '.join(f'"{name}"' for name in all_names)
         provincial_linkedin_query = f'{name_parts} {province_full}'
 
-        print(f"[Phase1] Provincial LinkedIn search: {provincial_linkedin_query[:100]}...")
-
-        # Execute LinkedIn search using Vertex AI Search
-        provincial_linkedin_raw = vertex_ai_search_linkedin(provincial_linkedin_query, num=10)
-
-        # Convert to SearchHit objects
-        provincial_linkedin_hits = [
-            SearchHit(
-                url=h["url"],
-                title=h["title"],
-                snippet=h["snippet"],
-                source="vertex_ai_linkedin",
-                query_id="provincial_linkedin",
-                query_type="high_precision",
-                relevance_score=h.get("relevance_score", 0.0),
-            )
-            for h in provincial_linkedin_raw if h.get("url")
-        ]
-
-        # Append to precision_hits (so they're included in precision results)
-        precision_hits.extend(provincial_linkedin_hits)
-
-        print(f"[Phase1] Provincial LinkedIn search: {len(provincial_linkedin_hits)} hits")
-
-    # Company name searches - if company_name is provided
-    company_name_linkedin_hits: List[SearchHit] = []
+    # Company name LinkedIn query
     company_name_linkedin_query = ""
-
     if company_name:
-        print(f"[Phase1] Company name provided: {company_name} - performing company name searches")
-        
-        # Search 2: Full Name and Company Name on LinkedIn
-        # Note: LinkedIn search engine is scoped to linkedin.com profiles
         company_name_linkedin_query = f'"{full_name}" {company_name}'
-        company_name_linkedin_raw = vertex_ai_search_linkedin(company_name_linkedin_query, num=10)
-        
-        company_name_linkedin_hits = [
-            SearchHit(
-                url=h["url"],
-                title=h["title"],
-                snippet=h["snippet"],
-                source="vertex_ai_linkedin",
-                query_id="company_name_linkedin",
-                query_type="high_precision",
-                relevance_score=h.get("relevance_score", 0.0),
-            )
-            for h in company_name_linkedin_raw if h.get("url")
-        ]
-        
-        # Append to precision_hits (so they're included in precision results)
-        precision_hits.extend(company_name_linkedin_hits)
 
-        print(f"[Phase1] Company name LinkedIn search: {len(company_name_linkedin_hits)} LinkedIn hits")
-
-        # If company name search returned no results and city is provided, try city search
-        if len(company_name_linkedin_hits) == 0 and city:
-            print(f"[Phase1] Company name LinkedIn search returned 0 results - trying city search: {city}")
-            city_linkedin_query = f'"{full_name}" {city.split(",")[0]}'
-            city_linkedin_raw = vertex_ai_search_linkedin(city_linkedin_query, num=10)
-
-            city_linkedin_hits = [
-                SearchHit(
-                    url=h["url"],
-                    title=h["title"],
-                    snippet=h["snippet"],
-                    source="vertex_ai_linkedin",
-                    query_id="city_linkedin",
-                    query_type="high_precision",
-                    relevance_score=h.get("relevance_score", 0.0),
-                )
-                for h in city_linkedin_raw if h.get("url")
-            ]
-
-            precision_hits.extend(city_linkedin_hits)
-            print(f"[Phase1] City LinkedIn search: {len(city_linkedin_hits)} LinkedIn hits")
-
-    # 3. Recall query - lifestyle sites
-    # Note: Site restrictions are handled by the Vertex AI recall search engine configuration
+    # Recall queries
     recall_query = ""
-    recall_hits: List[SearchHit] = []
+    recall_2_query = ""
     if len(prefix) >= 4:
         recall_query = f'"{full_name}"'
-        recall_raw = vertex_ai_search_recall(recall_query, num=10)
-        recall_hits = [
+        recall_2_query = f'{prefix} OR "{full_name}"'
+
+    # -------------------------
+    # Execute search queries in parallel
+    # -------------------------
+    print(f"[Phase1] Running all searches in parallel...")
+
+    # Raw results containers (populated by parallel futures)
+    precision_raw = []
+    llm_precision_raw = []
+    provincial_linkedin_raw = []
+    company_name_linkedin_raw = []
+    recall_raw = []
+    recall_2_raw = []
+
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = {}
+
+        # Always run precision search
+        futures["precision"] = executor.submit(vertex_ai_search_precision, precision_query_base, 10)
+
+        # LLM-generated precision query (if provided from query_constructor)
+        if precision_query:
+            futures["precision_llm"] = executor.submit(vertex_ai_search_precision, precision_query, 10)
+
+        # Provincial LinkedIn search
+        if provincial_linkedin_query:
+            futures["provincial_linkedin"] = executor.submit(vertex_ai_search_linkedin, provincial_linkedin_query, 10)
+
+        # Company name LinkedIn search
+        if company_name_linkedin_query:
+            futures["company_linkedin"] = executor.submit(vertex_ai_search_linkedin, company_name_linkedin_query, 10)
+
+        # Recall searches
+        if recall_query:
+            futures["recall"] = executor.submit(vertex_ai_search_recall, recall_query, 10)
+        if recall_2_query:
+            futures["recall_2"] = executor.submit(vertex_ai_search_precision, recall_2_query, 10)
+
+        # Collect results (timeout per search to avoid hanging the whole batch)
+        for key, future in futures.items():
+            try:
+                result = future.result(timeout=30)
+                if key == "precision":
+                    precision_raw = result
+                elif key == "precision_llm":
+                    llm_precision_raw = result
+                elif key == "provincial_linkedin":
+                    provincial_linkedin_raw = result
+                elif key == "company_linkedin":
+                    company_name_linkedin_raw = result
+                elif key == "recall":
+                    recall_raw = result
+                elif key == "recall_2":
+                    recall_2_raw = result
+            except Exception as e:
+                print(f"[Phase1] Search '{key}' failed: {e}")
+
+    print(f"[Phase1] All parallel searches complete")
+
+    # Company LinkedIn fallback: if company search returned 0 results and city is provided,
+    # try a city-based LinkedIn search (this depends on the company result, so runs sequentially)
+    city_linkedin_raw = []
+    if company_name and len(company_name_linkedin_raw) == 0 and city:
+        print(f"[Phase1] Company name LinkedIn search returned 0 results - trying city search: {city}")
+        city_linkedin_query = f'"{full_name}" {city.split(",")[0]}'
+        city_linkedin_raw = vertex_ai_search_linkedin(city_linkedin_query, num=10)
+        print(f"[Phase1] City LinkedIn search: {len(city_linkedin_raw)} hits")
+
+    # -------------------------
+    # Convert raw results to SearchHit objects
+    # -------------------------
+    def _to_hits(raw: List[Dict], source: str, query_id: str, query_type: str) -> List[SearchHit]:
+        return [
             SearchHit(
                 url=h["url"],
                 title=h["title"],
                 snippet=h["snippet"],
-                source="vertex_ai_recall",
-                query_id="recall",
-                query_type="high_recall",
+                source=source,
+                query_id=query_id,
+                query_type=query_type,
                 relevance_score=h.get("relevance_score", 0.0),
             )
-            for h in recall_raw if h.get("url")
+            for h in raw if h.get("url")
         ]
 
-    # 3b. Additional recall query - using precision search engine for additional coverage
-    # Note: Site restrictions are handled by the Vertex AI precision search engine configuration
-    recall_2_query = ""
-    recall_2_hits: List[SearchHit] = []
-    if len(prefix) >= 4:
-        recall_2_query = f'{prefix} OR "{full_name}"'
-        recall_2_raw = vertex_ai_search_precision(recall_2_query, num=10)
-        recall_2_hits = [
-            SearchHit(
-                url=h["url"],
-                title=h["title"],
-                snippet=h["snippet"],
-                source="vertex_ai_precision",
-                query_id="recall_2",
-                query_type="high_recall",
-                relevance_score=h.get("relevance_score", 0.0),
-            )
-            for h in recall_2_raw if h.get("url")
-        ]
+    precision_hits = _to_hits(precision_raw, "vertex_ai_precision", "precision", "high_precision")
+    llm_precision_hits = _to_hits(llm_precision_raw, "vertex_ai_precision", "precision_llm", "high_precision")
+    provincial_linkedin_hits = _to_hits(provincial_linkedin_raw, "vertex_ai_linkedin", "provincial_linkedin", "high_precision")
+    company_name_linkedin_hits = _to_hits(company_name_linkedin_raw, "vertex_ai_linkedin", "company_name_linkedin", "high_precision")
+    recall_hits = _to_hits(recall_raw, "vertex_ai_recall", "recall", "high_recall")
+    recall_2_hits = _to_hits(recall_2_raw, "vertex_ai_precision", "recall_2", "high_recall")
+
+    # City LinkedIn fallback hits (if any)
+    city_linkedin_hits = _to_hits(city_linkedin_raw, "vertex_ai_linkedin", "city_linkedin", "high_precision")
+
+    # Append LinkedIn hits to precision_hits (so they're included in precision results)
+    precision_hits.extend(provincial_linkedin_hits)
+    precision_hits.extend(company_name_linkedin_hits)
+    precision_hits.extend(city_linkedin_hits)
+
+    print(f"[Phase1] Precision: {len(precision_hits)} hits, LLM Precision: {len(llm_precision_hits)} hits, "
+          f"Recall: {len(recall_hits)} hits, Recall 2: {len(recall_2_hits)} hits")
 
     # Deduplicate hits
     seen = set()
@@ -1154,17 +969,29 @@ def main(request):
         })
 
     # -------------------------
-    # LLM identity scoring
+    # LLM identity scoring + HIBP breach lookup (in parallel)
     # -------------------------
-    try:
-        scored = vertex_ai_score(seed, queries_payload)
-        scored_error = scored.get("error")
-        # Extract grounding metadata from scored result (if present)
-        grounding_metadata = scored.pop("_grounding_metadata", {})
-    except Exception as e:
-        scored = {}
-        scored_error = str(e)
-        grounding_metadata = {}
+    # These two calls are independent: HIBP doesn't need LLM results and vice versa.
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        llm_future = executor.submit(vertex_ai_score, seed, queries_payload)
+        hibp_future = executor.submit(hibp_breaches, email)
+
+        # Collect LLM result
+        try:
+            scored = llm_future.result()
+            scored_error = scored.get("error")
+            grounding_metadata = scored.pop("_grounding_metadata", {})
+        except Exception as e:
+            scored = {}
+            scored_error = str(e)
+            grounding_metadata = {}
+
+        # Collect HIBP result
+        try:
+            breaches = hibp_future.result()
+        except Exception as e:
+            print(f"[Phase1] HIBP lookup failed: {e}")
+            breaches = []
 
     # -------------------------
     # Location-based name search rerun
@@ -1241,11 +1068,6 @@ def main(request):
             clue["source_query_id"] = clue.get("source_query_id") or hit.query_id
             clue["source"] = extract_domain(url)
         normalized_identity_clues.append(clue)
-
-    # -------------------------
-    # HIBP breach lookup
-    # -------------------------
-    breaches = hibp_breaches(email)
 
     # -------------------------
     # Contactability scoring
