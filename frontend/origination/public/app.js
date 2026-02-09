@@ -1306,9 +1306,10 @@ function showAddressVerificationResults(data) {
     html += `<span class="search-count-badge">${totalResults} results</span>`;
     html += `</summary>`;
     html += `<div class="verification-search-content">`;
+    const actualQueryCount = data.search_results?.grounding_metadata?.search_queries?.length || searchResults.length;
     html += `<p class="verification-search-summary">Found ${totalResults} total results across ${
-      searchResults.length
-    } search ${searchResults.length === 1 ? "query" : "queries"}.</p>`;
+      actualQueryCount
+    } search ${actualQueryCount === 1 ? "query" : "queries"}.</p>`;
 
     searchResults.forEach((query, queryIndex) => {
       const queryId = query.id || `query_${queryIndex}`;
@@ -1332,7 +1333,18 @@ function showAddressVerificationResults(data) {
       html += `</div>`;
       html += `<div class="verification-query-count">${hits.length} result${hits.length === 1 ? "" : "s"}</div>`;
       html += `</div>`;
-      html += `<div class="verification-query-string"><strong>Query:</strong> ${escapeHtml(queryString)}</div>`;
+      const queriesList = query.search_queries_list || (queryString ? queryString.split(", ") : []);
+      if (queriesList.length > 1) {
+        html += `<div class="verification-query-string"><strong>Queries:</strong>`;
+        html += `<ul class="verification-queries-list">`;
+        queriesList.forEach((q) => {
+          const googleSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(q)}`;
+          html += `<li><a href="${googleSearchUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(q)}</a></li>`;
+        });
+        html += `</ul></div>`;
+      } else {
+        html += `<div class="verification-query-string"><strong>Query:</strong> ${escapeHtml(queryString)}</div>`;
+      }
       html += `</div>`;
 
       // Query results
@@ -1345,7 +1357,9 @@ function showAddressVerificationResults(data) {
 
           html += `<div class="verification-hit">`;
           html += `<div><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="verification-hit-link">${hitIndex + 1}. ${escapeHtml(title)}</a></div>`;
-          html += `<div class="verification-hit-url">${escapeHtml(url)}</div>`;
+          if (url && !url.includes("vertexaisearch.cloud.google.com")) {
+            html += `<div class="verification-hit-url">${escapeHtml(url)}</div>`;
+          }
           if (snippet) {
             html += `<div class="verification-hit-snippet">${escapeHtml(snippet)}</div>`;
           }

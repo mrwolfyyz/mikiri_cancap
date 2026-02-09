@@ -188,6 +188,7 @@ def map_grounding_to_queries_payload(grounding_metadata: Dict[str, Any]) -> List
             "id": "gemini_grounded_search",
             "type": "grounded",
             "query": ", ".join(search_queries) if search_queries else "Gemini-determined queries",
+            "search_queries_list": search_queries,  # Individual queries for frontend display
             "hits": sources
         })
     
