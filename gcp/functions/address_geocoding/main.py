@@ -10,14 +10,12 @@ Returns geocoding data that gets passed to aggregator.
 import functions_framework
 import os
 import json
-import sys
 import time
 import re
 from typing import Dict, Any, List, Optional
 from urllib.parse import quote_plus
-import pyap
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import threading
+from urllib.request import urlopen, Request
+from urllib.error import URLError, HTTPError
 
 # Import retry utilities (local copy for consistency with other phase2 functions)
 from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError
@@ -34,68 +32,28 @@ GCP_PROJECT = os.environ.get("GCP_PROJECT", os.environ.get("GOOGLE_CLOUD_PROJECT
 GCP_LOCATION = os.environ.get("GCP_LOCATION", "global")
 
 
-def geocode_address(address: str) -> tuple:
+def _nominatim_request(address: str) -> tuple:
     """
-    Geocode an address using free Nominatim (OpenStreetMap) API.
-    Returns (lat, lon) tuple or (None, None) if geocoding fails.
-    Respects rate limits with a small delay.
-    """
-    try:
-        from urllib.request import urlopen, Request
-        from urllib.error import URLError, HTTPError
-        
-        # Nominatim requires a User-Agent
-        url = f"https://nominatim.openstreetmap.org/search?q={quote_plus(address)}&format=json&limit=1"
-        req = Request(url, headers={'User-Agent': 'BorrowerIntelligence/1.0'})
-        
-        # Note: Rate limiting is handled by spacing requests 1 second apart when starting them
-        # No sleep needed here since requests are already spaced
-        
-        with urlopen(req, timeout=30) as response:
-            data = json.loads(response.read().decode())
-            if data and len(data) > 0:
-                lat = float(data[0]['lat'])
-                lon = float(data[0]['lon'])
-                print(f"    ✓ Geocoded successfully: {lat:.6f}, {lon:.6f}")
-                return (lat, lon)
-            else:
-                print(f"    ⚠️  No geocoding results found")
-    except (URLError, HTTPError, KeyError, ValueError, json.JSONDecodeError) as e:
-        print(f"    ⚠️  Geocoding failed: {e.__class__.__name__}")
-    
-    return (None, None)
+    Make a single Nominatim (OpenStreetMap) geocoding request.
 
+    Returns (lat, lon) on success, (None, None) if no results found.
+    Raises URLError/HTTPError on network/server errors so that
+    retry_with_backoff() can classify and retry transient failures
+    (429, 5xx, timeouts).
+    """
+    url = f"https://nominatim.openstreetmap.org/search?q={quote_plus(address)}&format=json&limit=1"
+    req = Request(url, headers={'User-Agent': 'BorrowerIntelligence/1.0'})
 
-def extract_1st_addresses_fallback(text: str) -> List[str]:
-    """
-    Fallback regex to extract US addresses with '1st' or 'First' that pyap cannot parse.
-    Returns list of address strings.
-    """
-    # Pattern for US addresses with 1st/First in street name
-    # Matches: street_number + (1st|First) + street_type + optional_direction + city + state + zip
-    pattern = re.compile(
-        r'\b(\d{1,6})\s+(1st|First)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)\s+((?:NW|NE|SW|SE|North|South|East|West|N|S|E|W)\s*)?,\s*([A-Za-z\s]+?),\s*([A-Z]{2})\s*,\s*(\d{5}(?:-\d{4})?)\b',
-        re.IGNORECASE
-    )
-    
-    addresses = []
-    for match in pattern.finditer(text):
-        street_num = match.group(1)
-        ordinal = match.group(2)
-        street_type = match.group(3)
-        direction = (match.group(4) or "").strip()
-        city = match.group(5).strip()
-        state = match.group(6)
-        zip_code = match.group(7)
-        
-        # Reconstruct address with direction if present
-        if direction:
-            addr = f"{street_num} {ordinal} {street_type} {direction}, {city}, {state}, {zip_code}"
+    with urlopen(req, timeout=30) as response:
+        data = json.loads(response.read().decode())
+        if data and len(data) > 0:
+            lat = float(data[0]['lat'])
+            lon = float(data[0]['lon'])
+            print(f"    ✓ Geocoded successfully: {lat:.6f}, {lon:.6f}")
+            return (lat, lon)
         else:
-            addr = f"{street_num} {ordinal} {street_type}, {city}, {state}, {zip_code}"
-        addresses.append(addr)
-    
-    return addresses
+            print(f"    ⚠️  No geocoding results found")
+            return (None, None)
 
 
 ADDRESS_SCHEMA = {
@@ -285,83 +243,6 @@ Return valid JSON with addresses array. Each item should have address_raw, confi
         return []
 
 
-def extract_addresses_from_queries(queries: List[Dict[str, Any]]) -> List[Dict[str, str]]:
-    """
-    Scan query hits for address-like patterns using pyap.
-    Falls back to regex for addresses with '1st' that pyap cannot parse.
-    """
-    results = []
-    seen = set()
-
-    for q in queries or []:
-        for hit in q.get("hits", []):
-            text = f"{hit.get('title','')} {hit.get('snippet','')}"
-            source = hit.get("url", "")
-            snippet = hit.get("snippet", "").strip()
-
-            # Try US addresses
-            addresses = pyap.parse(text, country='US')
-            # Add Canadian addresses
-            addresses.extend(pyap.parse(text, country='CA'))
-            
-            # Fallback: if pyap found nothing, check for "1st" addresses
-            if len(addresses) == 0 and ('1st' in text or 'First' in text):
-                fallback_addrs = extract_1st_addresses_fallback(text)
-                # Convert to string format compatible with pyap output
-                for addr_str in fallback_addrs:
-                    addresses.append(addr_str)
-            
-            for addr_obj in addresses:
-                # Handle both pyap objects and fallback strings
-                if isinstance(addr_obj, str):
-                    addr_raw = addr_obj
-                else:
-                    addr_raw = str(addr_obj)
-                
-                addr_cleaned = clean_address_for_geocoding(addr_raw)
-                
-                # Validate: Check if address contains street information
-                # Skip if it's just a city/state/province (no street number or street name pattern)
-                # For pyap objects, check if structured components would indicate street info
-                if not isinstance(addr_obj, str):
-                    # pyap address object - check structured components
-                    street_number = getattr(addr_obj, 'street_number', None)
-                    street_name = getattr(addr_obj, 'street_name', None)
-                    
-                    if not street_number and not street_name:
-                        # This is a city-only address, skip it
-                        print(f"[Address Extraction] Filtered out city-only address: {addr_cleaned}")
-                        continue
-                else:
-                    # String address - check for street patterns in the raw string
-                    # Look for street number pattern (digit at start) or street name indicators
-                    has_street_number = bool(re.search(r'^\d{1,6}\s+[A-Za-z]', addr_cleaned))
-                    # Check for common street name patterns (Avenue, Street, Road, etc. preceded by text)
-                    has_street_name = bool(re.search(r'\b([A-Za-z0-9.\-\s]+?(?:Avenue|Street|Road|Lane|Drive|Boulevard|Way|Court|Place|Crescent|Circle|Terrace|Parkway|Highway|Ave|St|Rd|Dr|Blvd|Ln|Way|Ct|Pl|Cres|Cir|Terr|Pkwy|Hwy))\b', addr_cleaned, re.IGNORECASE))
-                    
-                    if not has_street_number and not has_street_name:
-                        # This appears to be a city-only address, skip it
-                        print(f"[Address Extraction] Filtered out city-only address (string): {addr_cleaned}")
-                        continue
-                
-                # Normalize for deduplication
-                addr_normalized = addr_cleaned.lower().strip()
-                addr_normalized = re.sub(r',', ' ', addr_normalized)
-                addr_normalized = re.sub(r'\s+', ' ', addr_normalized)
-                
-                if addr_normalized in seen:
-                    continue
-                seen.add(addr_normalized)
-                
-                results.append({
-                    "address_raw": addr_cleaned,
-                    "source_url": source,
-                    "snippet": snippet,
-                })
-
-    return results
-
-
 @functions_framework.http
 def main(request):
     """
@@ -393,11 +274,8 @@ def main(request):
     
     # Extract corporate data (optional)
     corporate = req_data.get('corporate')
-    print(f"[AddressGeocoding] DEBUG: corporate type={type(corporate)}, value={corporate is not None}")
     if corporate and isinstance(corporate, dict):
-        print(f"[AddressGeocoding] DEBUG: corporate keys={list(corporate.keys())}")
         corporate_debug = corporate.get('debug', {})
-        print(f"[AddressGeocoding] DEBUG: corporate_debug type={type(corporate_debug)}, keys={list(corporate_debug.keys()) if isinstance(corporate_debug, dict) else 'N/A'}")
         full_hits_raw = corporate_debug.get('full_hits_raw', []) if isinstance(corporate_debug, dict) else []
         last_hits_raw = corporate_debug.get('last_hits_raw', []) if isinstance(corporate_debug, dict) else []
     else:
@@ -413,9 +291,6 @@ def main(request):
     else:
         print(f"[AddressGeocoding] No corporate data provided, only geocoding identity addresses")
     
-    # Build query list from identity queries
-    identity_queries = queries if queries else []
-    
     # Convert corporate hits to query format (same as report generator does)
     corporate_queries = []
     if full_hits_raw:
@@ -424,7 +299,7 @@ def main(request):
         corporate_queries.append({"hits": last_hits_raw})
     
     # Combine all queries
-    all_queries = identity_queries + corporate_queries
+    all_queries = queries + corporate_queries
     
     if not all_queries:
         print(f"[AddressGeocoding] No queries or corporate hits provided, nothing to geocode")
@@ -432,7 +307,7 @@ def main(request):
             'addresses': {},
         }, 200
     
-    print(f"[AddressGeocoding] Extracting addresses from {len(identity_queries)} identity queries and {len(corporate_queries)} corporate query sets")
+    print(f"[AddressGeocoding] Extracting addresses from {len(queries)} identity queries and {len(corporate_queries)} corporate query sets")
     
     # Extract seed info if available for context
     seed = identity.get('seed') if isinstance(identity, dict) else None
@@ -448,55 +323,43 @@ def main(request):
     
     print(f"[AddressGeocoding] Found {len(addresses)} unique addresses to geocode")
     
+    # Geocode addresses sequentially with rate limiting.
+    # Nominatim enforces 1 request/second -- parallelism adds no throughput
+    # benefit and complicates rate-limit compliance.
     geocoding_results = {}
-    results_lock = threading.Lock()
     
-    def geocode_single_address(addr_obj, index):
-        """Geocode a single address with retry logic."""
+    for i, addr_obj in enumerate(addresses, 1):
         addr_raw = addr_obj.get('address_raw', '')
-        cleaned = clean_address_for_geocoding(addr_raw)
         
-        print(f"[AddressGeocoding] [{index}/{len(addresses)}] Geocoding: {cleaned[:60]}...")
+        print(f"[AddressGeocoding] [{i}/{len(addresses)}] Geocoding: {addr_raw[:60]}...")
         
-        # Geocode with retry logic
+        # _nominatim_request raises on retryable errors (429, 5xx, timeouts)
+        # and returns (None, None) for "no results found", so retry_with_backoff
+        # correctly retries transient failures.
         try:
             lat, lon = retry_with_backoff(
-                lambda: geocode_address(cleaned),
-                RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=10.0),
-                operation_name=f"Geocoding: {cleaned[:50]}"
+                lambda a=addr_raw: _nominatim_request(a),
+                RetryConfig(max_attempts=3, base_delay_seconds=2.0, max_delay_seconds=10.0),
+                operation_name=f"Geocoding: {addr_raw[:50]}"
             )
-            with results_lock:
-                geocoding_results[addr_raw] = {
-                    'lat': lat,
-                    'lon': lon,
-                    'cleaned': cleaned,
-                    'error': None
-                }
+            geocoding_results[addr_raw] = {
+                'lat': lat,
+                'lon': lon,
+                'cleaned': addr_raw,
+                'error': None
+            }
         except Exception as e:
-            with results_lock:
-                geocoding_results[addr_raw] = {
-                    'lat': None,
-                    'lon': None,
-                    'cleaned': cleaned,
-                    'error': f"Geocoding failed: {str(e)}"
-                }
-            print(f"[AddressGeocoding] Failed to geocode {cleaned[:50]}: {e}")
-    
-    # Process addresses in parallel, but space requests 1 second apart to respect rate limit
-    # This allows requests to overlap while still respecting Nominatim's 1 req/sec policy
-    with ThreadPoolExecutor(max_workers=len(addresses)) as executor:
-        futures = []
-        for i, addr_obj in enumerate(addresses, 1):
-            # Schedule each request to start 1 second after the previous one
-            if i > 1:
-                time.sleep(1.0)  # Space requests 1 second apart
-            
-            future = executor.submit(geocode_single_address, addr_obj, i)
-            futures.append(future)
+            geocoding_results[addr_raw] = {
+                'lat': None,
+                'lon': None,
+                'cleaned': addr_raw,
+                'error': f"Geocoding failed: {str(e)}"
+            }
+            print(f"[AddressGeocoding] Failed to geocode {addr_raw[:50]}: {e}")
         
-        # Wait for all requests to complete
-        for future in as_completed(futures):
-            future.result()  # This will raise any exceptions that occurred
+        # Respect Nominatim rate limit (1 req/sec) between requests
+        if i < len(addresses):
+            time.sleep(1.1)
     
     print(f"[AddressGeocoding] Complete - geocoded {len([r for r in geocoding_results.values() if r.get('lat')])} of {len(addresses)} addresses")
     
@@ -504,4 +367,3 @@ def main(request):
     return {
         'addresses': geocoding_results,
     }, 200
-
