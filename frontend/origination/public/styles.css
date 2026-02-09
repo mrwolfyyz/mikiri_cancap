@@ -1277,6 +1277,30 @@ footer {
     word-break: break-all;
 }
 
+.verification-queries-list {
+    margin: 4px 0 0 0;
+    padding-left: 20px;
+    list-style-type: disc;
+}
+
+.verification-queries-list li {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 2px;
+}
+
+.verification-queries-list li a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color 0.2s;
+}
+
+.verification-queries-list li a:hover {
+    text-decoration: underline;
+    color: var(--accent-hover);
+}
+
 /* Individual hits */
 .verification-hits-body {
     padding: var(--space-md);
