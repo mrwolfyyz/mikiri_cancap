@@ -10,6 +10,7 @@ Performs:
 import functions_framework
 import os
 import json
+import traceback
 from typing import Dict, Any
 from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError
 
@@ -21,7 +22,18 @@ from vertexai.generative_models import GenerativeModel, GenerationConfig
 # Config
 # -------------------------
 GCP_PROJECT = os.environ.get("GCP_PROJECT", os.environ.get("GOOGLE_CLOUD_PROJECT", ""))
-GCP_LOCATION = os.environ.get("GCP_LOCATION", "global")  # Use global endpoint
+# "global" uses the Vertex AI global endpoint, which auto-routes to the nearest region.
+# This is set via the GCP_LOCATION environment variable in Terraform (functions.tf).
+GCP_LOCATION = os.environ.get("GCP_LOCATION", "global")
+
+# -------------------------
+# Vertex AI initialization (once per cold start)
+# -------------------------
+if GCP_PROJECT:
+    vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
+    _MODEL = GenerativeModel(model_name="gemini-2.5-flash-lite")
+else:
+    _MODEL = None
 
 # Province code to full name mapping
 PROVINCE_NAMES = {
@@ -90,21 +102,18 @@ def generate_precision_query(full_name: str, city: str, province: str = "") -> D
 
     Returns:
         Dict with keys: original_name, generated_names, vertex_query
-    """
-    if not GCP_PROJECT:
-        return {"error": "GCP_PROJECT not set"}
 
-    # Initialize Vertex AI
-    try:
-        vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
-    except Exception as e:
-        print(f"[Vertex AI] Initialization error: {e}")
-        return {"error": f"Vertex AI initialization failed: {str(e)}"}
+    Raises:
+        RuntimeError: If GCP_PROJECT is not set or Vertex AI is not initialized
+        Exception: If all retry attempts are exhausted
+    """
+    if not GCP_PROJECT or _MODEL is None:
+        raise RuntimeError("GCP_PROJECT not set or Vertex AI not initialized")
 
     # Convert province code to full name if provided
     province_full = PROVINCE_NAMES.get(province, province) if province else ""
 
-    # Build location string
+    # Build location string (used as fallback if vertex_query is missing from LLM response)
     location = f"{city}, {province_full}" if province_full else city
 
     # User prompt with actual inputs
@@ -128,13 +137,11 @@ Return valid JSON only."""
 
     def _call_vertex_ai():
         try:
-            # Use gemini-2.5-flash-lite for fast, low-cost name generation
-            model = GenerativeModel(model_name="gemini-2.5-flash-lite")
             print(f"[Vertex AI] Calling Gemini 2.5 Flash Lite for query construction...")
 
             # Combine system prompt and user prompt
             full_prompt = f"{SYSTEM_PROMPT}\n\n{user_prompt}"
-            response = model.generate_content(
+            response = _MODEL.generate_content(
                 full_prompt,
                 generation_config=GenerationConfig(
                     temperature=0.1,
@@ -158,7 +165,7 @@ Return valid JSON only."""
             # Parse JSON response
             content = response_text.strip()
 
-            # Strip markdown code blocks if present
+            # Strip markdown code blocks if present (defensive guard against SDK/model changes)
             if content.startswith("```"):
                 lines = content.split("\n")
                 if lines[0].startswith("```"):
@@ -182,7 +189,7 @@ Return valid JSON only."""
                 # For other JSON decode errors (malformed JSON), still retry as it might be transient
                 raise EmptyLLMResponseError(f"JSON decode error (malformed response): {e}")
 
-            # Validate required fields
+            # Validate required fields (defensive guard against model/SDK behavior changes)
             if "original_name" not in result:
                 result["original_name"] = full_name
             if "generated_names" not in result:
@@ -200,18 +207,14 @@ Return valid JSON only."""
 
         except Exception as e:
             print(f"[Vertex AI] Error: {e}")
-            import traceback
             traceback.print_exc()
             raise
 
-    try:
-        return retry_with_backoff(
-            _call_vertex_ai,
-            RetryConfig(max_attempts=3, base_delay_seconds=2.0, max_delay_seconds=60.0),
-            operation_name="Vertex AI query construction"
-        )
-    except Exception as e:
-        return {"error": str(e)}
+    return retry_with_backoff(
+        _call_vertex_ai,
+        RetryConfig(max_attempts=3, base_delay_seconds=2.0, max_delay_seconds=60.0),
+        operation_name="Vertex AI query construction"
+    )
 
 
 # -------------------------
@@ -252,11 +255,11 @@ def main(request):
     print(f"[QueryConstructor] Constructing query for: {full_name}, {city}, {province}")
 
     # Generate precision query
-    result = generate_precision_query(full_name, city, province)
-
-    if "error" in result:
-        print(f"[QueryConstructor] Error: {result['error']}")
-        return result, 500
+    try:
+        result = generate_precision_query(full_name, city, province)
+    except Exception as e:
+        print(f"[QueryConstructor] Error: {e}")
+        return {"error": str(e)}, 500
 
     print(f"[QueryConstructor] Successfully generated query")
     return result, 200
