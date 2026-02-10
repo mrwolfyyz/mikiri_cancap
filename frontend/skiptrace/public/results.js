@@ -118,10 +118,8 @@ async function loadInvestigationData() {
 // Dark Mode
 // ===========================
 function initDarkMode() {
-    const savedTheme = localStorage.getItem('theme');
-    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const theme = savedTheme || (systemPrefersDark ? 'dark' : 'light');
-    document.documentElement.setAttribute('data-theme', theme);
+    const darkMode = localStorage.getItem('darkMode') === 'true';
+    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
 
     const darkModeToggle = document.getElementById('darkModeToggle');
     if (darkModeToggle) {
@@ -129,7 +127,7 @@ function initDarkMode() {
             const current = document.documentElement.getAttribute('data-theme');
             const next = current === 'light' ? 'dark' : 'light';
             document.documentElement.setAttribute('data-theme', next);
-            localStorage.setItem('theme', next);
+            localStorage.setItem('darkMode', (next === 'dark').toString());
         });
     }
 }

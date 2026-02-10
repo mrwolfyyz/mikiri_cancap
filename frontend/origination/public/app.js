@@ -1155,15 +1155,6 @@ function formatPostalCode(value) {
   return cleaned;
 }
 
-function buildFullAddress(streetAddress, city, province, postalCode) {
-  // Build full address string: "123 Main St, Toronto, ON M5H 2N2"
-  const parts = [
-    streetAddress.trim(),
-    `${city.trim()}, ${province.trim()} ${postalCode.trim().toUpperCase()}`,
-  ];
-  return parts.join(", ");
-}
-
 function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
