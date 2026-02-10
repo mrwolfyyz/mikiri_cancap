@@ -56,6 +56,12 @@ FUNCTIONS_NEEDING_DOMAIN_UTILS=(
   "report_generator_origination"
 )
 
+# Functions that require report_utils.py
+FUNCTIONS_NEEDING_REPORT_UTILS=(
+  "report_generator_skiptrace"
+  "report_generator_origination"
+)
+
 # Functions that require chat_handler_base.py
 FUNCTIONS_NEEDING_CHAT_HANDLER_BASE=(
   "chat_handler"
@@ -67,11 +73,12 @@ RETRY_UTILS_SOURCE="$ROOT_DIR/gcp/shared/retry_utils.py"
 ADDRESS_UTILS_SOURCE="$ROOT_DIR/gcp/shared/address_utils.py"
 CONTACT_EXTRACTION_UTILS_SOURCE="$ROOT_DIR/gcp/shared/contact_extraction_utils.py"
 DOMAIN_UTILS_SOURCE="$ROOT_DIR/gcp/shared/domain_utils.py"
+REPORT_UTILS_SOURCE="$ROOT_DIR/gcp/shared/report_utils.py"
 CHAT_HANDLER_BASE_SOURCE="$ROOT_DIR/gcp/shared/chat_handler_base.py"
 
 # Check if source files exist
 ALL_SOURCES_OK=true
-for source_file in "$RETRY_UTILS_SOURCE" "$ADDRESS_UTILS_SOURCE" "$CONTACT_EXTRACTION_UTILS_SOURCE" "$DOMAIN_UTILS_SOURCE" "$CHAT_HANDLER_BASE_SOURCE"; do
+for source_file in "$RETRY_UTILS_SOURCE" "$ADDRESS_UTILS_SOURCE" "$CONTACT_EXTRACTION_UTILS_SOURCE" "$DOMAIN_UTILS_SOURCE" "$REPORT_UTILS_SOURCE" "$CHAT_HANDLER_BASE_SOURCE"; do
   if [[ ! -f "$source_file" ]]; then
     echo "❌ ERROR: Source file not found: $source_file"
     ALL_SOURCES_OK=false
@@ -87,6 +94,7 @@ echo "  $RETRY_UTILS_SOURCE"
 echo "  $ADDRESS_UTILS_SOURCE"
 echo "  $CONTACT_EXTRACTION_UTILS_SOURCE"
 echo "  $DOMAIN_UTILS_SOURCE"
+echo "  $REPORT_UTILS_SOURCE"
 echo "  $CHAT_HANDLER_BASE_SOURCE"
 echo ""
 
@@ -154,6 +162,23 @@ for func in "${FUNCTIONS_NEEDING_DOMAIN_UTILS[@]}"; do
   
   cp "$DOMAIN_UTILS_SOURCE" "$DEST_FILE"
   echo "  ✓ $func/domain_utils.py"
+done
+
+echo ""
+
+# Copy report_utils.py to each function that needs it
+echo "Copying report_utils.py to functions..."
+for func in "${FUNCTIONS_NEEDING_REPORT_UTILS[@]}"; do
+  DEST_DIR="$ROOT_DIR/gcp/functions/$func"
+  DEST_FILE="$DEST_DIR/report_utils.py"
+  
+  if [[ ! -d "$DEST_DIR" ]]; then
+    echo "  ⚠️  Directory not found: $DEST_DIR"
+    continue
+  fi
+  
+  cp "$REPORT_UTILS_SOURCE" "$DEST_FILE"
+  echo "  ✓ $func/report_utils.py"
 done
 
 echo ""
@@ -227,6 +252,19 @@ for func in "${FUNCTIONS_NEEDING_DOMAIN_UTILS[@]}"; do
     echo "  ✓ $func/domain_utils.py"
   else
     echo "  ❌ $func/domain_utils.py - MISSING!"
+    ALL_OK=false
+  fi
+done
+
+echo ""
+
+echo "Verifying report_utils.py presence..."
+for func in "${FUNCTIONS_NEEDING_REPORT_UTILS[@]}"; do
+  DEST_FILE="$ROOT_DIR/gcp/functions/$func/report_utils.py"
+  if [[ -f "$DEST_FILE" ]]; then
+    echo "  ✓ $func/report_utils.py"
+  else
+    echo "  ❌ $func/report_utils.py - MISSING!"
     ALL_OK=false
   fi
 done
