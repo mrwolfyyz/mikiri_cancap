@@ -34,6 +34,7 @@ This platform provides two main investigation types:
 │  ┌─────────────────┐              ┌─────────────────┐           │
 │  │ Skip Trace UI   │              │ Origination UI  │           │
 │  │ (index.html)    │              │ (index.html)    │           │
+│  │ (results.html)  │              │ (results.html)  │           │
 │  │ (chat.html)     │              │ (chat.html)     │           │
 │  └────────┬────────┘              └────────┬────────┘           │
 └───────────┼─────────────────────────────────┼───────────────────┘
@@ -78,7 +79,7 @@ This platform provides two main investigation types:
 ┌─────────────────────────────────────────────────────────┼───────┐
 │                        Firestore                        │       │
 │  • jobs (investigation results, markdown reports)       │       │
-│  • chat_sessions_* (conversation history)               │       │
+│  • jobs/{jobId}/chat_messages (conversation history)     │       │
 └─────────────────────────────────────────────────────────┘       │
                                                                    │
                                                                    │
@@ -113,7 +114,6 @@ skip-trace-origination/
 ├── .env.example              # Environment configuration template (optional)
 ├── .gitignore                # Git exclusions
 ├── README.md
-├── VALIDATION_REPORT.md      # Static validation results
 ├── chrome-extension/          # Browser extension for loan system integration
 ├── docs/                      # Documentation
 │   ├── DEPLOYMENT.md         
@@ -129,9 +129,11 @@ skip-trace-origination/
 │   └── origination/          # Origination web app
 │       └── public/
 ├── gcp/                       
-│   ├── functions/            # Cloud Functions source
+│   ├── functions/            # Cloud Functions source (13 functions)
 │   │   ├── api_gateway/
 │   │   ├── phase1_identity/
+│   │   ├── query_constructor/
+│   │   ├── contact_extraction/
 │   │   ├── domain_enrichment/
 │   │   ├── address_geocoding/
 │   │   ├── company_domain_lookup/
@@ -141,8 +143,13 @@ skip-trace-origination/
 │   │   ├── chat_handler/
 │   │   ├── chat_handler_origination/
 │   │   └── address_verification/
-│   ├── shared/               # Shared utilities
-│   │   └── retry_utils.py
+│   ├── shared/               # Shared Python utilities (copied by prepare-functions.sh)
+│   │   ├── retry_utils.py
+│   │   ├── address_utils.py
+│   │   ├── contact_extraction_utils.py
+│   │   ├── domain_utils.py
+│   │   ├── report_utils.py
+│   │   └── chat_handler_base.py
 │   └── workflows/            # Cloud Workflow templates
 │       ├── investigate-skiptrace.yaml.tpl
 │       └── investigate-origination.yaml.tpl

@@ -120,6 +120,7 @@ All API keys stored in **Google Secret Manager**:
 - `roles/aiplatform.user` - Use Vertex AI
 - `roles/datastore.user` - Read/write Firestore
 - `roles/workflows.invoker` - Invoke workflows
+- `roles/discoveryengine.user` - Vertex AI Search
 
 **2. Workflow Service Account** (`workflow-sa@PROJECT_ID.iam.gserviceaccount.com`)
 - `roles/datastore.user` - Read/write Firestore
@@ -258,7 +259,9 @@ Because everything runs in your GCP environment, **you have full control**:
 - ✅ **Token Verification** (all API calls authenticated)
 - ✅ **CORS Restricted** (configurable per environment, locked to hosting URLs in production)
 - ✅ **Server-Side Rate Limiting** (per-user, 5 requests per 5 minutes via Firestore)
-- ✅ **Input Validation** (request size limits, field length limits, city character whitelist)
+- ✅ **Request Size Limits** (50KB for investigations, 500KB for chat including markdown context)
+- ✅ **Conversation History Cap** (frontend: 40 messages, backend: rejects >50 messages)
+- ✅ **Input Validation** (request size limits, field length limits, city character whitelist, province code validation)
 - ✅ **XSS Prevention** (DOMPurify sanitization on injected HTML)
 - ✅ **Infrastructure as Code** (Terraform = auditable, repeatable)
 - ✅ **Short Data Retention** (7 days → 1 day target)
