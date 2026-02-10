@@ -18,7 +18,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
-from google.oauth2 import service_account
 from google.auth import default
 
 # Initialize Firebase Admin SDK
@@ -294,71 +293,85 @@ def on_job_updated(event: CloudEvent) -> None:
                 print("[OriginationReportGenerator] WARNING: No drive_folder_id provided, skipping Drive upload")
                 drive_urls = {}
             else:
-                print(f"[OriginationReportGenerator] Uploading to Google Drive folder: {drive_folder_id}")
-                drive_service = get_drive_service()
-                
-                # Create borrower folder with job_id
-                job_folder_name = f"{borrower_name}_{job_id}"
-                job_folder_id = find_or_create_folder(
-                    drive_service,
-                    drive_folder_id,
-                    job_folder_name
-                )
-                
-                # Upload only Identity report
-                report_urls = {}
-                report_files = [
-                    f"Identity___{borrower_name.replace(' ', '_')}.md",
-                ]
-                
-                # Filter to only files that exist
-                files_to_upload = [
-                    (file_name, output_dir / file_name)
-                    for file_name in report_files
-                    if (output_dir / file_name).exists()
-                ]
-                
-                upload_errors = []
-                if not files_to_upload:
-                    print("[OriginationReportGenerator] WARNING: No files found to upload")
-                else:
-                    print(f"[OriginationReportGenerator] Uploading {len(files_to_upload)} files in parallel...")
+                try:
+                    print(f"[OriginationReportGenerator] Uploading to Google Drive folder: {drive_folder_id}")
+                    drive_service = get_drive_service()
                     
-                    with ThreadPoolExecutor(max_workers=2) as executor:
-                        future_to_file = {}
-                        for file_name, file_path in files_to_upload:
-                            future = executor.submit(
-                                upload_single_file,
-                                file_path,
-                                file_name,
-                                job_folder_id
-                            )
-                            future_to_file[future] = file_name
+                    # Create borrower folder with job_id
+                    job_folder_name = f"{borrower_name}_{job_id}"
+                    job_folder_id = find_or_create_folder(
+                        drive_service,
+                        drive_folder_id,
+                        job_folder_name
+                    )
+                    
+                    # Upload only Identity report
+                    report_urls = {}
+                    report_files = [
+                        f"Identity___{borrower_name.replace(' ', '_')}.md",
+                    ]
+                    
+                    # Filter to only files that exist
+                    files_to_upload = [
+                        (file_name, output_dir / file_name)
+                        for file_name in report_files
+                        if (output_dir / file_name).exists()
+                    ]
+                    
+                    upload_errors = []
+                    if not files_to_upload:
+                        print("[OriginationReportGenerator] WARNING: No files found to upload")
+                    else:
+                        print(f"[OriginationReportGenerator] Uploading {len(files_to_upload)} files in parallel...")
                         
-                        # Collect results as they complete
-                        for future in as_completed(future_to_file):
-                            file_name = future_to_file[future]
-                            try:
-                                print(f"[OriginationReportGenerator] Uploading {file_name}...")
-                                _, file_meta = future.result()
-                                report_urls[file_name] = file_meta.get('webViewLink', '')
-                                print(f"[OriginationReportGenerator] ✓ Uploaded {file_name}")
-                            except Exception as e:
-                                error_msg = f"Failed to upload {file_name}: {str(e)}"
-                                print(f"[OriginationReportGenerator] ERROR: {error_msg}")
-                                upload_errors.append(error_msg)
+                        with ThreadPoolExecutor(max_workers=2) as executor:
+                            future_to_file = {}
+                            for file_name, file_path in files_to_upload:
+                                future = executor.submit(
+                                    upload_single_file,
+                                    file_path,
+                                    file_name,
+                                    job_folder_id
+                                )
+                                future_to_file[future] = file_name
+                            
+                            # Collect results as they complete
+                            for future in as_completed(future_to_file):
+                                file_name = future_to_file[future]
+                                try:
+                                    print(f"[OriginationReportGenerator] Uploading {file_name}...")
+                                    _, file_meta = future.result()
+                                    report_urls[file_name] = file_meta.get('webViewLink', '')
+                                    print(f"[OriginationReportGenerator] ✓ Uploaded {file_name}")
+                                except Exception as e:
+                                    error_msg = f"Failed to upload {file_name}: {str(e)}"
+                                    print(f"[OriginationReportGenerator] ERROR: {error_msg}")
+                                    upload_errors.append(error_msg)
+                        
+                        # Log warning for missing files
+                        missing_files = set(report_files) - {f[0] for f in files_to_upload}
+                        for file_name in missing_files:
+                            print(f"[OriginationReportGenerator] WARNING: File not found: {output_dir / file_name}")
                     
-                    # Log warning for missing files
-                    missing_files = set(report_files) - {f[0] for f in files_to_upload}
-                    for file_name in missing_files:
-                        print(f"[OriginationReportGenerator] WARNING: File not found: {output_dir / file_name}")
-                
-                if upload_errors:
-                    raise Exception(f"Upload errors: {'; '.join(upload_errors)}")
-                
-                drive_urls = report_urls
-                reports_folder_link = f"https://drive.google.com/drive/folders/{job_folder_id}"
-                print(f"[OriginationReportGenerator] ✓ All reports uploaded to Drive ({len(report_urls)} files)")
+                    if upload_errors:
+                        raise Exception(f"Upload errors: {'; '.join(upload_errors)}")
+                    
+                    drive_urls = report_urls
+                    reports_folder_link = f"https://drive.google.com/drive/folders/{job_folder_id}"
+                    print(f"[OriginationReportGenerator] ✓ All reports uploaded to Drive ({len(report_urls)} files)")
+                except HttpError as e:
+                    # Handle Drive API errors gracefully - reports are already generated
+                    if e.resp.status == 404:
+                        error_msg = f"Drive folder not found or inaccessible: {drive_folder_id}. Reports were generated successfully but could not be uploaded to Drive."
+                    else:
+                        error_msg = f"Drive upload failed: {str(e)}. Reports were generated successfully but could not be uploaded to Drive."
+                    print(f"[OriginationReportGenerator] WARNING: {error_msg}")
+                    drive_urls = {}  # Empty URLs if upload failed
+                except Exception as e:
+                    # Handle any other Drive-related errors gracefully
+                    error_msg = f"Drive upload failed: {str(e)}. Reports were generated successfully but could not be uploaded to Drive."
+                    print(f"[OriginationReportGenerator] WARNING: {error_msg}")
+                    drive_urls = {}  # Empty URLs if upload failed
             
             # Read markdown files and store in Firestore for chat feature
             markdown_reports = {}

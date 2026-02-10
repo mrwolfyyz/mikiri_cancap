@@ -18,7 +18,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
-from google.oauth2 import service_account
 from google.auth import default
 
 # Initialize Firebase Admin SDK
@@ -56,7 +55,6 @@ def transform_firestore_to_report_format(firestore_data: Dict[str, Any]) -> Dict
     - data['queries']
     """
     identity = firestore_data.get('identity', {})
-    enrichment = firestore_data.get('enrichment', {})
     
     # Build transformed structure (simplified for skip trace)
     transformed = {
