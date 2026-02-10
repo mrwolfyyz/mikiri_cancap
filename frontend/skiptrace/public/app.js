@@ -746,10 +746,6 @@ function resetForm() {
   if (elements.inlineReportContainer) {
     elements.inlineReportContainer.innerHTML = "";
   }
-  if (elements.viewInNewTabLink) {
-    elements.viewInNewTabLink.href = "#";
-    elements.viewInNewTabLink.style.display = "none";
-  }
 
   document.querySelector(".container")?.classList.remove("report-expanded");
   elements.resultsSection?.classList.remove("report-expanded");

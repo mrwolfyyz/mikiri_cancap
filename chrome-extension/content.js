@@ -61,14 +61,3 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// Also listen for the extension icon click directly (if needed)
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'getExtractedData') {
-    const extractedData = extractFormData();
-    sendResponse({ success: true, data: extractedData });
-    return true;
-  }
-});
-
-
-
