@@ -83,3 +83,40 @@ logs/
 .local/
 tmp/
 temp/
+
+# =============================================================================
+# Frontend Generated Files (from scripts/prepare-frontend.sh)
+# =============================================================================
+# These files are copied/generated from frontend/shared/ into platform dirs.
+# The source of truth is frontend/shared/. Do NOT edit files in platform dirs.
+#
+# Shared JS modules (copied to origination/public/ and skiptrace/public/)
+frontend/origination/public/platform-config.js
+frontend/origination/public/app-core.js
+frontend/origination/public/address-verification.js
+frontend/origination/public/chat-core.js
+frontend/origination/public/results.js
+frontend/origination/public/report-renderer.js
+frontend/skiptrace/public/platform-config.js
+frontend/skiptrace/public/app-core.js
+frontend/skiptrace/public/chat-core.js
+frontend/skiptrace/public/results.js
+frontend/skiptrace/public/report-renderer.js
+
+# Shared CSS (copied to origination/public/ and skiptrace/public/)
+frontend/origination/public/styles.css
+frontend/origination/public/shared.css
+frontend/origination/public/chat.css
+frontend/origination/public/results.css
+frontend/skiptrace/public/styles.css
+frontend/skiptrace/public/shared.css
+frontend/skiptrace/public/chat.css
+frontend/skiptrace/public/results.css
+
+# Generated HTML (processed from templates)
+frontend/origination/public/index.html
+frontend/origination/public/chat.html
+frontend/origination/public/results.html
+frontend/skiptrace/public/index.html
+frontend/skiptrace/public/chat.html
+frontend/skiptrace/public/results.html

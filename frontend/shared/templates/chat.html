@@ -1,3 +1,7 @@
+<!-- =========================================================================
+     THIS IS A TEMPLATE - DO NOT DEPLOY DIRECTLY
+     Processed by scripts/prepare-frontend.sh into platform directories
+     ========================================================================= -->
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
@@ -7,7 +11,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-    <title>Credit Analysis Chat - Interactive Assistant</title>
+    <title>{{chatPageTitle}}</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="chat.css">
 </head>
@@ -15,8 +19,8 @@
     <div class="container">
         <header>
             <div class="logo">
-                <h1>Credit Analysis Chat</h1>
-                <p class="subtitle">Borrower Intelligence Assistant</p>
+                <h1>{{chatHeaderTitle}}</h1>
+                <p class="subtitle">{{chatHeaderSubtitle}}</p>
             </div>
         </header>
 
@@ -24,7 +28,7 @@
             <div class="chat-header">
                 <div class="chat-header-left">
                     <a href="index.html" class="back-link">← Back</a>
-                    <h2>Credit Analysis Assistant</h2>
+                    <h2>{{chatAssistantTitle}}</h2>
                     <div class="job-id">Job: <span id="jobIdDisplay"></span></div>
                 </div>
             </div>
@@ -34,6 +38,7 @@
             <div class="chat-messages" id="chatMessages">
                 <div class="message assistant">
                     <div class="message-content">
+{{#if origination}}
                         <p>I have your full investigation reports loaded (Borrower Summary, Identity, Corporate, Adverse Media, Regulator) and can search the web in real-time. Ask me to:</p>
                         <ul>
                             <li>Validate claims - verify employment, confirm business relationships, check addresses</li>
@@ -43,6 +48,17 @@
                             <li>Spot inconsistencies or red flags across the reports</li>
                         </ul>
                         <p>The more context you give me about the application, the better I can help you build a complete picture.</p>
+{{/if origination}}
+{{#if skiptrace}}
+                        <p>I have your full investigation report loaded and can search the web in real-time. Ask me to:</p>
+                        <ul>
+                            <li>Search for updated addresses, phones, social profiles, or employment</li>
+                            <li>Verify information or chase down specific leads</li>
+                            <li>Investigate theories (e.g., "I think they might be working as a contractor")</li>
+                            <li>Connect dots between different clues in the report</li>
+                        </ul>
+                        <p>The more context you give me, the better results I'll find. What would you like to investigate?</p>
+{{/if skiptrace}}
                     </div>
                 </div>
             </div>

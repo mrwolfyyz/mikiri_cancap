@@ -1,0 +1,31 @@
+{
+  "platform": "origination",
+  "defaultWorkflow": "origination",
+  "investigateEndpoint": "/investigate-origination",
+  "chatEndpoint": "/chat_handler_origination",
+  "emailRequired": true,
+  "features": {
+    "addressVerification": true
+  },
+  "ui": {
+    "pageTitle": "Loan Origination - Borrower Intelligence",
+    "headerTitle": "Borrower Intelligence Platform",
+    "headerSubtitle": "Loan Origination Edition",
+    "heroText": "Deep intelligence for loan origination. Fast.",
+    "submitButtonText": "Generate Loan Origination Report",
+    "successMessage": "Loan Origination Report Complete",
+    "runningStatusMessage": "Investigating identity data for loan origination...",
+    "initMessage": "Origination Intelligence Platform initialized",
+    "chatPageTitle": "Credit Analysis Chat - Interactive Assistant",
+    "chatHeaderTitle": "Credit Analysis Chat",
+    "chatHeaderSubtitle": "Borrower Intelligence Assistant",
+    "chatAssistantTitle": "Credit Analysis Assistant"
+  },
+  "content": {
+    "folderName": "Loan Origination Reports",
+    "folderAltName": "Borrower Intelligence",
+    "userRole": "loan officers",
+    "reportType": "loan origination",
+    "viewReportText": "View Report in Google Drive"
+  }
+}

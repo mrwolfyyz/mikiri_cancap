@@ -1,0 +1,31 @@
+{
+  "platform": "skiptrace",
+  "defaultWorkflow": "skiptrace",
+  "investigateEndpoint": "/investigate-skiptrace",
+  "chatEndpoint": "/chat_handler",
+  "emailRequired": false,
+  "features": {
+    "addressVerification": false
+  },
+  "ui": {
+    "pageTitle": "Skip Trace Intelligence Platform",
+    "headerTitle": "Skip Trace Intelligence Platform",
+    "headerSubtitle": "Specialized for Skip Tracing",
+    "heroText": "Deep intelligence for skip tracing. Fast.",
+    "submitButtonText": "Generate Skip Trace Report",
+    "successMessage": "Skip Trace Report Complete",
+    "runningStatusMessage": "Investigating identity and skip trace data...",
+    "initMessage": "Skip Trace Intelligence Platform initialized",
+    "chatPageTitle": "Skip Trace Chat - Interactive Assistant",
+    "chatHeaderTitle": "Skip Trace Chat",
+    "chatHeaderSubtitle": "Interactive Assistant",
+    "chatAssistantTitle": "Skip Trace Assistant"
+  },
+  "content": {
+    "folderName": "Skip Trace Reports",
+    "folderAltName": "Investigations",
+    "userRole": "investigators",
+    "reportType": "skip trace",
+    "viewReportText": "View Reports in Google Drive"
+  }
+}

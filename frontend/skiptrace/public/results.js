@@ -1,3 +1,15 @@
+// =============================================================================
+// Results Page - Shared Results Logic
+// =============================================================================
+// THIS FILE IS THE SOURCE OF TRUTH
+// Copied to platform directories by scripts/prepare-frontend.sh
+//
+// Contains standalone results page logic. The default workflow type is
+// configured via PlatformConfig (loaded from platform.json at runtime).
+//
+// Requires: platform-config.js (must be loaded first)
+// =============================================================================
+
 // ===========================
 // Configuration
 // ===========================
@@ -30,7 +42,7 @@ async function init() {
 
         const params = new URLSearchParams(window.location.search);
         currentJobId = params.get('job_id');
-        currentWorkflow = params.get('workflow') || 'skiptrace';
+        currentWorkflow = params.get('workflow') || PlatformConfig.get('defaultWorkflow');
 
         if (!currentJobId) {
             throw new Error('No job_id provided in URL');
@@ -49,20 +61,10 @@ async function init() {
 }
 
 async function loadConfig() {
-    const response = await fetch('firebase-config.json');
-    if (!response.ok) {
-        throw new Error('Failed to load configuration');
-    }
-    const config = await response.json();
-    API_URL = config.apiUrl;
-    FIREBASE_CONFIG = {
-        apiKey: config.apiKey,
-        authDomain: config.authDomain,
-        projectId: config.projectId,
-        storageBucket: config.storageBucket,
-        messagingSenderId: config.messagingSenderId,
-        appId: config.appId
-    };
+    await PlatformConfig.load();
+
+    API_URL = PlatformConfig.apiUrl;
+    FIREBASE_CONFIG = PlatformConfig.firebaseConfig;
 }
 
 async function authenticateUser() {
