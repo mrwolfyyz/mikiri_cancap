@@ -225,10 +225,12 @@ Run the frontend preparation script to copy shared JS/CSS and process HTML templ
 ```
 
 **What this does**:
-- Copies shared JavaScript modules (`app-core.js`, `platform-config.js`, `chat-core.js`, etc.) to each platform's `public/` directory
-- Copies shared CSS files (`styles.css`, `chat.css`, etc.) to each platform's `public/` directory
+- Copies shared JavaScript modules to each platform's `public/` directory:
+  - `app-core.js`, `chat-core.js`, `platform-config.js`, `report-renderer.js`, `results.js`, `shared-utils.js`
+  - `address-verification.js` (only for platforms with that feature enabled in `platform.json`)
+- Copies shared CSS files to each platform's `public/` directory:
+  - `styles.css`, `shared.css`, `chat.css`, `results.css`
 - Processes HTML templates from `frontend/shared/templates/` using platform-specific configuration from `platform.json`
-- Conditionally includes `address-verification.js` only for platforms with that feature enabled
 
 **Note**: This must be run before Step 6 (Deploy Firebase Hosting). It can be run at any time before deploying frontends. The script requires `jq` (install with `brew install jq`).
 
