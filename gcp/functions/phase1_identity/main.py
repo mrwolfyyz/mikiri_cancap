@@ -25,7 +25,7 @@ from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError, 
 
 # Google Gen AI SDK imports (for Gemini with Google Search grounding support)
 from google import genai
-from google.genai.types import GenerateContentConfig, Tool, GoogleSearch
+from google.genai.types import GenerateContentConfig, Tool, GoogleSearch, HttpOptions
 
 # Vertex AI Search import (module-level for faster warm invocations)
 from google.cloud import discoveryengine_v1 as discoveryengine
@@ -377,10 +377,13 @@ Return valid JSON with all required fields."""
     
     # Initialize Google Gen AI client once, outside retry closure.
     # This avoids re-creating the client (and its gRPC channel) on every retry attempt.
+    # Timeout of 60s ensures slow/degraded Gemini responses fail fast so retry logic
+    # can try again, rather than burning the entire function timeout on one hung call.
     gemini_client = genai.Client(
         vertexai=True,
         project=GCP_PROJECT,
-        location=GCP_LOCATION
+        location=GCP_LOCATION,
+        http_options=HttpOptions(timeout=60 * 1000),  # 60 seconds in milliseconds
     )
 
     def _call_vertex_ai():
