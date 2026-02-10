@@ -30,23 +30,23 @@ resource "google_firestore_database" "default" {
 # -----------------------------------------------------------------------------
 # Firestore Indexes (if needed)
 # -----------------------------------------------------------------------------
-# Add composite indexes here if required for queries
-# Example:
-# resource "google_firestore_index" "jobs_by_user" {
-#   project    = var.project_id
-#   database   = google_firestore_database.default.name
-#   collection = "jobs"
-#
-#   fields {
-#     field_path = "user_id"
-#     order      = "ASCENDING"
-#   }
-#
-#   fields {
-#     field_path = "created_at"
-#     order      = "DESCENDING"
-#   }
-# }
+# Composite index for rate limiting query in api_gateway:
+# .where("user_id", "==", ...).where("created_at", ">=", ...)
+resource "google_firestore_index" "jobs_user_created" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "user_id"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "created_at"
+    order      = "ASCENDING"
+  }
+}
 
 # -----------------------------------------------------------------------------
 # NOTE: Firestore Security Rules

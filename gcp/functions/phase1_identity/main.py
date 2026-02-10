@@ -511,7 +511,7 @@ Return valid JSON with all required fields."""
         # Try to get content if available
         try:
             return {"raw": str(e)}
-        except:
+        except Exception:
             return {"error": "JSON decode error"}
     except Exception as e:
         # Detect rate-limiting exhaustion and raise specific error so caller

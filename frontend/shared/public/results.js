@@ -96,13 +96,8 @@ async function loadInvestigationData() {
 
     const jobData = jobDoc.data();
 
-    const getToken = async () => {
-        const user = firebase.auth().currentUser;
-        if (!user) throw new Error('Not authenticated');
-        return await user.getIdToken(true);
-    };
-
-    const markdownReports = await window.ReportRenderer.loadMarkdownReports(API_URL, currentJobId, getToken);
+    // getAuthToken() is in shared-utils.js (loaded before this file)
+    const markdownReports = await window.ReportRenderer.loadMarkdownReports(API_URL, currentJobId, getAuthToken);
 
     window.ReportRenderer.renderReport(elements.resultsContent, {
         jobId: currentJobId,

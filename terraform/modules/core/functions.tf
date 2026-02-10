@@ -267,8 +267,9 @@ resource "google_cloudfunctions2_function" "chat_handler" {
     service_account_email = google_service_account.functions.email
 
     environment_variables = {
-      GCP_PROJECT  = var.project_id
-      GCP_LOCATION = "global"  # Use global endpoint for Gemini models
+      GCP_PROJECT          = var.project_id
+      GCP_LOCATION         = "global"  # Use global endpoint for Gemini models
+      CORS_ALLOWED_ORIGINS = var.cors_allowed_origins
     }
   }
 
@@ -333,8 +334,9 @@ resource "google_cloudfunctions2_function" "chat_handler_origination" {
     service_account_email = google_service_account.functions.email
 
     environment_variables = {
-      GCP_PROJECT  = var.project_id
-      GCP_LOCATION = "global"  # Use global endpoint for Gemini models
+      GCP_PROJECT          = var.project_id
+      GCP_LOCATION         = "global"  # Use global endpoint for Gemini models
+      CORS_ALLOWED_ORIGINS = var.cors_allowed_origins
     }
   }
 
@@ -398,8 +400,9 @@ resource "google_cloudfunctions2_function" "address_verification" {
     service_account_email = google_service_account.functions.email
 
     environment_variables = {
-      GCP_PROJECT  = var.project_id
-      GCP_LOCATION = "global"  # Use global endpoint for Gemini models
+      GCP_PROJECT          = var.project_id
+      GCP_LOCATION         = "global"  # Use global endpoint for Gemini models
+      CORS_ALLOWED_ORIGINS = var.cors_allowed_origins
     }
   }
 

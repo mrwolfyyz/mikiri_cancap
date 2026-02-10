@@ -61,20 +61,13 @@ async function initializeAuth() {
     }
 }
 
-// Helper function to get current valid token (gets fresh token on each call)
-async function getAuthToken() {
-    const user = firebase.auth().currentUser;
-    if (!user) {
-        throw new Error("User not authenticated");
-    }
-    // Force refresh if expired (Firebase SDK handles caching internally)
-    return await user.getIdToken(true);
-}
+// getAuthToken() is now in shared-utils.js (loaded before this file)
 
 // ===========================
 // State Management
 // ===========================
 let jobId = null;
+const MAX_HISTORY_LENGTH = 40;
 let conversationHistory = [];
 let markdownContext = null;
 let markdownFetched = false;
@@ -451,8 +444,13 @@ function addMessage(role, content, groundingMetadata = null) {
             htmlContent = scopedStyleTag + htmlContent;
         }
 
-        // Render HTML exactly as provided (compliance requirement)
-        entryPoint.innerHTML = htmlContent;
+        // Sanitize HTML before rendering (compliance: preserve Google's styling and links)
+        entryPoint.innerHTML = typeof DOMPurify !== "undefined"
+            ? DOMPurify.sanitize(htmlContent, {
+                ALLOWED_TAGS: ['style', 'div', 'span', 'a', 'img', 'br', 'p'],
+                ALLOWED_ATTR: ['class', 'href', 'target', 'rel', 'src', 'alt', 'style']
+            })
+            : "";
 
         suggestionsDiv.appendChild(entryPoint);
 
@@ -576,8 +574,11 @@ async function handleSendMessage() {
         // Send to chat handler
         const response = await sendChatMessage(payload);
 
-        // Update conversation history
+        // Update conversation history (cap to prevent unbounded growth)
         conversationHistory = response.conversation_history || conversationHistory;
+        if (conversationHistory.length > MAX_HISTORY_LENGTH) {
+            conversationHistory = conversationHistory.slice(-MAX_HISTORY_LENGTH);
+        }
 
         // Add assistant response to UI
         addMessage(
