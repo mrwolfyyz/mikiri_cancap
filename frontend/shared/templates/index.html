@@ -1,3 +1,7 @@
+<!-- =========================================================================
+     THIS IS A TEMPLATE - DO NOT DEPLOY DIRECTLY
+     Processed by scripts/prepare-frontend.sh into platform directories
+     ========================================================================= -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,7 +11,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-    <title>Skip Trace Intelligence Platform</title>
+    <title>{{pageTitle}}</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="results.css">
 </head>
@@ -16,8 +20,8 @@
         <!-- Header -->
         <header>
             <div class="logo">
-                <h1>Skip Trace Intelligence Platform</h1>
-                <p class="subtitle">Specialized for Skip Tracing</p>
+                <h1>{{headerTitle}}</h1>
+                <p class="subtitle">{{headerSubtitle}}</p>
             </div>
             <button id="darkModeToggle" class="dark-mode-toggle" aria-label="Toggle dark mode">
                 <span class="icon-light">☀️</span>
@@ -28,13 +32,16 @@
         <!-- Tab Navigation -->
         <nav class="tabs">
             <button class="tab-button active" data-tab="main">Investigation</button>
+{{#if addressVerification}}
+            <button class="tab-button" data-tab="address-verification">Business Verification</button>
+{{/if addressVerification}}
             <button class="tab-button" data-tab="setup">Setup & Help</button>
         </nav>
 
         <!-- Main Investigation Tab -->
         <div id="main-tab" class="tab-content active">
             <div class="hero">
-                <h2>Deep intelligence for skip tracing. Fast.</h2>
+                <h2>{{heroText}}</h2>
             </div>
 
             <!-- Investigation Form -->
@@ -119,7 +126,7 @@
                 </div>
 
                 <button type="submit" id="submitButton" class="submit-button">
-                    Generate Skip Trace Report
+                    {{submitButtonText}}
                 </button>
             </form>
 
@@ -163,6 +170,150 @@
             </div>
         </div>
 
+{{#if addressVerification}}
+        <!-- Address Verification Tab -->
+        <div id="address-verification-tab" class="tab-content">
+            <div class="hero">
+                <h2>Verify Business Details</h2>
+            </div>
+
+            <!-- Address Verification Form -->
+            <form id="addressVerificationForm" class="investigation-form">
+                <div class="form-group">
+                    <label for="businessName">Business Name *</label>
+                    <input 
+                        type="text" 
+                        id="businessName" 
+                        name="business_name" 
+                        placeholder="e.g., Acme Corporation"
+                        required
+                        autocomplete="organization"
+                    >
+                    <span class="helper-text">Enter the business name to verify at this address</span>
+                    <span class="error-message" id="businessNameError"></span>
+                </div>
+
+                <div class="form-group">
+                    <label for="streetAddress">Street Address *</label>
+                    <input 
+                        type="text" 
+                        id="streetAddress" 
+                        name="street_address" 
+                        placeholder="e.g., 123 Main Street"
+                        required
+                        autocomplete="street-address"
+                    >
+                    <span class="error-message" id="streetAddressError"></span>
+                </div>
+
+                <div class="form-group">
+                    <label for="suiteUnit">Suite/Unit</label>
+                    <input 
+                        type="text" 
+                        id="suiteUnit" 
+                        name="suite_unit" 
+                        placeholder="e.g., Suite 280, Unit 5"
+                    >
+                    <span class="helper-text">Optional - Enter suite or unit number if applicable</span>
+                    <span class="error-message" id="suiteUnitError"></span>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group city">
+                        <label for="addressCity">City *</label>
+                        <input 
+                            type="text" 
+                            id="addressCity" 
+                            name="city" 
+                            placeholder="e.g., Toronto"
+                            required
+                            autocomplete="address-level2"
+                        >
+                        <span class="error-message" id="addressCityError"></span>
+                    </div>
+
+                    <div class="form-group province">
+                        <label for="addressProvince">Province *</label>
+                        <select 
+                            id="addressProvince" 
+                            name="province" 
+                            required
+                        >
+                            <option value="">Select Province</option>
+                            <option value="ON">Ontario</option>
+                            <option value="BC">British Columbia</option>
+                            <option value="AB">Alberta</option>
+                            <option value="QC">Quebec</option>
+                            <option value="MB">Manitoba</option>
+                            <option value="SK">Saskatchewan</option>
+                            <option value="NS">Nova Scotia</option>
+                            <option value="NB">New Brunswick</option>
+                            <option value="NL">Newfoundland and Labrador</option>
+                            <option value="PE">Prince Edward Island</option>
+                            <option value="NT">Northwest Territories</option>
+                            <option value="YT">Yukon</option>
+                            <option value="NU">Nunavut</option>
+                        </select>
+                        <span class="error-message" id="addressProvinceError"></span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="postalCode">Postal Code *</label>
+                    <input 
+                        type="text" 
+                        id="postalCode" 
+                        name="postal_code" 
+                        placeholder="e.g., M5H 2N2"
+                        pattern="[A-Za-z][0-9][A-Za-z] [0-9][A-Za-z][0-9]"
+                        maxlength="7"
+                        required
+                        autocomplete="postal-code"
+                    >
+                    <span class="helper-text">Format: A1A 1A1</span>
+                    <span class="error-message" id="postalCodeError"></span>
+                </div>
+
+                <button type="submit" id="addressVerificationButton" class="submit-button">
+                    Verify Address
+                </button>
+            </form>
+
+            <!-- Loading Display -->
+            <div id="addressVerificationLoading" class="progress-section is-hidden">
+                <div class="progress-content">
+                    <div class="spinner" aria-hidden="true">
+                        <div class="spinner-dot"></div>
+                        <div class="spinner-dot"></div>
+                        <div class="spinner-dot"></div>
+                    </div>
+                    <h3>Verifying Address...</h3>
+                    <p class="progress-time">This may take 15-30 seconds</p>
+                </div>
+            </div>
+
+            <!-- Results Display -->
+            <div id="addressVerificationResults" class="results-section is-hidden">
+                <div class="results-actions results-actions-top">
+                    <button id="addressVerificationNewSearchButton" class="new-report-button">New Verification</button>
+                </div>
+                <div id="addressVerificationResultsContent"></div>
+                <div class="results-actions results-actions-bottom">
+                    <button id="addressVerificationNewSearchButtonBottom" class="new-report-button">New Verification</button>
+                </div>
+            </div>
+
+            <!-- Error Display -->
+            <div id="addressVerificationError" class="error-section is-hidden">
+                <div class="error-content">
+                    <div class="error-icon">⚠️</div>
+                    <h3>Verification Failed</h3>
+                    <p id="addressVerificationErrorMessage"></p>
+                    <button id="addressVerificationRetryButton" class="retry-button">Try Again</button>
+                </div>
+            </div>
+        </div>
+{{/if addressVerification}}
 
         <!-- Setup & Help Tab -->
         <div id="setup-tab" class="tab-content">
@@ -199,7 +350,7 @@
                                 <ul>
                                     <li>Open an existing Shared Drive</li>
                                     <li>Click <strong>+ New</strong> → <strong>New folder</strong></li>
-                                    <li>Name it something like "Skip Trace Reports" or "Investigations"</li>
+                                    <li>Name it something like "{{folderName}}" or "{{folderAltName}}"</li>
                                 </ul>
                             </li>
                             <li>
@@ -295,7 +446,12 @@
   │   └── Identity___John_Doe.md
   └── Jane_Smith_def456/
       └── Identity___Jane_Smith.md</pre>
+{{#if origination}}
+                    <p class="helper-text">Each investigation creates a new subfolder with a simplified Identity report focused on loan origination.</p>
+{{/if origination}}
+{{#if skiptrace}}
                     <p class="helper-text">Each investigation creates a new subfolder with the Identity markdown report</p>
+{{/if skiptrace}}
                 </div>
             </section>
 
@@ -303,10 +459,18 @@
             <section class="setup-section">
                 <h3>Step 2: Set Up Obsidian (Optional)</h3>
                 <p class="section-description">
+{{#if origination}}
+                    Obsidian gives you a powerful way to view and link between loan origination reports. It's free and works great with Shared Drives.
+                    <div class="tip-box stacked-margin-md">
+                        <strong>🔍 Used by loan officers:</strong> Obsidian is a powerful tool for organizing and reviewing borrower intelligence reports.
+                    </div>
+{{/if origination}}
+{{#if skiptrace}}
                     Obsidian gives you a powerful way to view and link between skip trace reports. It's free and works great with Shared Drives.
                     <div class="tip-box stacked-margin-md">
                         <strong>🔍 Used by investigators:</strong> Obsidian is the go-to tool for investigative journalists, intelligence analysts, and skip tracers working complex cases.
                     </div>
+{{/if skiptrace}}
                 </p>
 
                 <details class="collapsible">
@@ -352,8 +516,8 @@
                             <li>
                                 Navigate to your Shared Drive folder:
                                 <ul>
-                                    <li><strong>Mac:</strong> <code>/Volumes/GoogleDrive/Shared drives/YourSharedDrive/Skip Trace Reports</code></li>
-                                    <li><strong>Windows:</strong> <code>G:\Shared drives\YourSharedDrive\Skip Trace Reports</code></li>
+                                    <li><strong>Mac:</strong> <code>/Volumes/GoogleDrive/Shared drives/YourSharedDrive/{{folderName}}</code></li>
+                                    <li><strong>Windows:</strong> <code>G:\Shared drives\YourSharedDrive\{{folderName}}</code></li>
                                 </ul>
                             </li>
                             <li>Click <strong>Open</strong></li>
@@ -369,6 +533,22 @@
                 <details class="collapsible">
                     <summary>2.4 What You Get in Obsidian</summary>
                     <div class="instruction-steps">
+{{#if origination}}
+                        <p>Each loan origination investigation creates an Identity report with:</p>
+                        <ul>
+                            <li><strong>Identity Confirmation</strong> - Verified identity information</li>
+                            <li><strong>Social Handles</strong> - Social media profiles and handles</li>
+                            <li><strong>Data Breaches</strong> - Known data breach history</li>
+                            <li><strong>Domain Information</strong> - Email domain and company domain details</li>
+                            <li><strong>Contact Information</strong> - Phone numbers, email addresses, and addresses of interest</li>
+                            <li><strong>Sources</strong> - Links to all source material</li>
+                        </ul>
+                        <p>Files are optimized for loan origination workflows and exclude contactability assessments and public sector employment data.</p>
+                        <div class="tip-box">
+                            <strong>💡 Pro tip:</strong> Use Obsidian's search to quickly find specific borrowers or review multiple reports!
+                        </div>
+{{/if origination}}
+{{#if skiptrace}}
                         <p>Each skip trace investigation creates an Identity markdown file:</p>
                         <ul>
                             <li><strong>Identity Report</strong> - Contact details, social profiles, data breach history, addresses, phone numbers, with clickable search links</li>
@@ -377,6 +557,7 @@
                         <div class="tip-box">
                             <strong>💡 Pro tip:</strong> Use Obsidian's graph view to visualize connections between skip trace targets!
                         </div>
+{{/if skiptrace}}
                     </div>
                 </details>
             </section>
@@ -411,7 +592,7 @@
                                 <ul>
                                     <li>Go back to Step 1.1 and double-check the URL</li>
                                     <li>Make sure you copied the entire URL including the long folder ID</li>
-                                    <li>Try clicking "View Reports in Google Drive" after a completed investigation</li>
+                                    <li>Try clicking "{{viewReportText}}" after a completed investigation</li>
                                 </ul>
                             </li>
                             <li>
@@ -424,7 +605,7 @@
                             <li>
                                 <strong>Check investigation completed successfully</strong>
                                 <ul>
-                                    <li>Did you see "Skip Trace Report Complete" message?</li>
+                                    <li>Did you see "{{successMessage}}" message?</li>
                                     <li>If investigation failed, reports won't be generated</li>
                                 </ul>
                             </li>
@@ -454,7 +635,7 @@
                                 <ul>
                                     <li>In Obsidian, look at Settings → Files & Links</li>
                                     <li>Verify the vault path is inside a synced Shared Drive</li>
-                                    <li>Example: <code>/Volumes/GoogleDrive/Shared drives/YourSharedDrive/Skip Trace Reports</code></li>
+                                    <li>Example: <code>/Volumes/GoogleDrive/Shared drives/YourSharedDrive/{{folderName}}</code></li>
                                 </ul>
                             </li>
                             <li>
@@ -577,5 +758,8 @@
     <script src="platform-config.js"></script>
     <script src="report-renderer.js"></script>
     <script src="app-core.js"></script>
+{{#if addressVerification}}
+    <script src="address-verification.js"></script>
+{{/if addressVerification}}
 </body>
 </html>

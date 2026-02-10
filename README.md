@@ -121,6 +121,9 @@ skip-trace-origination/
 │   ├── REPOSITORY_SETUP.md   # Guide for setting up git repository
 │   └── TROUBLESHOOTING.md    
 ├── frontend/                  
+│   ├── shared/               # Shared frontend code (source of truth)
+│   │   ├── public/           # Shared JS/CSS (copied by prepare-frontend.sh)
+│   │   └── templates/        # HTML templates (processed per platform)
 │   ├── skiptrace/            # Skip trace web app
 │   │   └── public/
 │   └── origination/          # Origination web app
@@ -144,7 +147,8 @@ skip-trace-origination/
 │       ├── investigate-skiptrace.yaml.tpl
 │       └── investigate-origination.yaml.tpl
 ├── scripts/                  # Deployment and utility scripts
-│   ├── prepare-functions.sh
+│   ├── prepare-functions.sh  # Copy shared Python utils to functions
+│   ├── prepare-frontend.sh   # Copy shared JS/CSS and process HTML templates
 │   ├── validate-deployment.sh
 │   ├── smoke-test.sh
 │   └── get-function-urls.sh

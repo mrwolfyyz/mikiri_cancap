@@ -212,7 +212,25 @@ Run the preparation script to copy shared utilities:
 ./scripts/prepare-functions.sh
 ```
 
-**Note**: This script copies `retry_utils.py` to function directories that need it. If you're not in the repository root directory, navigate there first.
+**Note**: This script copies shared Python utilities (`retry_utils.py`, `domain_utils.py`, etc.) to function directories that need them. If you're not in the repository root directory, navigate there first.
+
+### Step 1b: Prepare Frontend Files
+
+**Working Directory**: Repository root
+
+Run the frontend preparation script to copy shared JS/CSS and process HTML templates:
+
+```bash
+./scripts/prepare-frontend.sh
+```
+
+**What this does**:
+- Copies shared JavaScript modules (`app-core.js`, `platform-config.js`, `chat-core.js`, etc.) to each platform's `public/` directory
+- Copies shared CSS files (`styles.css`, `chat.css`, etc.) to each platform's `public/` directory
+- Processes HTML templates from `frontend/shared/templates/` using platform-specific configuration from `platform.json`
+- Conditionally includes `address-verification.js` only for platforms with that feature enabled
+
+**Note**: This must be run before Step 6 (Deploy Firebase Hosting). It can be run at any time before deploying frontends. The script requires `jq` (install with `brew install jq`).
 
 ### Step 2: Initialize Terraform
 
