@@ -20,7 +20,7 @@ import os
 import re
 import uuid
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import functions_framework
@@ -85,12 +85,9 @@ def verify_firebase_token(request: Request) -> tuple[str | None, dict | None]:
         decoded_token = auth.verify_id_token(token)
         user_id = decoded_token.get("uid")
         return user_id, None
-    except auth.InvalidIdTokenError:
-        logger.warning("Invalid token received")
+    except (auth.InvalidIdTokenError, auth.ExpiredIdTokenError):
+        logger.warning("Token verification failed")
         return None, {"error": "Authentication failed. Please refresh the page."}
-    except auth.ExpiredIdTokenError:
-        logger.warning("Expired token received")
-        return None, {"error": "Session expired. Please refresh the page."}
     except Exception as e:
         logger.error("Token verification error: %s", e)
         return None, {"error": "Authentication failed. Please refresh the page."}
@@ -127,6 +124,9 @@ def validate_city(city: str) -> tuple[bool, str]:
         return True, ""  # Optional field
     if len(city) < 2 or len(city) > 100:
         return False, "City must be 2-100 characters"
+    # Allow letters, spaces, hyphens, apostrophes, and common accented characters
+    if not re.match(r"^[A-Za-zÀ-ÿ\s'\-]+$", city):
+        return False, "City contains invalid characters"
     return True, ""
 
 
@@ -143,6 +143,38 @@ def validate_province(province: str) -> tuple[bool, str]:
 
 
 # =============================================================================
+# Rate Limiting
+# =============================================================================
+
+# Maximum investigation requests per user within the rate limit window
+RATE_LIMIT_MAX_REQUESTS = 5
+RATE_LIMIT_WINDOW_SECONDS = 300  # 5 minutes
+
+
+def check_rate_limit(user_id: str) -> bool:
+    """Check if user has exceeded the investigation rate limit.
+
+    Returns True if the request is allowed, False if rate limited.
+    Degrades gracefully (allows request) if the query fails (e.g., missing index).
+    """
+    try:
+        from google.cloud.firestore_v1.base_query import FieldFilter
+        window_start = datetime.utcnow() - timedelta(seconds=RATE_LIMIT_WINDOW_SECONDS)
+        recent_jobs = (
+            db.collection("jobs")
+            .where(filter=FieldFilter("user_id", "==", user_id))
+            .where(filter=FieldFilter("created_at", ">=", window_start))
+            .count()
+            .get()
+        )
+        count = recent_jobs[0][0].value
+        return count < RATE_LIMIT_MAX_REQUESTS
+    except Exception as e:
+        logger.warning(f"Rate limit check failed, allowing request: {e}")
+        return True
+
+
+# =============================================================================
 # Data Access Helpers
 # =============================================================================
 
@@ -150,9 +182,9 @@ def create_job(email: str, full_name: str, city: str, province: str = None, driv
     """Create a new job in Firestore."""
     job_id = uuid.uuid4().hex[:12]
     now = datetime.utcnow()
-    
+
     job_data = {
-        "status": "pending",
+        "status": "triggering",
         "created_at": now,
         "started_at": None,
         "completed_at": None,
@@ -316,6 +348,15 @@ def handle_investigation(request: Request, headers: dict, workflow_name: str):
     if auth_error:
         return jsonify(auth_error), 401, headers
 
+    # H3: Reject oversized request bodies early
+    content_length = request.content_length or 0
+    if content_length > 50_000:  # 50KB - investigation payloads are small
+        return jsonify({"error": "Request too large"}), 413, headers
+
+    # H4: Server-side rate limiting
+    if not check_rate_limit(user_id):
+        return jsonify({"error": "Too many requests. Please wait a few minutes."}), 429, headers
+
     try:
         data = request.get_json() or {}
     except Exception:
@@ -357,12 +398,13 @@ def handle_investigation(request: Request, headers: dict, workflow_name: str):
     if errors:
         return jsonify({"error": "validation_error", "details": errors}), 400, headers
     
-    # Create job with user_id
+    # Create job with user_id (initial status "triggering" until workflow starts)
     job_id = create_job(email, full_name, city, province, drive_folder_id, company_name, user_id=user_id)
-    
-    # Trigger workflow (async)
+
+    # Trigger workflow (async), then mark job as pending
     try:
         trigger_workflow(job_id, email, full_name, city, province, company_name, workflow_name=workflow_name)
+        db.collection("jobs").document(job_id).update({"status": "pending"})
     except Exception as e:
         # Update job as failed
         db.collection("jobs").document(job_id).update({
@@ -370,7 +412,7 @@ def handle_investigation(request: Request, headers: dict, workflow_name: str):
             "error": f"Failed to start workflow: {str(e)}"
         })
         return jsonify({"error": f"Failed to start investigation: {str(e)}"}), 500, headers
-    
+
     return jsonify({"job_id": job_id}), 202, headers
 
 
@@ -380,11 +422,16 @@ def proxy_chat_request(request: Request, headers: dict, target_url: str, service
     user_id, auth_error = verify_firebase_token(request)
     if auth_error:
         return jsonify(auth_error), 401, headers
-    
+
+    # H3: Reject oversized request bodies early
+    content_length = request.content_length or 0
+    if content_length > 500_000:  # 500KB limit for chat (includes markdown context)
+        return jsonify({"error": "Request too large"}), 413, headers
+
     # Check that target URL is configured
     if not target_url:
         return jsonify({"error": f"{service_name} service not configured"}), 500, headers
-    
+
     try:
         data = request.get_json() or {}
     except Exception:

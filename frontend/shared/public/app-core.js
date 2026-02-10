@@ -49,6 +49,7 @@ async function loadConfig() {
 // ===========================
 let currentJobId = null;
 let pollAttempts = 0;
+let pollTimeoutId = null;
 let lastRequestTime = 0;
 let statusMessageTimer = null;
 let statusMessageStartTime = null;
@@ -179,16 +180,7 @@ async function initializeAuth() {
   }
 }
 
-// Helper function to get current valid token (gets fresh token on each call)
-// Firebase SDK handles caching internally, so this doesn't make unnecessary network calls
-async function getAuthToken() {
-  const user = firebase.auth().currentUser;
-  if (!user) {
-    throw new Error("User not authenticated");
-  }
-  // Force refresh if expired (Firebase SDK handles caching internally)
-  return await user.getIdToken(true);
-}
+// getAuthToken() is now in shared-utils.js (loaded before this file)
 
 // ===========================
 // Drive Folder ID Extraction
@@ -795,6 +787,10 @@ function resetForm() {
 
   currentJobId = null;
   pollAttempts = 0;
+  if (pollTimeoutId) {
+    clearTimeout(pollTimeoutId);
+    pollTimeoutId = null;
+  }
 }
 
 // ===========================
@@ -837,7 +833,7 @@ async function startPolling(jobId) {
       }
 
       // Continue polling
-      setTimeout(poll, POLL_INTERVAL_MS);
+      pollTimeoutId = setTimeout(poll, POLL_INTERVAL_MS);
     } catch (error) {
       console.error("Polling error:", error);
       showError(error.message || "An error occurred. Please try again.");

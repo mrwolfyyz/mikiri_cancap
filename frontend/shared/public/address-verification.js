@@ -93,11 +93,7 @@ function formatPostalCode(value) {
   return cleaned;
 }
 
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
-}
+// escapeHtml() is now in shared-utils.js (loaded before this file)
 
 // ===========================
 // Address Verification API

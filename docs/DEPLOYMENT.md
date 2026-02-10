@@ -482,6 +482,7 @@ For now, both teams can access their respective platforms directly via the web i
 
 ```bash
 # Make code changes, then:
+./scripts/prepare-functions.sh  # Copy shared Python utils to function dirs
 terraform apply
 ```
 
@@ -497,7 +498,11 @@ echo -n "NEW_VALUE" | gcloud secrets versions add SECRET_NAME --data-file=-
 ### Update Frontend
 
 ```bash
-cd frontend/skiptrace  # or origination
+./scripts/prepare-frontend.sh  # Copy shared JS/CSS/templates to platform dirs
+cd frontend/skiptrace
+firebase deploy --only hosting
+
+cd ../origination
 firebase deploy --only hosting
 ```
 

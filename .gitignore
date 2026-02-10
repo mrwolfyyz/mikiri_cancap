@@ -102,6 +102,8 @@ frontend/skiptrace/public/app-core.js
 frontend/skiptrace/public/chat-core.js
 frontend/skiptrace/public/results.js
 frontend/skiptrace/public/report-renderer.js
+frontend/origination/public/shared-utils.js
+frontend/skiptrace/public/shared-utils.js
 
 # Shared CSS (copied to origination/public/ and skiptrace/public/)
 frontend/origination/public/styles.css

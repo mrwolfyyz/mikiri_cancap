@@ -32,12 +32,20 @@ GCP_PROJECT = os.environ.get("GCP_PROJECT", os.environ.get("GOOGLE_CLOUD_PROJECT
 GCP_LOCATION = os.environ.get("GCP_LOCATION", "global")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
-# Module-level Vertex AI client (reused across invocations, matches company_domain_lookup pattern)
-_genai_client = genai.Client(
-    vertexai=True,
-    project=GCP_PROJECT,
-    location=GCP_LOCATION
-)
+# Lazy singleton Vertex AI client (reused across invocations)
+_genai_client = None
+
+
+def _get_genai_client():
+    """Get or create the Gemini client singleton (lazy initialization)."""
+    global _genai_client
+    if _genai_client is None:
+        _genai_client = genai.Client(
+            vertexai=True,
+            project=GCP_PROJECT,
+            location=GCP_LOCATION
+        )
+    return _genai_client
 
 # Nominatim rate limiter: tracks last request time to avoid unnecessary sleeps
 _last_nominatim_call = 0.0
@@ -228,7 +236,7 @@ def _parse_and_validate_analysis(content: str, response) -> Dict[str, Any]:
         "is_virtual_workspace": False,
         "is_shipping_location": False,
         "is_residential": False,
-        "is_suspicious": False,
+        "is_suspicious": True,
         "fraud_risk_level": "medium",
         "fraud_indicators": [],
         "confidence": "medium",
@@ -265,7 +273,7 @@ def vertex_ai_analyze_address_grounded(address: str, business_name: str) -> Dict
     Analyze address using Gemini with Google Search grounding.
     The model performs its own searches and returns grounded analysis.
     
-    Uses module-level _genai_client for connection reuse across invocations.
+    Uses lazy singleton _get_genai_client() for connection reuse across invocations.
     
     Raises:
         ValueError: If GCP_PROJECT is not configured
@@ -325,7 +333,7 @@ Return JSON only."""
             # NOTE: Cannot use response_schema with grounding in Gemini 2.5 Flash
             # (Structured outputs with tools only available in Gemini 3)
             # Must parse JSON manually from text response
-            response = _genai_client.models.generate_content(
+            response = _get_genai_client().models.generate_content(
                 model=GEMINI_MODEL,
                 contents=user_prompt,
                 config=GenerateContentConfig(
@@ -382,17 +390,18 @@ def main(request: Request):
     
     Returns analysis results with fraud detection indicators.
     """
-    # Enable CORS
+    # Enable CORS - origin set from environment (restrict in production)
+    cors_origin = os.environ.get("CORS_ALLOWED_ORIGINS", "*")
     if request.method == "OPTIONS":
         headers = {
-            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Origin": cors_origin,
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
             "Access-Control-Allow-Headers": "Content-Type",
             "Access-Control-Max-Age": "3600",
         }
         return ("", 204, headers)
-    
-    headers = {"Access-Control-Allow-Origin": "*"}
+
+    headers = {"Access-Control-Allow-Origin": cors_origin}
     
     # Parse request
     try:

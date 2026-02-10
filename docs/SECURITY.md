@@ -141,10 +141,11 @@ All API keys stored in **Google Secret Manager**:
 - All other functions are private (only invoked by workflows)
 
 ### CORS
-- **Beta**: `cors_allowed_origins = "*"` (permissive for development)
-- **Production**: Restrict to specific Firebase Hosting URLs
+- **Configurable**: `cors_allowed_origins` in `terraform.tfvars`, propagated to API Gateway, chat handlers, and address verification via environment variable
+- **Production**: Restricted to specific Firebase Hosting URLs
   - `https://PROJECT_ID-skiptrace.web.app`
   - `https://PROJECT_ID-origination.web.app`
+- **Development**: Can be set to `*` for easier testing
 
 ---
 
@@ -172,29 +173,19 @@ All API keys stored in **Google Secret Manager**:
 
 ### High Priority (Before Production)
 
-**1. CORS Restriction**
-- **Current**: `*` allows any origin
-- **Fix**: One-line change in `terraform.tfvars`
-- **Timeline**: Before production
-
-**2. Penetration Testing**
+**1. Penetration Testing**
 - **Current**: Not tested by security professionals
 - **Fix**: CanCap's security team should conduct testing
 - **Timeline**: Before production
 
 ### Medium Priority (Post-Beta)
 
-**3. Data Retention Policy**
+**2. Data Retention Policy**
 - **Current**: Manual deletion only
 - **Plan**: Automated TTL enforcement (currently 7 days, target 1 day)
 - **Timeline**: Based on operational learnings
 
-**4. API Rate Limiting**
-- **Current**: Frontend throttling only (30 seconds between requests)
-- **Plan**: Add Cloud Armor or function-level rate limiting
-- **Timeline**: Post-beta
-
-**5. PII in Cloud Logs**
+**3. PII in Cloud Logs**
 - **Current**: Function logs may contain borrower PII
 - **Options**: 
   - Redact PII in logs
@@ -202,7 +193,7 @@ All API keys stored in **Google Secret Manager**:
   - Accept as standard GCP logging behavior
 - **Timeline**: Based on compliance requirements
 
-**6. User Attribution**
+**4. User Attribution**
 - **Current**: Anonymous auth
 - **Plan**: Add identity provider (1 hour implementation)
 - **Timeline**: When CanCap specifies preferred provider
@@ -265,6 +256,10 @@ Because everything runs in your GCP environment, **you have full control**:
 - ✅ **Least-Privilege IAM** (no editor/owner service accounts)
 - ✅ **Firestore Security Rules** (user isolation enforced)
 - ✅ **Token Verification** (all API calls authenticated)
+- ✅ **CORS Restricted** (configurable per environment, locked to hosting URLs in production)
+- ✅ **Server-Side Rate Limiting** (per-user, 5 requests per 5 minutes via Firestore)
+- ✅ **Input Validation** (request size limits, field length limits, city character whitelist)
+- ✅ **XSS Prevention** (DOMPurify sanitization on injected HTML)
 - ✅ **Infrastructure as Code** (Terraform = auditable, repeatable)
 - ✅ **Short Data Retention** (7 days → 1 day target)
 - ✅ **Public Data Only** (no proprietary databases or vendor dependencies)
@@ -305,7 +300,6 @@ Mikiri's security architecture follows **Privacy by Design principles**:
 - Infrastructure as Code (auditable and repeatable)
 
 **Identified gaps are addressable**:
-- CORS restriction (one-line config)
 - Penetration testing (your security team)
 - Production auth provider (1 hour to implement)
 - Other enhancements based on operational learnings

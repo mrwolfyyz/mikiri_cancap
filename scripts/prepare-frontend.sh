@@ -52,6 +52,7 @@ fi
 # =============================================================================
 SHARED_JS_ALL=(
   "platform-config.js"
+  "shared-utils.js"
   "app-core.js"
   "report-renderer.js"
   "results.js"
