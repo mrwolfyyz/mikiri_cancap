@@ -17,7 +17,7 @@ from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError
 
 # Google Gen AI SDK imports (for Gemini 2.5 Flash with grounding support)
 from google import genai
-from google.genai.types import GenerateContentConfig, Tool, GoogleSearch
+from google.genai.types import GenerateContentConfig, Tool, GoogleSearch, HttpOptions
 
 # -------------------------
 # Config
@@ -28,7 +28,6 @@ GCP_LOCATION = os.environ.get("GCP_LOCATION", "global")
 
 # Initialize clients
 db = firestore.Client()
-genai_client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
 
 
 # -------------------------
@@ -68,6 +67,17 @@ Return valid JSON with these fields:
 
 Return JSON only."""
 
+    # Initialize Google Gen AI client once, outside retry closure.
+    # This avoids re-creating the client (and its gRPC channel) on every retry attempt.
+    # Timeout of 60s ensures slow/degraded Gemini responses fail fast so retry logic
+    # can try again, rather than burning the entire function timeout on one hung call.
+    gemini_client = genai.Client(
+        vertexai=True,
+        project=GCP_PROJECT,
+        location=GCP_LOCATION,
+        http_options=HttpOptions(timeout=60 * 1000),  # 60 seconds in milliseconds
+    )
+
     def _call_vertex_ai_grounded():
         try:
             # Configure Google Search grounding tool
@@ -79,7 +89,7 @@ Return JSON only."""
             # NOTE: Structured output with grounding may be available in Gemini 3;
             # we parse JSON manually from text response for compatibility.
             # Use system_instruction parameter to match Google AI Studio behavior
-            response = genai_client.models.generate_content(
+            response = gemini_client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=user_prompt,
                 config=GenerateContentConfig(
