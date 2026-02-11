@@ -24,13 +24,8 @@ from google.cloud import firestore
 
 
 # ---------------------------------------------------------------------------
-# CLI options
+# Fixtures
 # ---------------------------------------------------------------------------
-
-def pytest_addoption(parser):
-    parser.addoption("--golden-url", action="store", default=None, help="API Gateway base URL")
-    parser.addoption("--golden-token", action="store", default=None, help="Firebase ID token")
-
 
 @pytest.fixture(scope="session")
 def api_url(request):
