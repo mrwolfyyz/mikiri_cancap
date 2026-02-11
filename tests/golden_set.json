@@ -1,0 +1,27 @@
+{
+  "_description": "Golden test cases for end-to-end integration testing. Each case defines an input and fuzzy assertions about what the system should find. These tests run against a live deployment and validate result quality.",
+  "_usage": "python3 -m pytest tests/test_golden_set.py -v --golden-url=<API_GATEWAY_URL> --golden-token=<FIREBASE_TOKEN>",
+  "cases": [
+    {
+      "id": "example_case_1",
+      "description": "Example test case — replace with a real person from your golden set",
+      "input": {
+        "email": "jane.doe@example.com",
+        "full_name": "Jane Doe",
+        "city": "Toronto",
+        "province": "ON",
+        "company_name": "Example Corp"
+      },
+      "assertions": {
+        "should_complete": true,
+        "min_confidence_score": 0.5,
+        "expect_phone_found": true,
+        "expect_address_found": true,
+        "expect_linkedin_found": false,
+        "expect_social_media_found": false,
+        "report_should_contain": ["Jane", "Doe", "Toronto"]
+      },
+      "notes": "Replace this with a real test case from your golden set"
+    }
+  ]
+}

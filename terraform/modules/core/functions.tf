@@ -268,7 +268,7 @@ resource "google_cloudfunctions2_function" "chat_handler" {
 
     environment_variables = {
       GCP_PROJECT          = var.project_id
-      GCP_LOCATION         = "global"  # Use global endpoint for Gemini models
+      GCP_LOCATION         = "global" # Use global endpoint for Gemini models
       CORS_ALLOWED_ORIGINS = var.cors_allowed_origins
     }
   }
@@ -335,7 +335,7 @@ resource "google_cloudfunctions2_function" "chat_handler_origination" {
 
     environment_variables = {
       GCP_PROJECT          = var.project_id
-      GCP_LOCATION         = "global"  # Use global endpoint for Gemini models
+      GCP_LOCATION         = "global" # Use global endpoint for Gemini models
       CORS_ALLOWED_ORIGINS = var.cors_allowed_origins
     }
   }
@@ -401,7 +401,7 @@ resource "google_cloudfunctions2_function" "address_verification" {
 
     environment_variables = {
       GCP_PROJECT          = var.project_id
-      GCP_LOCATION         = "global"  # Use global endpoint for Gemini models
+      GCP_LOCATION         = "global" # Use global endpoint for Gemini models
       CORS_ALLOWED_ORIGINS = var.cors_allowed_origins
     }
   }
@@ -548,14 +548,14 @@ resource "google_cloudfunctions2_function" "phase1_identity" {
     service_account_email = google_service_account.functions.email
 
     environment_variables = {
-      GCP_PROJECT            = var.project_id
-      GCP_LOCATION           = "global"  # Use global endpoint for Gemini models
-      LINKEDIN_ENGINE_ID     = "linkedin-search-engine"
-      LINKEDIN_USE_VERTEX_AI = "true"
-      PRECISION_ENGINE_ID    = "precision-search-engine"
+      GCP_PROJECT             = var.project_id
+      GCP_LOCATION            = "global" # Use global endpoint for Gemini models
+      LINKEDIN_ENGINE_ID      = "linkedin-search-engine"
+      LINKEDIN_USE_VERTEX_AI  = "true"
+      PRECISION_ENGINE_ID     = "precision-search-engine"
       PRECISION_USE_VERTEX_AI = "true"
-      RECALL_ENGINE_ID       = "recall-search-engine"
-      RECALL_USE_VERTEX_AI   = "true"
+      RECALL_ENGINE_ID        = "recall-search-engine"
+      RECALL_USE_VERTEX_AI    = "true"
     }
 
     secret_environment_variables {
@@ -697,7 +697,7 @@ resource "google_cloudfunctions2_function" "address_geocoding" {
 
     environment_variables = {
       GCP_PROJECT  = var.project_id
-      GCP_LOCATION = "global"  # Use global endpoint for Gemini models
+      GCP_LOCATION = "global" # Use global endpoint for Gemini models
     }
   }
 
@@ -762,7 +762,7 @@ resource "google_cloudfunctions2_function" "company_domain_lookup" {
 
     environment_variables = {
       GCP_PROJECT  = var.project_id
-      GCP_LOCATION = "global"  # Use global endpoint for Gemini models
+      GCP_LOCATION = "global" # Use global endpoint for Gemini models
     }
   }
 
@@ -960,7 +960,7 @@ resource "google_cloudfunctions2_function" "contact_extraction" {
 
     environment_variables = {
       GCP_PROJECT  = var.project_id
-      GCP_LOCATION = "global"  # Use global endpoint for Gemini
+      GCP_LOCATION = "global" # Use global endpoint for Gemini
     }
   }
 
@@ -1030,7 +1030,7 @@ resource "google_cloudfunctions2_function" "report_generator_skiptrace" {
 
     environment_variables = {
       GCP_PROJECT  = var.project_id
-      GCP_LOCATION = "global"  # Use global endpoint for Gemini models
+      GCP_LOCATION = "global" # Use global endpoint for Gemini models
     }
   }
 
@@ -1121,7 +1121,7 @@ resource "google_cloudfunctions2_function" "report_generator_origination" {
 
     environment_variables = {
       GCP_PROJECT  = var.project_id
-      GCP_LOCATION = "global"  # Use global endpoint for Gemini models
+      GCP_LOCATION = "global" # Use global endpoint for Gemini models
     }
   }
 
