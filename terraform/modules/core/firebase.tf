@@ -145,7 +145,7 @@ resource "local_file" "firebase_config_origination" {
 # the extension in Chrome.
 
 resource "local_file" "chrome_extension_config" {
-  content = <<-EOT
+  content  = <<-EOT
 // ============================================================================
 // Chrome Extension Configuration
 // ============================================================================
