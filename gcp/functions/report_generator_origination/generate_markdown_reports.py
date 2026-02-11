@@ -1035,6 +1035,7 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         for i, p in enumerate(phones, start=1):
             google_url = generate_google_search_url_for_phone(p)
             content += f"{i}. **[{p['number_raw']}]({google_url})**  \n"
+            content += f"   - **Confidence:** {p.get('confidence', 'medium')}  \n"
             if p.get("source_url"):
                 content += f"   - **Source:** {p['source_url']}  \n"
             if p.get("snippet"):
@@ -1056,6 +1057,7 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
         for i, e in enumerate(emails, start=1):
             google_url = generate_google_search_url_for_email(e['email'])
             content += f"{i}. **[{e['email']}]({google_url})**  \n"
+            content += f"   - **Confidence:** {e.get('confidence', 'medium')}  \n"
             if e.get("source_url"):
                 content += f"   - **Source:** {e['source_url']}  \n"
             if e.get("snippet"):
@@ -1105,6 +1107,7 @@ def generate_identity_report(data: Dict[str, Any], name: str, output_dir: Path, 
             google_url = generate_google_search_url(a)
             content += f"{i}. **[{raw_addr}]({google_url})**  \n"
             content += f"   - [📍 View Property]({street_view_url})  \n"
+            content += f"   - **Confidence:** {a.get('confidence', 'medium')}  \n"
             if a.get("source_url"):
                 content += f"   - **Source:** {a['source_url']}  \n"
             if a.get("snippet"):
