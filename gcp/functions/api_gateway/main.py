@@ -124,8 +124,8 @@ def validate_city(city: str) -> tuple[bool, str]:
         return True, ""  # Optional field
     if len(city) < 2 or len(city) > 100:
         return False, "City must be 2-100 characters"
-    # Allow letters, spaces, hyphens, apostrophes, and common accented characters
-    if not re.match(r"^[A-Za-zÀ-ÿ\s'\-]+$", city):
+    # Allow letters, spaces, hyphens, apostrophes, periods, and common accented characters
+    if not re.match(r"^[A-Za-zÀ-ÿ\s'.\-]+$", city):
         return False, "City contains invalid characters"
     return True, ""
 
