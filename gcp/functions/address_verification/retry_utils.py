@@ -105,6 +105,7 @@ def is_retryable_error(exception: Exception) -> bool:
             google_exceptions.GatewayTimeout,  # 504
             google_exceptions.DeadlineExceeded,  # Timeout
             google_exceptions.ResourceExhausted,  # 429 (alternative)
+            google_exceptions.Cancelled,  # 499 - transient (client timeout / container shutdown)
         )):
             return True
         
@@ -166,6 +167,8 @@ def is_retryable_error(exception: Exception) -> bool:
     if "500" in error_str or "503" in error_str or "502" in error_str or "504" in error_str:
         return True
     if "deadline exceeded" in error_str or "timeout" in error_str:
+        return True
+    if "499" in error_str or "cancelled" in error_str:
         return True
     
     # Default: don't retry unknown exceptions
