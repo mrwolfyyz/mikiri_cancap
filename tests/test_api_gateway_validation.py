@@ -164,11 +164,9 @@ class TestValidateCity:
         valid, _ = validate_city("St John's")
         assert valid is True
 
-    def test_city_with_period_rejected(self):
-        # Note: current regex doesn't allow periods. "St. John's" would fail.
-        # This is a known limitation — consider updating the regex if needed.
+    def test_city_with_period(self):
         valid, _ = validate_city("St. John's")
-        assert valid is False
+        assert valid is True
 
     def test_city_with_accents(self):
         valid, _ = validate_city("Montréal")
