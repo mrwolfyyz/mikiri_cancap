@@ -3,25 +3,67 @@
   "_usage": "python3 -m pytest tests/test_golden_set.py -v --golden-url=<API_GATEWAY_URL> --golden-token=<FIREBASE_TOKEN>",
   "cases": [
     {
-      "id": "example_case_1",
-      "description": "Example test case — replace with a real person from your golden set",
+      "id": "sari_cornfield",
+      "description": "Interior designer in Toronto, strong public footprint, active social media, company director",
       "input": {
-        "email": "jane.doe@example.com",
-        "full_name": "Jane Doe",
+        "email": "saricornfield@rogers.com",
+        "full_name": "Sari Cornfield",
         "city": "Toronto",
         "province": "ON",
-        "company_name": "Example Corp"
+        "company_name": "Haddington Developments"
       },
       "assertions": {
         "should_complete": true,
-        "min_confidence_score": 0.5,
         "expect_phone_found": true,
         "expect_address_found": true,
-        "expect_linkedin_found": false,
-        "expect_social_media_found": false,
-        "report_should_contain": ["Jane", "Doe", "Toronto"]
+        "expect_email_found": false,
+        "expect_breaches_found": true,
+        "expect_company_domain_resolved": true,
+        "expect_social_profiles": ["linkedin", "facebook", "instagram"],
+        "report_should_contain": ["Sari Cornfield", "Toronto", "Haddington"]
+      }
+    },
+    {
+      "id": "jacob_kinross",
+      "description": "CanCap employee, younger person with social media, McGill grad, corporate email discoverable",
+      "input": {
+        "email": "jacob.kinross@gmail.com",
+        "full_name": "Jacob Kinross",
+        "city": "Toronto",
+        "province": "ON",
+        "company_name": "CanCap Group"
       },
-      "notes": "Replace this with a real test case from your golden set"
+      "assertions": {
+        "should_complete": true,
+        "expect_phone_found": false,
+        "expect_address_found": false,
+        "expect_email_found": true,
+        "expect_breaches_found": true,
+        "expect_company_domain_resolved": true,
+        "expect_social_profiles": ["linkedin", "instagram"],
+        "report_should_contain": ["Jacob Kinross", "Toronto", "CanCap"]
+      }
+    },
+    {
+      "id": "steven_leonoff",
+      "description": "ARAMARK labour relations director, painter, large company, no breaches expected",
+      "input": {
+        "email": "steven.leonoff@gmail.com",
+        "full_name": "Steven Leonoff",
+        "city": "Toronto",
+        "province": "ON",
+        "company_name": "ARAMARK"
+      },
+      "assertions": {
+        "should_complete": true,
+        "expect_phone_found": false,
+        "expect_address_found": false,
+        "expect_email_found": false,
+        "expect_breaches_found": false,
+        "expect_company_domain_resolved": true,
+        "expect_social_profiles": ["linkedin", "instagram"],
+        "report_should_contain": ["Steven Leonoff", "Toronto", "ARAMARK"]
+      }
     }
   ]
 }
