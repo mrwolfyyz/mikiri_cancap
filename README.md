@@ -28,7 +28,7 @@ This platform provides two main investigation types:
 
 ## Components
 
-An investigation flows through the system in two phases. Before Phase 1 begins, **Company Domain Lookup** resolves the borrower's employer to a web domain. In **Phase 1**, the Query Constructor and phase1_identity work together to build search queries, execute them against Vertex AI Search, and resolve the borrower's identity. In **Phase 2**, Domain Enrichment, Contact Extractor, Address Geocoding, and (for origination) Business Verification run in parallel against the Phase 1 results. The Aggregator then merges everything, and the Report Generator produces the final Markdown report.
+An investigation flows through the system in two phases. Before Phase 1, the Workflow conditionally runs **Company Domain Lookup** (if a company name was provided) and **Query Constructor** in sequence. In **Phase 1**, phase1_identity executes the search queries and resolves the borrower's identity. In **Phase 2**, Domain Enrichment, Contact Extractor, and Address Geocoding run in parallel against the Phase 1 results. The Aggregator then merges everything, and the Report Generator produces the final Markdown report. **Business Verification** sits outside this pipeline — it is called directly from the origination front-end on demand, independently of the Workflow.
 
 ### Front-end
 Two single-page web applications (Skip Trace and Origination) hosted on Firebase, each with search, results, and chat views. Built from shared HTML templates and JavaScript/CSS, they authenticate users via Firebase Anonymous Auth and communicate with the back-end exclusively through the API Gateway.
