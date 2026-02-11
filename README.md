@@ -26,6 +26,55 @@ This platform provides two main investigation types:
 - Business address verification
 - Risk assessment reporting
 
+## Components
+
+An investigation flows through the system in two phases. Before Phase 1 begins, **Company Domain Lookup** resolves the borrower's employer to a web domain. In **Phase 1**, the Query Constructor and phase1_identity work together to build search queries, execute them against Vertex AI Search, and resolve the borrower's identity. In **Phase 2**, Domain Enrichment, Contact Extractor, Address Geocoding, and (for origination) Business Verification run in parallel against the Phase 1 results. The Aggregator then merges everything, and the Report Generator produces the final Markdown report.
+
+### Front-end
+Two single-page web applications (Skip Trace and Origination) hosted on Firebase, each with search, results, and chat views. Built from shared HTML templates and JavaScript/CSS, they authenticate users via Firebase Anonymous Auth and communicate with the back-end exclusively through the API Gateway.
+
+### API Gateway
+The single HTTP entry point for all front-end requests. It verifies Firebase auth tokens, validates incoming requests, triggers the appropriate Cloud Workflow for new investigations, and serves job status back to the front-end while the investigation runs.
+
+### Workflows
+Two Google Cloud Workflow definitions (skip trace and origination) that orchestrate the full investigation pipeline. Each workflow calls Phase 1 functions sequentially, fans out to Phase 2 functions in parallel, then calls the Aggregator and sets the job status to `post_processing` to trigger report generation.
+
+### Company Domain Lookup
+An HTTP Cloud Function called at the start of both workflows. It uses Gemini with live Google Search grounding to resolve a borrower's declared employer name to its official web domain, then writes the result back to the Firestore job record so downstream functions (Domain Enrichment, Business Verification) can use it.
+
+### Query Constructor
+An HTTP Cloud Function that uses Gemini to generate realistic name variations for a borrower (e.g. "Alexander MacKay" → "Alex MacKay", "Sandy MacKay") and combines them with their city and province into a structured boolean query for Vertex AI Search. The output is passed directly to phase1_identity to drive the identity search.
+
+### phase1_identity
+The core identity resolution function. It executes up to six Vertex AI Search queries in parallel across three purpose-built search engines (social/professional profiles, lifestyle/hobby sites, LinkedIn), then feeds all results to Gemini with live Google Search grounding to identify social handles, infer location, and surface identity clues. It also runs a HaveIBeenPwned breach lookup in parallel and produces a contactability score based on the borrower's online footprint and breach history.
+
+### Domain Enrichment
+An HTTP Cloud Function that runs WHOIS and MX record lookups in parallel against the borrower's email domain and the company domain resolved by Company Domain Lookup. WHOIS reveals how long the domain has been registered; MX analysis classifies the mail provider (Google Workspace, Microsoft 365, parked domain, etc.) and assigns a risk level used to assess employer legitimacy.
+
+### Contact Extractor
+An HTTP Cloud Function that uses Gemini to extract phone numbers, email addresses, and physical addresses directly from the search result snippets already collected by phase1_identity — no additional web requests are made. Results are confidence-scored and returned to the Workflow for the Aggregator.
+
+### Address Geocoding
+An HTTP Cloud Function that uses Gemini to identify physical addresses belonging to the target person from across all search result snippets (identity and corporate queries), assigning a confidence level to each. Each extracted address is then geocoded to lat/lng coordinates via the Nominatim (OpenStreetMap) API, with requests paced at 1 per second to comply with Nominatim's rate limit.
+
+### Aggregator
+An HTTP Cloud Function that receives the outputs of phase1_identity, Domain Enrichment, Contact Extractor, and Address Geocoding from the Workflow and merges them into a single result document written to Firestore. It handles partial failures gracefully — if a Phase 2 function failed, its section is set to empty and an error is recorded, but aggregation continues.
+
+### Report Generators
+Two Firestore-triggered Cloud Functions (one for skip trace, one for origination) that fire when a job's status transitions to `post_processing`. They use Gemini to synthesize the aggregated findings into a detailed Markdown investigation report, store the report in Firestore for the chat feature, and upload it to a per-borrower folder in Google Drive.
+
+### Firestore
+The platform's primary datastore, holding job records, aggregated investigation results, Markdown reports, and per-job chat message history. Firestore security rules enforce strict user ownership so no tenant can access another's data. A 7-day TTL is set on completed jobs.
+
+### Chat Handlers
+Two HTTP Cloud Functions (skip trace and origination) that power the post-report AI chat interface. They receive a user message and the job's conversation history, prepend the full Markdown investigation report as context on the first turn, and call Gemini 3 Flash to generate a response. These handlers are intentionally experimental — designed to let the skip tracing and origination teams ask follow-up questions about completed investigations and provide early feedback on both the report quality and the chat experience.
+
+### Business Verification
+An HTTP Cloud Function used in origination investigations. It uses Gemini with live Google Search grounding to verify that a declared employer actually exists at the claimed address, specifically detecting virtual offices (Regus, WeWork), mailbox services (UPS Store, FedEx Office), and addresses with no evidence of business presence. It also geocodes the address and generates a Google Maps Street View URL for manual review.
+
+### Chrome Extension
+*(Future enhancement — not part of the current production setup.)* A planned quality-of-life tool for both CanCap teams. Once the core platform is stable and validated, it will allow underwriters and skip tracers to extract borrower data from their existing loan origination system with one click and open the appropriate Mikiri interface with fields pre-populated, eliminating manual data entry.
+
 ## Architecture
 
 ```
