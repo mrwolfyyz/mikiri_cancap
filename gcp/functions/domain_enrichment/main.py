@@ -173,7 +173,7 @@ def get_domain_registration_date(domain: str) -> dict[str, Any]:
                 else:
                     try:
                         creation_date = dateutil_parser.parse(creation_date)
-                    except Exception:
+                    except Exception:  # nosec B110 — best-effort date parsing
                         pass
 
             # Format as YYYY-MM-DD

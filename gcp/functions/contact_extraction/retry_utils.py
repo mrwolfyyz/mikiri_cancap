@@ -74,7 +74,7 @@ def extract_retry_after(exception: Exception) -> float | None:
 
                             delay = retry_date.timestamp() - time.time()
                             return max(0, delay)  # Ensure non-negative
-                    except Exception:
+                    except Exception:  # nosec B110 — best-effort Retry-After parsing
                         pass
     return None
 
@@ -244,7 +244,7 @@ def retry_with_backoff(
 
             # Add jitter if enabled (but not if using Retry-After)
             if config.jitter and retry_after_value is None:
-                jitter_factor = random.uniform(0.5, 1.5)
+                jitter_factor = random.uniform(0.5, 1.5)  # nosec B311 — jitter, not crypto
                 delay = delay * jitter_factor
 
             print(

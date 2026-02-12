@@ -64,7 +64,7 @@ def geocode_address(address: str) -> tuple:
         # Respect Nominatim rate limit (1 req/sec)
         time.sleep(1.1)
 
-        with urlopen(req, timeout=30) as response:
+        with urlopen(req, timeout=30) as response:  # nosec B310 — hardcoded https URL
             data = json.loads(response.read().decode())
             if data and len(data) > 0:
                 lat = float(data[0]["lat"])
@@ -224,7 +224,7 @@ def get_domain_registration_date(domain: str) -> dict[str, Any]:
                         from dateutil import parser
 
                         creation_date = parser.parse(creation_date)
-                    except Exception:
+                    except Exception:  # nosec B110 — best-effort date parsing
                         pass
 
             # Format as YYYY-MM-DD
@@ -287,11 +287,11 @@ def get_gravatar_profile(email: str) -> dict[str, Any]:
         if not normalized_email or "@" not in normalized_email:
             return {"success": False, "profile_url": None, "thumbnail_url": None, "error": "Invalid email address"}
 
-        email_hash = hashlib.md5(normalized_email.encode("utf-8")).hexdigest()
+        email_hash = hashlib.md5(normalized_email.encode("utf-8"), usedforsecurity=False).hexdigest()  # nosec B324
         gravatar_url = f"https://www.gravatar.com/{email_hash}.json"
         req = Request(gravatar_url, headers={"User-Agent": "BorrowerIntelligence/1.0"})
 
-        with urlopen(req, timeout=10) as response:
+        with urlopen(req, timeout=10) as response:  # nosec B310 — hardcoded https URL
             data = json.loads(response.read().decode())
 
             if data and "entry" in data and len(data["entry"]) > 0:

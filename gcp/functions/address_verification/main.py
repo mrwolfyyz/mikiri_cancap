@@ -72,7 +72,7 @@ def geocode_address(address: str) -> tuple:
             time.sleep(1.1 - elapsed)
         _last_nominatim_call = time.time()
 
-        with urlopen(req, timeout=30) as response:
+        with urlopen(req, timeout=30) as response:  # nosec B310 — hardcoded https URL
             data = json.loads(response.read().decode())
             if data and len(data) > 0:
                 lat = float(data[0]["lat"])

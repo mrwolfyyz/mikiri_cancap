@@ -46,6 +46,22 @@ jobs:
       - name: Ruff format check
         run: ruff format --check gcp/ tests/
 
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Bandit security scan
+        run: bandit -r gcp/ -x gcp/functions/*/test_* --quiet
+
   terraform-validate:
     runs-on: ubuntu-latest
     steps:

@@ -44,7 +44,7 @@ def _nominatim_request(address: str) -> tuple:
     url = f"https://nominatim.openstreetmap.org/search?q={quote_plus(address)}&format=json&limit=1"
     req = Request(url, headers={"User-Agent": "BorrowerIntelligence/1.0"})
 
-    with urlopen(req, timeout=30) as response:
+    with urlopen(req, timeout=30) as response:  # nosec B310 — hardcoded https URL
         data = json.loads(response.read().decode())
         if data and len(data) > 0:
             lat = float(data[0]["lat"])
