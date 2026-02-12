@@ -8,25 +8,24 @@ are tested with mocked HTTP/DNS/file I/O.
 
 import json
 import sys
-from pathlib import Path
-from unittest.mock import patch, MagicMock, mock_open
+from unittest.mock import MagicMock, patch
 
+import report_utils
 from report_utils import (
-    slugify,
-    normalize_address,
-    generate_phone_variations,
+    check_domain_mx_records,
     generate_google_search_url,
     generate_google_search_url_for_email,
     generate_google_search_url_for_phone,
+    generate_phone_variations,
+    generate_street_view_url,
+    geocode_address,
+    get_domain_registration_date,
+    get_gravatar_profile,
     is_disposable_email_domain,
     load_disposable_email_blocklist,
-    geocode_address,
-    generate_street_view_url,
-    get_gravatar_profile,
-    get_domain_registration_date,
-    check_domain_mx_records,
+    normalize_address,
+    slugify,
 )
-import report_utils
 
 
 class TestSlugify:
@@ -233,8 +232,7 @@ class TestGenerateStreetViewUrl:
     """Tests for Street View URL generation."""
 
     def test_cached_coords_uses_pano_url(self):
-        url = generate_street_view_url("123 Main St", geocode=False,
-                                       cached_coords={"lat": 43.6532, "lon": -79.3832})
+        url = generate_street_view_url("123 Main St", geocode=False, cached_coords={"lat": 43.6532, "lon": -79.3832})
         assert "map_action=pano" in url
         assert "43.6532" in url
         assert "-79.3832" in url
@@ -256,8 +254,7 @@ class TestGenerateStreetViewUrl:
         assert "maps/search" in url
 
     def test_empty_cached_coords_ignored(self):
-        url = generate_street_view_url("123 Main St", geocode=False,
-                                       cached_coords={"lat": None, "lon": None})
+        url = generate_street_view_url("123 Main St", geocode=False, cached_coords={"lat": None, "lon": None})
         assert "maps/search" in url
 
 
@@ -297,6 +294,7 @@ class TestGeocodeAddress:
     @patch("urllib.request.urlopen")
     def test_http_error(self, mock_urlopen, mock_sleep):
         from urllib.error import URLError
+
         mock_urlopen.side_effect = URLError("Connection refused")
 
         lat, lon = geocode_address("123 Main St")
@@ -326,6 +324,7 @@ class TestGetGravatarProfile:
     @patch("urllib.request.urlopen")
     def test_profile_not_found_404(self, mock_urlopen):
         from urllib.error import HTTPError
+
         mock_urlopen.side_effect = HTTPError("url", 404, "Not Found", {}, None)
 
         result = get_gravatar_profile("nobody@example.com")
@@ -340,6 +339,7 @@ class TestGetGravatarProfile:
     @patch("urllib.request.urlopen")
     def test_network_error(self, mock_urlopen):
         from urllib.error import URLError
+
         mock_urlopen.side_effect = URLError("timeout")
 
         result = get_gravatar_profile("test@example.com")
@@ -354,6 +354,7 @@ class TestGetDomainRegistrationDate:
 
     def test_successful_lookup(self):
         from datetime import datetime
+
         mock_whois_result = MagicMock()
         mock_whois_result.creation_date = datetime(2010, 1, 15)
         mock_whois_result.text = ""
@@ -369,6 +370,7 @@ class TestGetDomainRegistrationDate:
 
     def test_list_of_dates_takes_first(self):
         from datetime import datetime
+
         mock_whois_result = MagicMock()
         mock_whois_result.creation_date = [datetime(2010, 1, 15), datetime(2015, 6, 1)]
         mock_whois_result.text = ""

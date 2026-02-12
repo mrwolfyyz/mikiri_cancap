@@ -7,14 +7,12 @@ completed investigations.
 """
 
 import functions_framework
-from typing import Dict, List, Optional
-from flask import Request
-
 from chat_handler_base import (
     ChatHandlerConfig,
     format_conversation_history,
     handle_chat_request,
 )
+from flask import Request
 
 # -------------------------
 # System prompt
@@ -48,9 +46,7 @@ Format:
 # Prompt builder
 # -------------------------
 def build_prompt(
-    message: str,
-    conversation_history: List[Dict[str, str]],
-    markdown_context: Optional[Dict[str, str]] = None
+    message: str, conversation_history: list[dict[str, str]], markdown_context: dict[str, str] | None = None
 ) -> str:
     """Build the full prompt for the skip tracing LLM."""
     prompt_parts = [SYSTEM_PROMPT]

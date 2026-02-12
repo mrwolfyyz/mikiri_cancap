@@ -9,8 +9,8 @@ phone normalization/dedup, email filtering/dedup, and address
 validation/dedup. We mock the LLM response and verify the output.
 """
 
-import sys
 import json
+import sys
 from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
@@ -26,7 +26,7 @@ sys.modules.setdefault("vertexai.generative_models", _mock_gen_models)
 
 # Now safe to import
 import contact_extraction_utils
-from contact_extraction_utils import extract_contact_info_llm, EXTRACTION_SCHEMA
+from contact_extraction_utils import EXTRACTION_SCHEMA, extract_contact_info_llm
 
 
 # ---------------------------------------------------------------------------
@@ -140,122 +140,184 @@ class TestPhoneNormalization:
     """Tests for phone number normalization and deduplication."""
 
     def test_basic_phone_extraction(self):
-        result = _run_extraction({
-            "phones": [
-                {"number_raw": "(416) 555-1234", "number_digits": "4165551234",
-                 "confidence": "high", "source_url": "https://a.com", "snippet": "Call John"},
-            ],
-            "emails": [],
-            "addresses": [],
-        })
+        result = _run_extraction(
+            {
+                "phones": [
+                    {
+                        "number_raw": "(416) 555-1234",
+                        "number_digits": "4165551234",
+                        "confidence": "high",
+                        "source_url": "https://a.com",
+                        "snippet": "Call John",
+                    },
+                ],
+                "emails": [],
+                "addresses": [],
+            }
+        )
         assert len(result["phones"]) == 1
         assert result["phones"][0]["number_digits"] == "4165551234"
         assert result["phones"][0]["confidence"] == "high"
 
     def test_phone_digits_re_extracted_from_raw(self):
         """Digits are re-computed from number_raw, not trusted from LLM."""
-        result = _run_extraction({
-            "phones": [
-                {"number_raw": "+1 (416) 555-1234", "number_digits": "wrong_from_llm",
-                 "confidence": "high", "source_url": "https://a.com"},
-            ],
-            "emails": [],
-            "addresses": [],
-        })
+        result = _run_extraction(
+            {
+                "phones": [
+                    {
+                        "number_raw": "+1 (416) 555-1234",
+                        "number_digits": "wrong_from_llm",
+                        "confidence": "high",
+                        "source_url": "https://a.com",
+                    },
+                ],
+                "emails": [],
+                "addresses": [],
+            }
+        )
         assert result["phones"][0]["number_digits"] == "14165551234"
 
     def test_phone_deduplication_by_digits(self):
         """Duplicate phone numbers (same digits, different formatting) are deduplicated."""
-        result = _run_extraction({
-            "phones": [
-                {"number_raw": "(416) 555-1234", "number_digits": "4165551234",
-                 "confidence": "high", "source_url": "https://a.com"},
-                {"number_raw": "416-555-1234", "number_digits": "4165551234",
-                 "confidence": "medium", "source_url": "https://b.com"},
-                {"number_raw": "4165551234", "number_digits": "4165551234",
-                 "confidence": "low", "source_url": "https://c.com"},
-            ],
-            "emails": [],
-            "addresses": [],
-        })
+        result = _run_extraction(
+            {
+                "phones": [
+                    {
+                        "number_raw": "(416) 555-1234",
+                        "number_digits": "4165551234",
+                        "confidence": "high",
+                        "source_url": "https://a.com",
+                    },
+                    {
+                        "number_raw": "416-555-1234",
+                        "number_digits": "4165551234",
+                        "confidence": "medium",
+                        "source_url": "https://b.com",
+                    },
+                    {
+                        "number_raw": "4165551234",
+                        "number_digits": "4165551234",
+                        "confidence": "low",
+                        "source_url": "https://c.com",
+                    },
+                ],
+                "emails": [],
+                "addresses": [],
+            }
+        )
         assert len(result["phones"]) == 1
         # First occurrence wins
         assert result["phones"][0]["source_url"] == "https://a.com"
 
     def test_phone_empty_number_raw_skipped(self):
-        result = _run_extraction({
-            "phones": [
-                {"number_raw": "", "number_digits": "", "confidence": "high", "source_url": "https://a.com"},
-                {"number_raw": "  ", "number_digits": "", "confidence": "high", "source_url": "https://a.com"},
-            ],
-            "emails": [],
-            "addresses": [],
-        })
+        result = _run_extraction(
+            {
+                "phones": [
+                    {"number_raw": "", "number_digits": "", "confidence": "high", "source_url": "https://a.com"},
+                    {"number_raw": "  ", "number_digits": "", "confidence": "high", "source_url": "https://a.com"},
+                ],
+                "emails": [],
+                "addresses": [],
+            }
+        )
         assert len(result["phones"]) == 0
 
     def test_phone_no_digits_in_raw_skipped(self):
         """If number_raw has no digits at all, the phone is skipped."""
-        result = _run_extraction({
-            "phones": [
-                {"number_raw": "no digits here", "number_digits": "", "confidence": "high", "source_url": "https://a.com"},
-            ],
-            "emails": [],
-            "addresses": [],
-        })
+        result = _run_extraction(
+            {
+                "phones": [
+                    {
+                        "number_raw": "no digits here",
+                        "number_digits": "",
+                        "confidence": "high",
+                        "source_url": "https://a.com",
+                    },
+                ],
+                "emails": [],
+                "addresses": [],
+            }
+        )
         assert len(result["phones"]) == 0
 
     def test_phone_invalid_confidence_defaults_to_medium(self):
-        result = _run_extraction({
-            "phones": [
-                {"number_raw": "4165551234", "number_digits": "4165551234",
-                 "confidence": "very_high", "source_url": "https://a.com"},
-            ],
-            "emails": [],
-            "addresses": [],
-        })
+        result = _run_extraction(
+            {
+                "phones": [
+                    {
+                        "number_raw": "4165551234",
+                        "number_digits": "4165551234",
+                        "confidence": "very_high",
+                        "source_url": "https://a.com",
+                    },
+                ],
+                "emails": [],
+                "addresses": [],
+            }
+        )
         assert result["phones"][0]["confidence"] == "medium"
 
     def test_phone_valid_confidence_values_preserved(self):
         for conf in ("high", "medium", "low"):
-            result = _run_extraction({
-                "phones": [
-                    {"number_raw": "4165551234", "number_digits": "4165551234",
-                     "confidence": conf, "source_url": "https://a.com"},
-                ],
-                "emails": [],
-                "addresses": [],
-            })
+            result = _run_extraction(
+                {
+                    "phones": [
+                        {
+                            "number_raw": "4165551234",
+                            "number_digits": "4165551234",
+                            "confidence": conf,
+                            "source_url": "https://a.com",
+                        },
+                    ],
+                    "emails": [],
+                    "addresses": [],
+                }
+            )
             assert result["phones"][0]["confidence"] == conf
 
     def test_phone_non_dict_entries_skipped(self):
-        result = _run_extraction({
-            "phones": ["not a dict", 42, None],
-            "emails": [],
-            "addresses": [],
-        })
+        result = _run_extraction(
+            {
+                "phones": ["not a dict", 42, None],
+                "emails": [],
+                "addresses": [],
+            }
+        )
         assert len(result["phones"]) == 0
 
     def test_phone_snippet_whitespace_stripped(self):
-        result = _run_extraction({
-            "phones": [
-                {"number_raw": "4165551234", "number_digits": "4165551234",
-                 "confidence": "high", "source_url": "https://a.com",
-                 "snippet": "  call here  "},
-            ],
-            "emails": [],
-            "addresses": [],
-        })
+        result = _run_extraction(
+            {
+                "phones": [
+                    {
+                        "number_raw": "4165551234",
+                        "number_digits": "4165551234",
+                        "confidence": "high",
+                        "source_url": "https://a.com",
+                        "snippet": "  call here  ",
+                    },
+                ],
+                "emails": [],
+                "addresses": [],
+            }
+        )
         assert result["phones"][0]["snippet"] == "call here"
 
     def test_phone_missing_snippet_defaults_empty(self):
-        result = _run_extraction({
-            "phones": [
-                {"number_raw": "4165551234", "number_digits": "4165551234",
-                 "confidence": "high", "source_url": "https://a.com"},
-            ],
-            "emails": [],
-            "addresses": [],
-        })
+        result = _run_extraction(
+            {
+                "phones": [
+                    {
+                        "number_raw": "4165551234",
+                        "number_digits": "4165551234",
+                        "confidence": "high",
+                        "source_url": "https://a.com",
+                    },
+                ],
+                "emails": [],
+                "addresses": [],
+            }
+        )
         assert result["phones"][0]["snippet"] == ""
 
 
@@ -266,27 +328,35 @@ class TestEmailNormalization:
     """Tests for email normalization and deduplication."""
 
     def test_basic_email_extraction(self):
-        result = _run_extraction({
-            "phones": [],
-            "emails": [
-                {"email": "john@work.com", "confidence": "high",
-                 "source_url": "https://a.com", "snippet": "Contact: john@work.com"},
-            ],
-            "addresses": [],
-        })
+        result = _run_extraction(
+            {
+                "phones": [],
+                "emails": [
+                    {
+                        "email": "john@work.com",
+                        "confidence": "high",
+                        "source_url": "https://a.com",
+                        "snippet": "Contact: john@work.com",
+                    },
+                ],
+                "addresses": [],
+            }
+        )
         assert len(result["emails"]) == 1
         assert result["emails"][0]["email"] == "john@work.com"
 
     def test_email_deduplication_case_insensitive(self):
-        result = _run_extraction({
-            "phones": [],
-            "emails": [
-                {"email": "John@Work.com", "confidence": "high", "source_url": "https://a.com"},
-                {"email": "john@work.com", "confidence": "medium", "source_url": "https://b.com"},
-                {"email": "JOHN@WORK.COM", "confidence": "low", "source_url": "https://c.com"},
-            ],
-            "addresses": [],
-        })
+        result = _run_extraction(
+            {
+                "phones": [],
+                "emails": [
+                    {"email": "John@Work.com", "confidence": "high", "source_url": "https://a.com"},
+                    {"email": "john@work.com", "confidence": "medium", "source_url": "https://b.com"},
+                    {"email": "JOHN@WORK.COM", "confidence": "low", "source_url": "https://c.com"},
+                ],
+                "addresses": [],
+            }
+        )
         assert len(result["emails"]) == 1
         # First occurrence wins (preserves original casing)
         assert result["emails"][0]["email"] == "John@Work.com"
@@ -321,32 +391,38 @@ class TestEmailNormalization:
         assert len(result["emails"]) == 1
 
     def test_email_empty_skipped(self):
-        result = _run_extraction({
-            "phones": [],
-            "emails": [
-                {"email": "", "confidence": "high", "source_url": "https://a.com"},
-                {"email": "  ", "confidence": "high", "source_url": "https://a.com"},
-            ],
-            "addresses": [],
-        })
+        result = _run_extraction(
+            {
+                "phones": [],
+                "emails": [
+                    {"email": "", "confidence": "high", "source_url": "https://a.com"},
+                    {"email": "  ", "confidence": "high", "source_url": "https://a.com"},
+                ],
+                "addresses": [],
+            }
+        )
         assert len(result["emails"]) == 0
 
     def test_email_non_dict_entries_skipped(self):
-        result = _run_extraction({
-            "phones": [],
-            "emails": ["not-a-dict", 99],
-            "addresses": [],
-        })
+        result = _run_extraction(
+            {
+                "phones": [],
+                "emails": ["not-a-dict", 99],
+                "addresses": [],
+            }
+        )
         assert len(result["emails"]) == 0
 
     def test_email_invalid_confidence_defaults_to_medium(self):
-        result = _run_extraction({
-            "phones": [],
-            "emails": [
-                {"email": "test@example.com", "confidence": "super", "source_url": "https://a.com"},
-            ],
-            "addresses": [],
-        })
+        result = _run_extraction(
+            {
+                "phones": [],
+                "emails": [
+                    {"email": "test@example.com", "confidence": "super", "source_url": "https://a.com"},
+                ],
+                "addresses": [],
+            }
+        )
         assert result["emails"][0]["confidence"] == "medium"
 
 
@@ -357,98 +433,130 @@ class TestAddressNormalization:
     """Tests for address validation, normalization, and deduplication."""
 
     def test_address_with_street_number_kept(self):
-        result = _run_extraction({
-            "phones": [],
-            "emails": [],
-            "addresses": [
-                {"address_raw": "123 Main St, Toronto, ON M5V 1A1", "confidence": "high",
-                 "source_url": "https://a.com"},
-            ],
-        })
+        result = _run_extraction(
+            {
+                "phones": [],
+                "emails": [],
+                "addresses": [
+                    {
+                        "address_raw": "123 Main St, Toronto, ON M5V 1A1",
+                        "confidence": "high",
+                        "source_url": "https://a.com",
+                    },
+                ],
+            }
+        )
         assert len(result["addresses"]) == 1
 
     def test_address_with_street_name_pattern_kept(self):
         """Addresses with street name indicators (Avenue, Street, etc.) are kept."""
         for street_name in ["Bay Street, Toronto", "King Avenue, Hamilton", "Yonge Road, Markham"]:
-            result = _run_extraction({
-                "phones": [],
-                "emails": [],
-                "addresses": [
-                    {"address_raw": street_name, "confidence": "medium", "source_url": "https://a.com"},
-                ],
-            })
+            result = _run_extraction(
+                {
+                    "phones": [],
+                    "emails": [],
+                    "addresses": [
+                        {"address_raw": street_name, "confidence": "medium", "source_url": "https://a.com"},
+                    ],
+                }
+            )
             assert len(result["addresses"]) == 1, f"Expected '{street_name}' to be kept"
 
     def test_address_city_only_filtered(self):
         """Addresses with only city/province (no street info) are filtered out."""
-        result = _run_extraction({
-            "phones": [],
-            "emails": [],
-            "addresses": [
-                {"address_raw": "Toronto, Ontario", "confidence": "high", "source_url": "https://a.com"},
-                {"address_raw": "Vancouver, BC", "confidence": "medium", "source_url": "https://b.com"},
-            ],
-        })
+        result = _run_extraction(
+            {
+                "phones": [],
+                "emails": [],
+                "addresses": [
+                    {"address_raw": "Toronto, Ontario", "confidence": "high", "source_url": "https://a.com"},
+                    {"address_raw": "Vancouver, BC", "confidence": "medium", "source_url": "https://b.com"},
+                ],
+            }
+        )
         assert len(result["addresses"]) == 0
 
     def test_address_deduplication(self):
         """Duplicate addresses (normalized) are deduplicated."""
-        result = _run_extraction({
-            "phones": [],
-            "emails": [],
-            "addresses": [
-                {"address_raw": "123 Main Street, Toronto, ON", "confidence": "high",
-                 "source_url": "https://a.com"},
-                {"address_raw": "123 Main Street, Toronto, ON", "confidence": "medium",
-                 "source_url": "https://b.com"},
-            ],
-        })
+        result = _run_extraction(
+            {
+                "phones": [],
+                "emails": [],
+                "addresses": [
+                    {
+                        "address_raw": "123 Main Street, Toronto, ON",
+                        "confidence": "high",
+                        "source_url": "https://a.com",
+                    },
+                    {
+                        "address_raw": "123 Main Street, Toronto, ON",
+                        "confidence": "medium",
+                        "source_url": "https://b.com",
+                    },
+                ],
+            }
+        )
         assert len(result["addresses"]) == 1
 
     def test_address_empty_skipped(self):
-        result = _run_extraction({
-            "phones": [],
-            "emails": [],
-            "addresses": [
-                {"address_raw": "", "confidence": "high", "source_url": "https://a.com"},
-                {"address_raw": "  ", "confidence": "high", "source_url": "https://a.com"},
-            ],
-        })
+        result = _run_extraction(
+            {
+                "phones": [],
+                "emails": [],
+                "addresses": [
+                    {"address_raw": "", "confidence": "high", "source_url": "https://a.com"},
+                    {"address_raw": "  ", "confidence": "high", "source_url": "https://a.com"},
+                ],
+            }
+        )
         assert len(result["addresses"]) == 0
 
     def test_address_non_dict_entries_skipped(self):
-        result = _run_extraction({
-            "phones": [],
-            "emails": [],
-            "addresses": ["not a dict", None],
-        })
+        result = _run_extraction(
+            {
+                "phones": [],
+                "emails": [],
+                "addresses": ["not a dict", None],
+            }
+        )
         assert len(result["addresses"]) == 0
 
     def test_address_invalid_confidence_defaults_to_medium(self):
-        result = _run_extraction({
-            "phones": [],
-            "emails": [],
-            "addresses": [
-                {"address_raw": "123 Main Street, Toronto, ON", "confidence": "invalid",
-                 "source_url": "https://a.com"},
-            ],
-        })
+        result = _run_extraction(
+            {
+                "phones": [],
+                "emails": [],
+                "addresses": [
+                    {
+                        "address_raw": "123 Main Street, Toronto, ON",
+                        "confidence": "invalid",
+                        "source_url": "https://a.com",
+                    },
+                ],
+            }
+        )
         assert result["addresses"][0]["confidence"] == "medium"
 
     def test_address_with_various_street_types(self):
         """Street type abbreviations and full names are recognized."""
         street_types = [
-            "100 King Drive", "200 Queen Boulevard", "300 Bay Crescent",
-            "400 Lake Lane", "500 Park Way", "600 Oak Court",
+            "100 King Drive",
+            "200 Queen Boulevard",
+            "300 Bay Crescent",
+            "400 Lake Lane",
+            "500 Park Way",
+            "600 Oak Court",
         ]
         for addr in street_types:
-            result = _run_extraction({
-                "phones": [],
-                "emails": [],
-                "addresses": [
-                    {"address_raw": addr, "confidence": "high", "source_url": "https://a.com"},
-                ],
-            })
+            result = _run_extraction(
+                {
+                    "phones": [],
+                    "emails": [],
+                    "addresses": [
+                        {"address_raw": addr, "confidence": "high", "source_url": "https://a.com"},
+                    ],
+                }
+            )
             assert len(result["addresses"]) == 1, f"Expected '{addr}' to be kept"
 
 
@@ -466,11 +574,13 @@ class TestLlmResponseHandling:
 
     def test_non_list_values_default_to_empty_lists(self):
         """Non-list values for phones/emails/addresses are replaced with empty lists."""
-        result = _run_extraction({
-            "phones": "not a list",
-            "emails": 42,
-            "addresses": {"wrong": "type"},
-        })
+        result = _run_extraction(
+            {
+                "phones": "not a list",
+                "emails": 42,
+                "addresses": {"wrong": "type"},
+            }
+        )
         assert result["phones"] == []
         assert result["emails"] == []
         assert result["addresses"] == []
@@ -574,31 +684,45 @@ class TestFullExtraction:
         result = _run_extraction(
             {
                 "phones": [
-                    {"number_raw": "(416) 555-0100", "number_digits": "4165550100",
-                     "confidence": "high", "source_url": "https://linkedin.com/in/jsmith",
-                     "snippet": "Contact: (416) 555-0100"},
-                    {"number_raw": "416-555-0100", "number_digits": "4165550100",
-                     "confidence": "medium", "source_url": "https://company.com/team",
-                     "snippet": "Phone: 416-555-0100"},
-                    {"number_raw": "(905) 555-0200", "number_digits": "9055550200",
-                     "confidence": "medium", "source_url": "https://whitepages.com",
-                     "snippet": "John Smith - (905) 555-0200"},
+                    {
+                        "number_raw": "(416) 555-0100",
+                        "number_digits": "4165550100",
+                        "confidence": "high",
+                        "source_url": "https://linkedin.com/in/jsmith",
+                        "snippet": "Contact: (416) 555-0100",
+                    },
+                    {
+                        "number_raw": "416-555-0100",
+                        "number_digits": "4165550100",
+                        "confidence": "medium",
+                        "source_url": "https://company.com/team",
+                        "snippet": "Phone: 416-555-0100",
+                    },
+                    {
+                        "number_raw": "(905) 555-0200",
+                        "number_digits": "9055550200",
+                        "confidence": "medium",
+                        "source_url": "https://whitepages.com",
+                        "snippet": "John Smith - (905) 555-0200",
+                    },
                 ],
                 "emails": [
-                    {"email": "jsmith@company.com", "confidence": "high",
-                     "source_url": "https://company.com/team"},
-                    {"email": "john@example.com", "confidence": "high",
-                     "source_url": "https://linkedin.com"},
-                    {"email": "JSmith@Company.com", "confidence": "medium",
-                     "source_url": "https://rocketreach.com"},
+                    {"email": "jsmith@company.com", "confidence": "high", "source_url": "https://company.com/team"},
+                    {"email": "john@example.com", "confidence": "high", "source_url": "https://linkedin.com"},
+                    {"email": "JSmith@Company.com", "confidence": "medium", "source_url": "https://rocketreach.com"},
                 ],
                 "addresses": [
-                    {"address_raw": "42 Elm Street, Toronto, ON M4C 1N5", "confidence": "high",
-                     "source_url": "https://whitepages.com"},
-                    {"address_raw": "Toronto, Ontario", "confidence": "low",
-                     "source_url": "https://linkedin.com"},
-                    {"address_raw": "42 Elm Street, Toronto, ON M4C 1N5", "confidence": "medium",
-                     "source_url": "https://canada411.com"},
+                    {
+                        "address_raw": "42 Elm Street, Toronto, ON M4C 1N5",
+                        "confidence": "high",
+                        "source_url": "https://whitepages.com",
+                    },
+                    {"address_raw": "Toronto, Ontario", "confidence": "low", "source_url": "https://linkedin.com"},
+                    {
+                        "address_raw": "42 Elm Street, Toronto, ON M4C 1N5",
+                        "confidence": "medium",
+                        "source_url": "https://canada411.com",
+                    },
                 ],
             },
             seed={"full_name": "John Smith", "email": "john@example.com"},

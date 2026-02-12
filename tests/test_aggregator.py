@@ -79,16 +79,20 @@ class TestSanitizeForJson:
             def __init__(self):
                 self.x = 1
                 self.y = "two"
+
         result = sanitize_for_json(Dummy())
         assert result == {"x": 1, "y": "two"}
 
     def test_object_with_dunder_dict_takes_priority_over_decode(self):
         """Objects with __dict__ are serialized via __dict__, not decode."""
+
         class HasBoth:
             def __init__(self):
                 self.val = 42
+
             def decode(self, *a, **kw):
                 return "decoded"
+
         result = sanitize_for_json(HasBoth())
         # __dict__ branch wins over decode branch
         assert result == {"val": 42}

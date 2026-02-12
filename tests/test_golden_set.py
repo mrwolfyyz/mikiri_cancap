@@ -47,8 +47,7 @@ from google.cloud import firestore
 # ---------------------------------------------------------------------------
 
 _FIREBASE_CONFIG_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "frontend" / "skiptrace" / "public" / "firebase-config.json"
+    Path(__file__).resolve().parent.parent / "frontend" / "skiptrace" / "public" / "firebase-config.json"
 )
 
 
@@ -81,14 +80,13 @@ def _get_anonymous_token(api_key: str) -> str:
 # Load golden cases at module level for parameterization
 # ---------------------------------------------------------------------------
 
-_golden_cases = json.loads(
-    (Path(__file__).parent / "golden_set.json").read_text()
-)["cases"]
+_golden_cases = json.loads((Path(__file__).parent / "golden_set.json").read_text())["cases"]
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def api_url(request):
@@ -131,11 +129,7 @@ def save_reports_dir(request):
     """Return a directory path for saving markdown reports, or None."""
     if not request.config.getoption("--golden-save-reports"):
         return None
-    out_dir = (
-        Path(__file__).parent
-        / "golden_reports"
-        / datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    )
+    out_dir = Path(__file__).parent / "golden_reports" / datetime.now().strftime("%Y-%m-%d_%H%M%S")
     out_dir.mkdir(parents=True, exist_ok=True)
     return out_dir
 
@@ -153,6 +147,7 @@ WORKFLOW_ENDPOINTS = {
 # ---------------------------------------------------------------------------
 # API helpers
 # ---------------------------------------------------------------------------
+
 
 def submit_investigation(api_url: str, token: str, case_input: dict, workflow: str = "skiptrace") -> str:
     """Submit an investigation and return the job_id."""
@@ -230,6 +225,7 @@ def get_markdown_report(api_url: str, token: str, job_id: str) -> dict:
 # Assertion helpers — structured Firestore data
 # ---------------------------------------------------------------------------
 
+
 def assert_phones_found(result: dict) -> list:
     """Check that at least one phone number was found."""
     phones = result.get("enrichment", {}).get("contacts", {}).get("phones", [])
@@ -270,10 +266,7 @@ def assert_social_profiles(result: dict, expected_platforms: list) -> list:
     failures = []
     for platform in expected_platforms:
         if platform.lower() not in found_platforms:
-            failures.append(
-                f"Expected social profile '{platform}' not found. "
-                f"Found: {sorted(found_platforms)}"
-            )
+            failures.append(f"Expected social profile '{platform}' not found. Found: {sorted(found_platforms)}")
     return failures
 
 
@@ -305,6 +298,7 @@ def assert_report_terms(result: dict, terms: list) -> list:
 # Assertion helpers — markdown report
 # ---------------------------------------------------------------------------
 
+
 def assert_markdown_report_exists(markdown: dict) -> list:
     """Check that the identity markdown report was generated and is non-empty."""
     failures = []
@@ -312,9 +306,7 @@ def assert_markdown_report_exists(markdown: dict) -> list:
     if not identity_md:
         failures.append("Markdown report missing: 'identity' key is empty or absent")
     elif len(identity_md) < 100:
-        failures.append(
-            f"Markdown report suspiciously short ({len(identity_md)} chars)"
-        )
+        failures.append(f"Markdown report suspiciously short ({len(identity_md)} chars)")
     return failures
 
 
@@ -324,15 +316,14 @@ def assert_markdown_contains_terms(markdown: dict, terms: list) -> list:
     failures = []
     for term in terms:
         if term.lower() not in identity_md:
-            failures.append(
-                f"Expected term '{term}' not found in markdown report"
-            )
+            failures.append(f"Expected term '{term}' not found in markdown report")
     return failures
 
 
 # ---------------------------------------------------------------------------
 # Parameterized test
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.parametrize(
     "case",
@@ -347,16 +338,16 @@ def test_golden_case(api_url, auth_token, firestore_client, save_reports_dir, go
     effective_workflow = case.get("workflow", golden_workflow)
     failures = []
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Running: {case_id} — {case.get('description', '')} [workflow={effective_workflow}]")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     # ----- Submit & wait -----
     job_id = submit_investigation(api_url, auth_token, case["input"], workflow=effective_workflow)
     print(f"  Job submitted: {job_id}")
 
     job = poll_until_complete(api_url, auth_token, job_id)
-    print(f"  Job completed")
+    print("  Job completed")
 
     if assertions.get("should_complete"):
         if job["status"] != "complete":
@@ -378,17 +369,13 @@ def test_golden_case(api_url, auth_token, firestore_client, save_reports_dir, go
         failures.extend(assert_breaches_found(result))
 
     if assertions.get("expect_social_profiles"):
-        failures.extend(
-            assert_social_profiles(result, assertions["expect_social_profiles"])
-        )
+        failures.extend(assert_social_profiles(result, assertions["expect_social_profiles"]))
 
     if assertions.get("expect_company_domain_resolved"):
         failures.extend(assert_company_domain_resolved(result))
 
     if assertions.get("report_should_contain"):
-        failures.extend(
-            assert_report_terms(result, assertions["report_should_contain"])
-        )
+        failures.extend(assert_report_terms(result, assertions["report_should_contain"]))
 
     # ----- Markdown report assertions -----
     markdown = get_markdown_report(api_url, auth_token, job_id)
@@ -398,17 +385,11 @@ def test_golden_case(api_url, auth_token, firestore_client, save_reports_dir, go
 
     # Check report_should_contain terms also appear in the markdown
     if assertions.get("report_should_contain"):
-        failures.extend(
-            assert_markdown_contains_terms(markdown, assertions["report_should_contain"])
-        )
+        failures.extend(assert_markdown_contains_terms(markdown, assertions["report_should_contain"]))
 
     # Check any markdown-specific terms
     if assertions.get("markdown_should_contain"):
-        failures.extend(
-            assert_markdown_contains_terms(
-                markdown, assertions["markdown_should_contain"]
-            )
-        )
+        failures.extend(assert_markdown_contains_terms(markdown, assertions["markdown_should_contain"]))
 
     # ----- Optionally save markdown to disk -----
     if save_reports_dir and markdown.get("identity"):
@@ -422,8 +403,7 @@ def test_golden_case(api_url, auth_token, firestore_client, save_reports_dir, go
             print(f"    FAIL: {f}")
         pytest.fail(
             f"Golden case '{case_id}' (job {job_id}) — "
-            f"{len(failures)} failure(s):\n"
-            + "\n".join(f"  - {f}" for f in failures)
+            f"{len(failures)} failure(s):\n" + "\n".join(f"  - {f}" for f in failures)
         )
 
-    print(f"  Result: PASS")
+    print("  Result: PASS")

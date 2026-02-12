@@ -133,10 +133,12 @@ class TestExtractAddressesFromQueriesLlm:
         mock_response.text = json.dumps(llm_response)
         mock_model_instance.generate_content.return_value = mock_response
 
-        with patch.object(ag_main, "GCP_PROJECT", "test-project"), \
-             patch.object(ag_main, "vertexai"), \
-             patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(ag_main, "GCP_PROJECT", "test-project"),
+            patch.object(ag_main, "vertexai"),
+            patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance),
+            patch("retry_utils.time.sleep"),
+        ):
             result = extract_addresses_from_queries_llm(
                 [{"hits": [{"title": "test", "snippet": "123 Main St", "url": "https://example.com"}]}]
             )
@@ -158,10 +160,12 @@ class TestExtractAddressesFromQueriesLlm:
         mock_response.text = json.dumps(llm_response)
         mock_model_instance.generate_content.return_value = mock_response
 
-        with patch.object(ag_main, "GCP_PROJECT", "test-project"), \
-             patch.object(ag_main, "vertexai"), \
-             patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(ag_main, "GCP_PROJECT", "test-project"),
+            patch.object(ag_main, "vertexai"),
+            patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance),
+            patch("retry_utils.time.sleep"),
+        ):
             result = extract_addresses_from_queries_llm(
                 [{"hits": [{"title": "t", "snippet": "s", "url": "https://a.com"}]}]
             )
@@ -169,9 +173,9 @@ class TestExtractAddressesFromQueriesLlm:
         assert len(result) == 1
 
     def test_markdown_wrapped_response(self):
-        inner = json.dumps({"addresses": [
-            {"address_raw": "789 Oak Ave, Vancouver, BC", "source_url": "https://c.com", "snippet": ""}
-        ]})
+        inner = json.dumps(
+            {"addresses": [{"address_raw": "789 Oak Ave, Vancouver, BC", "source_url": "https://c.com", "snippet": ""}]}
+        )
         response_text = f"```json\n{inner}\n```"
 
         mock_model_instance = MagicMock()
@@ -179,10 +183,12 @@ class TestExtractAddressesFromQueriesLlm:
         mock_response.text = response_text
         mock_model_instance.generate_content.return_value = mock_response
 
-        with patch.object(ag_main, "GCP_PROJECT", "test-project"), \
-             patch.object(ag_main, "vertexai"), \
-             patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(ag_main, "GCP_PROJECT", "test-project"),
+            patch.object(ag_main, "vertexai"),
+            patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance),
+            patch("retry_utils.time.sleep"),
+        ):
             result = extract_addresses_from_queries_llm(
                 [{"hits": [{"title": "t", "snippet": "s", "url": "https://c.com"}]}]
             )
@@ -195,10 +201,12 @@ class TestExtractAddressesFromQueriesLlm:
         mock_response.text = ""
         mock_model_instance.generate_content.return_value = mock_response
 
-        with patch.object(ag_main, "GCP_PROJECT", "test-project"), \
-             patch.object(ag_main, "vertexai"), \
-             patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(ag_main, "GCP_PROJECT", "test-project"),
+            patch.object(ag_main, "vertexai"),
+            patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance),
+            patch("retry_utils.time.sleep"),
+        ):
             result = extract_addresses_from_queries_llm(
                 [{"hits": [{"title": "t", "snippet": "s", "url": "https://a.com"}]}]
             )
@@ -212,10 +220,12 @@ class TestExtractAddressesFromQueriesLlm:
         mock_response.text = "this is not valid json at all"
         mock_model_instance.generate_content.return_value = mock_response
 
-        with patch.object(ag_main, "GCP_PROJECT", "test-project"), \
-             patch.object(ag_main, "vertexai"), \
-             patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(ag_main, "GCP_PROJECT", "test-project"),
+            patch.object(ag_main, "vertexai"),
+            patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance),
+            patch("retry_utils.time.sleep"),
+        ):
             result = extract_addresses_from_queries_llm(
                 [{"hits": [{"title": "t", "snippet": "s", "url": "https://a.com"}]}]
             )
@@ -240,10 +250,12 @@ class TestExtractAddressesFromQueriesLlm:
         mock_response.text = json.dumps(llm_response, ensure_ascii=False)
         mock_model_instance.generate_content.return_value = mock_response
 
-        with patch.object(ag_main, "GCP_PROJECT", "test-project"), \
-             patch.object(ag_main, "vertexai"), \
-             patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(ag_main, "GCP_PROJECT", "test-project"),
+            patch.object(ag_main, "vertexai"),
+            patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance),
+            patch("retry_utils.time.sleep"),
+        ):
             result = extract_addresses_from_queries_llm(
                 [{"hits": [{"title": "t", "snippet": "Montréal", "url": "https://example.com"}]}]
             )
@@ -253,13 +265,13 @@ class TestExtractAddressesFromQueriesLlm:
 
     def test_vertexai_init_error_returns_empty(self):
         """If vertexai.init() raises, the function returns empty list."""
-        with patch.object(ag_main, "GCP_PROJECT", "test-project"), \
-             patch.object(ag_main, "vertexai") as mock_vai:
+        with patch.object(ag_main, "GCP_PROJECT", "test-project"), patch.object(ag_main, "vertexai") as mock_vai:
             mock_vai.init.side_effect = RuntimeError("auth error")
             # GenerativeModel is called after init — make it also fail
-            with patch.object(ag_main, "GenerativeModel",
-                              side_effect=RuntimeError("model init failed")), \
-                 patch("retry_utils.time.sleep"):
+            with (
+                patch.object(ag_main, "GenerativeModel", side_effect=RuntimeError("model init failed")),
+                patch("retry_utils.time.sleep"),
+            ):
                 result = extract_addresses_from_queries_llm(
                     [{"hits": [{"title": "t", "snippet": "s", "url": "https://a.com"}]}]
                 )
@@ -287,17 +299,17 @@ class TestMainHandler:
         body = {
             "identity": {
                 "seed": {"full_name": "John Doe", "email": "john@example.com"},
-                "queries": [
-                    {"hits": [{"title": "test", "snippet": "123 Main St", "url": "https://a.com"}]}
-                ],
+                "queries": [{"hits": [{"title": "test", "snippet": "123 Main St", "url": "https://a.com"}]}],
             }
         }
 
         extracted = [{"address_raw": "123 Main St, Toronto, ON", "source_url": "https://a.com", "snippet": ""}]
 
-        with patch.object(ag_main, "extract_addresses_from_queries_llm", return_value=extracted), \
-             patch.object(ag_main, "retry_with_backoff", return_value=(43.65, -79.38)), \
-             patch("address_geocoding_main.time") as mock_time:
+        with (
+            patch.object(ag_main, "extract_addresses_from_queries_llm", return_value=extracted),
+            patch.object(ag_main, "retry_with_backoff", return_value=(43.65, -79.38)),
+            patch("address_geocoding_main.time") as mock_time,
+        ):
             mock_time.sleep = MagicMock()
             result, status = main_handler(_make_request(body))
 
@@ -317,9 +329,11 @@ class TestMainHandler:
 
         extracted = [{"address_raw": "456 Elm St, Ottawa, ON", "source_url": "https://b.com", "snippet": ""}]
 
-        with patch.object(ag_main, "extract_addresses_from_queries_llm", return_value=extracted), \
-             patch.object(ag_main, "retry_with_backoff", return_value=(45.42, -75.69)), \
-             patch("address_geocoding_main.time") as mock_time:
+        with (
+            patch.object(ag_main, "extract_addresses_from_queries_llm", return_value=extracted),
+            patch.object(ag_main, "retry_with_backoff", return_value=(45.42, -75.69)),
+            patch("address_geocoding_main.time") as mock_time,
+        ):
             mock_time.sleep = MagicMock()
             result, status = main_handler(_make_request(body))
 
@@ -348,10 +362,11 @@ class TestMainHandler:
 
         extracted = [{"address_raw": "999 Unknown Rd", "source_url": "https://a.com", "snippet": ""}]
 
-        with patch.object(ag_main, "extract_addresses_from_queries_llm", return_value=extracted), \
-             patch.object(ag_main, "retry_with_backoff",
-                          side_effect=RuntimeError("geocoding failed")), \
-             patch("address_geocoding_main.time") as mock_time:
+        with (
+            patch.object(ag_main, "extract_addresses_from_queries_llm", return_value=extracted),
+            patch.object(ag_main, "retry_with_backoff", side_effect=RuntimeError("geocoding failed")),
+            patch("address_geocoding_main.time") as mock_time,
+        ):
             mock_time.sleep = MagicMock()
             result, status = main_handler(_make_request(body))
 
@@ -371,10 +386,11 @@ class TestMainHandler:
         extracted = [{"address_raw": "123 Slow Rd, Toronto, ON", "source_url": "https://a.com", "snippet": ""}]
         from urllib.error import URLError
 
-        with patch.object(ag_main, "extract_addresses_from_queries_llm", return_value=extracted), \
-             patch.object(ag_main, "retry_with_backoff",
-                          side_effect=URLError("timed out")), \
-             patch("address_geocoding_main.time") as mock_time:
+        with (
+            patch.object(ag_main, "extract_addresses_from_queries_llm", return_value=extracted),
+            patch.object(ag_main, "retry_with_backoff", side_effect=URLError("timed out")),
+            patch("address_geocoding_main.time") as mock_time,
+        ):
             mock_time.sleep = MagicMock()
             result, status = main_handler(_make_request(body))
 
@@ -396,9 +412,11 @@ class TestMainHandler:
             {"address_raw": "456 Second Ave", "source_url": "https://b.com", "snippet": ""},
         ]
 
-        with patch.object(ag_main, "extract_addresses_from_queries_llm", return_value=extracted), \
-             patch.object(ag_main, "retry_with_backoff", return_value=(43.0, -79.0)), \
-             patch("address_geocoding_main.time") as mock_time:
+        with (
+            patch.object(ag_main, "extract_addresses_from_queries_llm", return_value=extracted),
+            patch.object(ag_main, "retry_with_backoff", return_value=(43.0, -79.0)),
+            patch("address_geocoding_main.time") as mock_time,
+        ):
             mock_time.sleep = MagicMock()
             result, status = main_handler(_make_request(body))
 

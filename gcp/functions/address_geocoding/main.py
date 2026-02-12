@@ -7,23 +7,23 @@ Called from workflow as part of phase2 parallel execution.
 Returns geocoding data that gets passed to aggregator.
 """
 
-import functions_framework
-import os
 import json
-import time
+import os
 import re
-from typing import Dict, Any, List, Optional
+import time
+from typing import Any
 from urllib.parse import quote_plus
-from urllib.request import urlopen, Request
-from urllib.error import URLError, HTTPError
+from urllib.request import Request, urlopen
 
-# Import retry utilities (local copy for consistency with other phase2 functions)
-from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError
-from address_utils import clean_address_for_geocoding
+import functions_framework
 
 # Vertex AI imports
 import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+from address_utils import clean_address_for_geocoding
+
+# Import retry utilities (local copy for consistency with other phase2 functions)
+from retry_utils import EmptyLLMResponseError, RetryConfig, retry_with_backoff
+from vertexai.generative_models import GenerationConfig, GenerativeModel
 
 # -------------------------
 # Vertex AI Config
@@ -42,17 +42,17 @@ def _nominatim_request(address: str) -> tuple:
     (429, 5xx, timeouts).
     """
     url = f"https://nominatim.openstreetmap.org/search?q={quote_plus(address)}&format=json&limit=1"
-    req = Request(url, headers={'User-Agent': 'BorrowerIntelligence/1.0'})
+    req = Request(url, headers={"User-Agent": "BorrowerIntelligence/1.0"})
 
     with urlopen(req, timeout=30) as response:
         data = json.loads(response.read().decode())
         if data and len(data) > 0:
-            lat = float(data[0]['lat'])
-            lon = float(data[0]['lon'])
+            lat = float(data[0]["lat"])
+            lon = float(data[0]["lon"])
             print(f"    ✓ Geocoded successfully: {lat:.6f}, {lon:.6f}")
             return (lat, lon)
         else:
-            print(f"    ⚠️  No geocoding results found")
+            print("    ⚠️  No geocoding results found")
             return (None, None)
 
 
@@ -65,25 +65,21 @@ ADDRESS_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "address_raw": {"type": "string"},
-                    "confidence": {
-                        "type": "string",
-                        "enum": ["high", "medium", "low"]
-                    },
+                    "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
                     "source_url": {"type": "string"},
-                    "snippet": {"type": "string"}
+                    "snippet": {"type": "string"},
                 },
-                "required": ["address_raw", "source_url"]
-            }
+                "required": ["address_raw", "source_url"],
+            },
         }
     },
-    "required": ["addresses"]
+    "required": ["addresses"],
 }
 
 
 def extract_addresses_from_queries_llm(
-    queries: List[Dict[str, Any]], 
-    seed: Optional[Dict[str, Any]] = None
-) -> List[Dict[str, str]]:
+    queries: list[dict[str, Any]], seed: dict[str, Any] | None = None
+) -> list[dict[str, str]]:
     """
     Extract addresses from query hits using Vertex AI Gemini.
     Returns list of address dicts with address_raw, source_url, snippet.
@@ -91,21 +87,21 @@ def extract_addresses_from_queries_llm(
     if not GCP_PROJECT:
         print("[LLM Address Extraction] GCP_PROJECT not set, returning empty results")
         return []
-    
+
     # Initialize Vertex AI
     try:
         vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
     except Exception as e:
         print(f"[LLM Address Extraction] Vertex AI init error: {e}")
         return []
-    
+
     # Count total hits for prompt
     total_hits = sum(len(q.get("hits", [])) for q in queries)
-    
+
     if total_hits == 0:
         print("[LLM Address Extraction] No hits in queries, returning empty results")
         return []
-    
+
     # Build prompts
     system_prompt = (
         "You are an address extractor for skip tracing investigations. You extract physical addresses from web search results.\n\n"
@@ -124,29 +120,29 @@ def extract_addresses_from_queries_llm(
         "- Skip partial addresses or addresses without postal codes unless they're clearly relevant\n"
         "- Return ONLY addresses that have at least LOW confidence. Do not include addresses with no relevance to the target person."
     )
-    
+
     seed_info_text = ""
     if seed:
         seed_info_text = f"""Target Person:
-- Name: {seed.get('full_name', 'N/A')}
-- Email: {seed.get('email', 'N/A')}
-- City: {seed.get('last_known_city', 'N/A')}
-- Company: {seed.get('company_name', 'N/A') if seed.get('company_name') else 'N/A'}
+- Name: {seed.get("full_name", "N/A")}
+- Email: {seed.get("email", "N/A")}
+- City: {seed.get("last_known_city", "N/A")}
+- Company: {seed.get("company_name", "N/A") if seed.get("company_name") else "N/A"}
 
 """
-    
+
     user_prompt = f"""{seed_info_text}Extract addresses from the following search results:
 
 Search Results ({len(queries)} queries, {total_hits} total hits):
 {json.dumps(queries, indent=2)}
 
 Return valid JSON with addresses array. Each item should have address_raw, confidence, source_url, and snippet fields."""
-    
+
     def _call_vertex_ai():
         try:
             model = GenerativeModel(model_name="gemini-2.5-flash")
             print(f"[LLM Address Extraction] Calling Gemini 2.5 Flash for {total_hits} hits...")
-            
+
             full_prompt = f"{system_prompt}\n\n{user_prompt}"
             response = model.generate_content(
                 full_prompt,
@@ -154,19 +150,19 @@ Return valid JSON with addresses array. Each item should have address_raw, confi
                     temperature=0.1,
                     response_mime_type="application/json",
                     response_schema=ADDRESS_SCHEMA,
-                )
+                ),
             )
-            
+
             if not response:
                 raise EmptyLLMResponseError("Empty response from Vertex AI")
-            
+
             response_text = response.text
             if not response_text:
                 raise EmptyLLMResponseError("Empty response text")
-            
+
             # Parse and validate
             content = response_text.strip()
-            
+
             # Strip markdown code blocks if present
             if content.startswith("```"):
                 lines = content.split("\n")
@@ -175,10 +171,10 @@ Return valid JSON with addresses array. Each item should have address_raw, confi
                 if lines and lines[-1].strip() == "```":
                     lines = lines[:-1]
                 content = "\n".join(lines)
-            
+
             if not content.strip():
                 raise EmptyLLMResponseError("Empty content after stripping markdown")
-            
+
             # Parse JSON - if it fails due to empty/invalid content, treat as retryable
             try:
                 result = json.loads(content)
@@ -187,56 +183,58 @@ Return valid JSON with addresses array. Each item should have address_raw, confi
                 # that should be retried (similar to EmptyLLMResponseError)
                 error_msg = str(e).lower()
                 if "expecting value" in error_msg or "empty" in error_msg or len(content.strip()) == 0:
-                    raise EmptyLLMResponseError(f"JSON decode error (likely empty response): {e}")
+                    raise EmptyLLMResponseError(f"JSON decode error (likely empty response): {e}") from e
                 # For other JSON decode errors (malformed JSON), still retry as it might be transient
-                raise EmptyLLMResponseError(f"JSON decode error (malformed response): {e}")
-            
+                raise EmptyLLMResponseError(f"JSON decode error (malformed response): {e}") from e
+
             # Validate structure
             if "addresses" not in result:
                 result["addresses"] = []
-            
+
             if not isinstance(result.get("addresses"), list):
                 result["addresses"] = []
-            
+
             # Normalize addresses
             normalized_addresses = []
             seen_addresses = set()
-            
+
             for addr_obj in result.get("addresses", []):
                 if not isinstance(addr_obj, dict):
                     continue
                 address_raw = addr_obj.get("address_raw", "").strip()
                 if not address_raw:
                     continue
-                
+
                 # Clean address for deduplication
                 addr_cleaned = clean_address_for_geocoding(address_raw)
                 addr_normalized = addr_cleaned.lower().strip()
-                addr_normalized = re.sub(r',', ' ', addr_normalized)
-                addr_normalized = re.sub(r'\s+', ' ', addr_normalized)
-                
+                addr_normalized = re.sub(r",", " ", addr_normalized)
+                addr_normalized = re.sub(r"\s+", " ", addr_normalized)
+
                 if addr_normalized in seen_addresses:
                     continue
                 seen_addresses.add(addr_normalized)
-                
-                normalized_addresses.append({
-                    "address_raw": addr_cleaned,
-                    "source_url": addr_obj.get("source_url", ""),
-                    "snippet": addr_obj.get("snippet", "").strip()
-                })
-            
+
+                normalized_addresses.append(
+                    {
+                        "address_raw": addr_cleaned,
+                        "source_url": addr_obj.get("source_url", ""),
+                        "snippet": addr_obj.get("snippet", "").strip(),
+                    }
+                )
+
             print(f"[LLM Address Extraction] Extracted {len(normalized_addresses)} addresses")
             return normalized_addresses
-            
+
         except Exception as e:
             print(f"[LLM Address Extraction] Error: {e}")
             raise
-    
+
     try:
         return retry_with_backoff(
             _call_vertex_ai,
             RetryConfig(max_attempts=3, base_delay_seconds=2.0, max_delay_seconds=60.0),
-            operation_name="LLM address extraction"
+            operation_name="LLM address extraction",
         )
     except Exception as e:
         print(f"[LLM Address Extraction] Error after retries: {e}")
@@ -247,7 +245,7 @@ Return valid JSON with addresses array. Each item should have address_raw, confi
 def main(request):
     """
     HTTP Cloud Function entry point.
-    
+
     Expects JSON body:
     {
         "identity": {
@@ -260,7 +258,7 @@ def main(request):
             }
         }
     }
-    
+
     Returns geocoding data dict (consistent with other phase2 functions).
     """
     # Parse request
@@ -268,71 +266,75 @@ def main(request):
         req_data = request.get_json(silent=True) or {}
     except Exception:
         return {"error": "Invalid JSON"}, 400
-    
-    identity = req_data.get('identity') or {}
-    queries = identity.get('queries', []) if isinstance(identity, dict) else []
-    
+
+    identity = req_data.get("identity") or {}
+    queries = identity.get("queries", []) if isinstance(identity, dict) else []
+
     # Extract corporate data (optional)
-    corporate = req_data.get('corporate')
+    corporate = req_data.get("corporate")
     if corporate and isinstance(corporate, dict):
-        corporate_debug = corporate.get('debug', {})
-        full_hits_raw = corporate_debug.get('full_hits_raw', []) if isinstance(corporate_debug, dict) else []
-        last_hits_raw = corporate_debug.get('last_hits_raw', []) if isinstance(corporate_debug, dict) else []
+        corporate_debug = corporate.get("debug", {})
+        full_hits_raw = corporate_debug.get("full_hits_raw", []) if isinstance(corporate_debug, dict) else []
+        last_hits_raw = corporate_debug.get("last_hits_raw", []) if isinstance(corporate_debug, dict) else []
     else:
         corporate_debug = {}
         full_hits_raw = []
         last_hits_raw = []
-    
+
     # Log what we received
     if corporate and (full_hits_raw or last_hits_raw):
-        print(f"[AddressGeocoding] Corporate data provided: {len(full_hits_raw)} full hits, {len(last_hits_raw)} last hits")
+        print(
+            f"[AddressGeocoding] Corporate data provided: {len(full_hits_raw)} full hits, {len(last_hits_raw)} last hits"
+        )
     elif not identity or not queries:
-        print(f"[AddressGeocoding] No identity data provided, only geocoding corporate addresses")
+        print("[AddressGeocoding] No identity data provided, only geocoding corporate addresses")
     else:
-        print(f"[AddressGeocoding] No corporate data provided, only geocoding identity addresses")
-    
+        print("[AddressGeocoding] No corporate data provided, only geocoding identity addresses")
+
     # Convert corporate hits to query format (same as report generator does)
     corporate_queries = []
     if full_hits_raw:
         corporate_queries.append({"hits": full_hits_raw})
     if last_hits_raw:
         corporate_queries.append({"hits": last_hits_raw})
-    
+
     # Combine all queries
     all_queries = queries + corporate_queries
-    
+
     if not all_queries:
-        print(f"[AddressGeocoding] No queries or corporate hits provided, nothing to geocode")
+        print("[AddressGeocoding] No queries or corporate hits provided, nothing to geocode")
         return {
-            'addresses': {},
+            "addresses": {},
         }, 200
-    
-    print(f"[AddressGeocoding] Extracting addresses from {len(queries)} identity queries and {len(corporate_queries)} corporate query sets")
-    
+
+    print(
+        f"[AddressGeocoding] Extracting addresses from {len(queries)} identity queries and {len(corporate_queries)} corporate query sets"
+    )
+
     # Extract seed info if available for context
-    seed = identity.get('seed') if isinstance(identity, dict) else None
-    
+    seed = identity.get("seed") if isinstance(identity, dict) else None
+
     # Extract addresses from all queries using LLM
     addresses = extract_addresses_from_queries_llm(all_queries, seed=seed)
-    
+
     if not addresses:
-        print(f"[AddressGeocoding] No addresses found in queries")
+        print("[AddressGeocoding] No addresses found in queries")
         return {
-            'addresses': {},
+            "addresses": {},
         }, 200
-    
+
     print(f"[AddressGeocoding] Found {len(addresses)} unique addresses to geocode")
-    
+
     # Geocode addresses sequentially with rate limiting.
     # Nominatim enforces 1 request/second -- parallelism adds no throughput
     # benefit and complicates rate-limit compliance.
     geocoding_results = {}
-    
+
     for i, addr_obj in enumerate(addresses, 1):
-        addr_raw = addr_obj.get('address_raw', '')
-        
+        addr_raw = addr_obj.get("address_raw", "")
+
         print(f"[AddressGeocoding] [{i}/{len(addresses)}] Geocoding: {addr_raw[:60]}...")
-        
+
         # _nominatim_request raises on retryable errors (429, 5xx, timeouts)
         # and returns (None, None) for "no results found", so retry_with_backoff
         # correctly retries transient failures.
@@ -340,30 +342,27 @@ def main(request):
             lat, lon = retry_with_backoff(
                 lambda a=addr_raw: _nominatim_request(a),
                 RetryConfig(max_attempts=3, base_delay_seconds=2.0, max_delay_seconds=10.0),
-                operation_name=f"Geocoding: {addr_raw[:50]}"
+                operation_name=f"Geocoding: {addr_raw[:50]}",
             )
-            geocoding_results[addr_raw] = {
-                'lat': lat,
-                'lon': lon,
-                'cleaned': addr_raw,
-                'error': None
-            }
+            geocoding_results[addr_raw] = {"lat": lat, "lon": lon, "cleaned": addr_raw, "error": None}
         except Exception as e:
             geocoding_results[addr_raw] = {
-                'lat': None,
-                'lon': None,
-                'cleaned': addr_raw,
-                'error': f"Geocoding failed: {str(e)}"
+                "lat": None,
+                "lon": None,
+                "cleaned": addr_raw,
+                "error": f"Geocoding failed: {str(e)}",
             }
             print(f"[AddressGeocoding] Failed to geocode {addr_raw[:50]}: {e}")
-        
+
         # Respect Nominatim rate limit (1 req/sec) between requests
         if i < len(addresses):
             time.sleep(1.1)
-    
-    print(f"[AddressGeocoding] Complete - geocoded {len([r for r in geocoding_results.values() if r.get('lat')])} of {len(addresses)} addresses")
-    
+
+    print(
+        f"[AddressGeocoding] Complete - geocoded {len([r for r in geocoding_results.values() if r.get('lat')])} of {len(addresses)} addresses"
+    )
+
     # Return data (like other phase2 functions), not write to Firestore
     return {
-        'addresses': geocoding_results,
+        "addresses": geocoding_results,
     }, 200

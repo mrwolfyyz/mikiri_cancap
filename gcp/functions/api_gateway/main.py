@@ -14,24 +14,24 @@ Handles:
 Note: This version has hardcoded values removed for deployment flexibility.
 Configuration is loaded from environment variables set by Terraform.
 """
+
 import json
 import logging
 import os
 import re
 import uuid
-import requests
 from datetime import datetime, timedelta
 from typing import Any
 
 import functions_framework
+import requests
+from firebase_admin import auth, initialize_app
 from flask import Request, jsonify
 from google.cloud import firestore
-from google.cloud import workflows_v1
 from google.cloud.workflows import executions_v1
-from firebase_admin import initialize_app, auth
 
 # Import retry utilities (local copy for deployment)
-from retry_utils import retry_with_backoff, RetryConfig
+from retry_utils import RetryConfig, retry_with_backoff
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -69,18 +69,19 @@ CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "*")
 # Authentication & Validation Helpers
 # =============================================================================
 
+
 def verify_firebase_token(request: Request) -> tuple[str | None, dict | None]:
     """
     Verify Firebase ID token from Authorization header.
     Returns: (user_id, None) on success or (None, error_dict) on failure
     """
     auth_header = request.headers.get("Authorization", "")
-    
+
     if not auth_header.startswith("Bearer "):
         return None, {"error": "Authentication required"}
-    
+
     token = auth_header.split("Bearer ")[1]
-    
+
     try:
         decoded_token = auth.verify_id_token(token)
         user_id = decoded_token.get("uid")
@@ -159,6 +160,7 @@ def check_rate_limit(user_id: str) -> bool:
     """
     try:
         from google.cloud.firestore_v1.base_query import FieldFilter
+
         window_start = datetime.utcnow() - timedelta(seconds=RATE_LIMIT_WINDOW_SECONDS)
         recent_jobs = (
             db.collection("jobs")
@@ -178,7 +180,16 @@ def check_rate_limit(user_id: str) -> bool:
 # Data Access Helpers
 # =============================================================================
 
-def create_job(email: str, full_name: str, city: str, province: str = None, drive_folder_id: str = None, company_name: str = None, user_id: str = None) -> str:
+
+def create_job(
+    email: str,
+    full_name: str,
+    city: str,
+    province: str = None,
+    drive_folder_id: str = None,
+    company_name: str = None,
+    user_id: str = None,
+) -> str:
     """Create a new job in Firestore."""
     job_id = uuid.uuid4().hex[:12]
     now = datetime.utcnow()
@@ -205,12 +216,20 @@ def create_job(email: str, full_name: str, city: str, province: str = None, driv
         "reports_generated": False,
         "error": None,
     }
-    
+
     db.collection("jobs").document(job_id).set(job_data)
     return job_id
 
 
-def trigger_workflow(job_id: str, email: str, full_name: str, city: str, province: str, company_name: str = None, workflow_name: str = None) -> str:
+def trigger_workflow(
+    job_id: str,
+    email: str,
+    full_name: str,
+    city: str,
+    province: str,
+    company_name: str = None,
+    workflow_name: str = None,
+) -> str:
     """Trigger the investigate workflow."""
     if workflow_name is None:
         workflow_name = SKIPTRACE_WORKFLOW_NAME
@@ -233,11 +252,9 @@ def trigger_workflow(job_id: str, email: str, full_name: str, city: str, provinc
     # Add company_name if provided
     if company_name:
         workflow_input["company_name"] = company_name
-    
-    execution = executions_v1.Execution(
-        argument=json.dumps(workflow_input)
-    )
-    
+
+    execution = executions_v1.Execution(argument=json.dumps(workflow_input))
+
     response = client.create_execution(parent=parent, execution=execution)
     return response.name
 
@@ -257,32 +274,32 @@ def format_job_response(job_id: str, job: dict[str, Any]) -> dict[str, Any]:
         "status": job.get("status"),
         "created_at": job.get("created_at").isoformat() + "Z" if job.get("created_at") else None,
     }
-    
+
     if job.get("started_at"):
         response["started_at"] = job["started_at"].isoformat() + "Z"
-    
+
     if job.get("status") == "post_processing":
         response["message"] = "Investigation complete, generating reports..."
-    
+
     if job.get("status") == "complete":
         if job.get("completed_at"):
             response["completed_at"] = job["completed_at"].isoformat() + "Z"
             elapsed = (job["completed_at"] - job["created_at"]).total_seconds()
             response["elapsed_seconds"] = int(elapsed)
-        
+
         response["input"] = job.get("input")
         response["result_summary"] = job.get("result_summary")
         response["partial_failure"] = job.get("partial_failure", False)
-        
+
         if job.get("partial_failure") and job.get("errors"):
             response["errors"] = job["errors"]
-        
+
         if job.get("report_urls"):
             response["report_urls"] = job["report_urls"]
-    
+
     if job.get("status") == "failed":
         response["error"] = job.get("error", "Unknown error")
-    
+
     return response
 
 
@@ -290,21 +307,22 @@ def format_job_response(job_id: str, job: dict[str, Any]) -> dict[str, Any]:
 # CORS & Ownership Helpers
 # =============================================================================
 
+
 def get_cors_headers(request: Request):
     """Get CORS headers based on configuration and request origin."""
     origin = request.headers.get("Origin", "")
-    
+
     # If CORS_ALLOWED_ORIGINS is "*", allow all origins
     if CORS_ALLOWED_ORIGINS == "*":
         return {"Access-Control-Allow-Origin": "*"}
-    
+
     # Split comma-separated origins and check if request origin matches
     allowed_origins = [o.strip() for o in CORS_ALLOWED_ORIGINS.split(",")]
-    
+
     # If request origin is in allowed list, return it (browser requires exact match)
     if origin in allowed_origins:
         return {"Access-Control-Allow-Origin": origin}
-    
+
     # If no match and not "*", return first allowed origin as fallback
     # (or could return "*" if you want to allow all)
     return {"Access-Control-Allow-Origin": allowed_origins[0] if allowed_origins else "*"}
@@ -313,10 +331,10 @@ def get_cors_headers(request: Request):
 def verify_job_ownership(request: Request, job_id: str, headers: dict) -> tuple[dict | None, str | None, tuple | None]:
     """
     Verify job exists and caller owns it (backward-compatible).
-    
+
     For jobs with user_id: requires auth and ownership match.
     For legacy jobs without user_id: allows access without auth.
-    
+
     Returns: (job, user_id, error_response)
         - On success: (job_dict, user_id_or_None, None)
         - On error: (None, None, (jsonify_response, status_code, headers))
@@ -324,7 +342,7 @@ def verify_job_ownership(request: Request, job_id: str, headers: dict) -> tuple[
     job = get_job(job_id)
     if not job:
         return None, None, (jsonify({"error": "Job not found"}), 404, headers)
-    
+
     job_user_id = job.get("user_id")
     if job_user_id is not None:
         user_id, auth_error = verify_firebase_token(request)
@@ -333,13 +351,14 @@ def verify_job_ownership(request: Request, job_id: str, headers: dict) -> tuple[
         if job_user_id != user_id:
             return None, None, (jsonify({"error": "Unauthorized"}), 403, headers)
         return job, user_id, None
-    
+
     return job, None, None  # Legacy job, no ownership check
 
 
 # =============================================================================
 # Route Handlers
 # =============================================================================
+
 
 def handle_investigation(request: Request, headers: dict, workflow_name: str):
     """Handle POST /investigate-skiptrace and /investigate-origination."""
@@ -368,36 +387,40 @@ def handle_investigation(request: Request, headers: dict, workflow_name: str):
     province = (data.get("province") or "").strip()
     drive_folder_id = (data.get("drive_folder_id") or "").strip()
     company_name = (data.get("company_name") or "").strip()
-    
+
     # Validate
     errors = []
-    
+
     # Optional: Validate drive_folder_id format if provided
-    if drive_folder_id and (len(drive_folder_id) < 10 or len(drive_folder_id) > 100 or not drive_folder_id.replace('_', '').replace('-', '').isalnum()):
+    if drive_folder_id and (
+        len(drive_folder_id) < 10
+        or len(drive_folder_id) > 100
+        or not drive_folder_id.replace("_", "").replace("-", "").isalnum()
+    ):
         errors.append({"field": "drive_folder_id", "message": "Invalid Drive folder ID format"})
-    
+
     valid, msg = validate_email(email)
     if not valid:
         errors.append({"field": "email", "message": msg})
-    
+
     valid, msg = validate_full_name(full_name)
     if not valid:
         errors.append({"field": "full_name", "message": msg})
-    
+
     valid, msg = validate_city(city)
     if not valid:
         errors.append({"field": "city", "message": msg})
-    
+
     valid, msg = validate_province(province)
     if not valid:
         errors.append({"field": "province", "message": msg})
-    
+
     if not company_name:
         errors.append({"field": "company_name", "message": "Company name is required"})
-    
+
     if errors:
         return jsonify({"error": "validation_error", "details": errors}), 400, headers
-    
+
     # Create job with user_id (initial status "triggering" until workflow starts)
     job_id = create_job(email, full_name, city, province, drive_folder_id, company_name, user_id=user_id)
 
@@ -407,10 +430,9 @@ def handle_investigation(request: Request, headers: dict, workflow_name: str):
         db.collection("jobs").document(job_id).update({"status": "pending"})
     except Exception as e:
         # Update job as failed
-        db.collection("jobs").document(job_id).update({
-            "status": "failed",
-            "error": f"Failed to start workflow: {str(e)}"
-        })
+        db.collection("jobs").document(job_id).update(
+            {"status": "failed", "error": f"Failed to start workflow: {str(e)}"}
+        )
         return jsonify({"error": f"Failed to start investigation: {str(e)}"}), 500, headers
 
     return jsonify({"job_id": job_id}), 202, headers
@@ -436,7 +458,7 @@ def proxy_chat_request(request: Request, headers: dict, target_url: str, service
         data = request.get_json() or {}
     except Exception:
         return jsonify({"error": "Invalid JSON"}), 400, headers
-    
+
     # If job_id is provided, verify ownership
     job_id = data.get("job_id")
     if job_id:
@@ -445,22 +467,22 @@ def proxy_chat_request(request: Request, headers: dict, target_url: str, service
             return jsonify({"error": "Job not found"}), 404, headers
         if job.get("user_id") != user_id:
             return jsonify({"error": "Unauthorized"}), 403, headers
-    
+
     def _call_service():
         response = requests.post(
             target_url,
             json=data,
             headers={"Content-Type": "application/json"},
-            timeout=120  # Handle longer conversations with more history
+            timeout=120,  # Handle longer conversations with more history
         )
         response.raise_for_status()
         return response
-    
+
     try:
         response = retry_with_backoff(
             _call_service,
             RetryConfig(max_attempts=2, base_delay_seconds=1.0, max_delay_seconds=5.0),
-            operation_name=f"{service_name} API call"
+            operation_name=f"{service_name} API call",
         )
         return jsonify(response.json()), response.status_code, headers
     except requests.exceptions.RequestException as e:
@@ -471,84 +493,87 @@ def proxy_chat_request(request: Request, headers: dict, target_url: str, service
 # Main Entry Point
 # =============================================================================
 
+
 @functions_framework.http
 def main(request: Request):
     """Main HTTP handler."""
     # Handle CORS preflight
     if request.method == "OPTIONS":
         headers = get_cors_headers(request)
-        headers.update({
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-            "Access-Control-Max-Age": "3600",
-        })
+        headers.update(
+            {
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization",
+                "Access-Control-Max-Age": "3600",
+            }
+        )
         return ("", 204, headers)
-    
+
     headers = get_cors_headers(request)
-    
+
     path = request.path
-    
+
     # POST /investigate-skiptrace
     if request.method == "POST" and path == "/investigate-skiptrace":
         return handle_investigation(request, headers, SKIPTRACE_WORKFLOW_NAME)
-    
+
     # POST /investigate-origination
     if request.method == "POST" and path == "/investigate-origination":
         return handle_investigation(request, headers, ORIGINATION_WORKFLOW_NAME)
-    
+
     # GET /jobs/{job_id}
     if request.method == "GET" and path.startswith("/jobs/"):
         job_id = path.split("/jobs/")[-1].strip("/")
-        
+
         if not job_id:
             return jsonify({"error": "Job ID required"}), 400, headers
-        
+
         job, _, error_response = verify_job_ownership(request, job_id, headers)
         if error_response:
             return error_response
-        
+
         return jsonify(format_job_response(job_id, job)), 200, headers
-    
+
     # GET /get_markdown/{job_id}
     if request.method == "GET" and path.startswith("/get_markdown/"):
         job_id = path.split("/get_markdown/")[-1].strip("/")
-        
+
         if not job_id:
             return jsonify({"error": "Job ID required"}), 400, headers
-        
+
         try:
             job, _, error_response = verify_job_ownership(request, job_id, headers)
             if error_response:
                 return error_response
-            
+
             markdown_reports = job.get("markdown_reports", {})
-            
+
             if not markdown_reports:
                 return jsonify({"error": "Markdown reports not available for this job"}), 404, headers
-            
+
             # Return all available markdown reports (works for both skip trace and origination)
             # Skip trace has: identity, skiptrace
             # Origination has: summary, identity, corporate, litigation, regulator
             return jsonify(markdown_reports), 200, headers
         except Exception as e:
             return jsonify({"error": f"Failed to retrieve markdown: {str(e)}"}), 500, headers
-    
+
     # POST /address-verification
     if request.method == "POST" and path == "/address-verification":
         # Verify authentication
         user_id, auth_error = verify_firebase_token(request)
         if auth_error:
             return jsonify(auth_error), 401, headers
-        
+
         # Check that ADDRESS_VERIFICATION_URL is configured
         if not ADDRESS_VERIFICATION_URL:
             return jsonify({"error": "Address verification service not configured"}), 500, headers
-        
+
         try:
             data = request.get_json() or {}
         except Exception:
             return jsonify({"error": "Invalid JSON"}), 400, headers
-        
+
         # Accept either separate fields or combined address (for backward compatibility)
         street_address = (data.get("street_address") or "").strip()
         suite_unit = (data.get("suite_unit") or "").strip()
@@ -557,13 +582,13 @@ def main(request: Request):
         postal_code = (data.get("postal_code") or "").strip()
         address = (data.get("address") or "").strip()
         business_name = (data.get("business_name") or "").strip()
-        
+
         # Validate required fields
         if not address and not (street_address and city and province):
             return jsonify({"error": "address is required (or provide street_address, city, province)"}), 400, headers
         if not business_name:
             return jsonify({"error": "business_name is required"}), 400, headers
-        
+
         # Build request payload - forward all fields to address_verification function
         payload = {"business_name": business_name}
         if street_address and city and province:
@@ -578,75 +603,75 @@ def main(request: Request):
         else:
             # Fallback to combined address
             payload["address"] = address
-        
+
         def _call_address_verification():
             response = requests.post(
                 ADDRESS_VERIFICATION_URL,
                 json=payload,
                 headers={"Content-Type": "application/json"},
-                timeout=60  # Address verification may take longer due to LLM analysis
+                timeout=60,  # Address verification may take longer due to LLM analysis
             )
             response.raise_for_status()
             return response
-        
+
         try:
             response = retry_with_backoff(
                 _call_address_verification,
                 RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=10.0),
-                operation_name="Address verification API call"
+                operation_name="Address verification API call",
             )
             return jsonify(response.json()), response.status_code, headers
         except requests.exceptions.RequestException as e:
             return jsonify({"error": f"Address verification failed: {str(e)}"}), 500, headers
-    
+
     # POST /chat_handler
     if request.method == "POST" and path == "/chat_handler":
         return proxy_chat_request(request, headers, CHAT_HANDLER_URL, "Chat handler")
-    
+
     # POST /chat_handler_origination
     if request.method == "POST" and path == "/chat_handler_origination":
         return proxy_chat_request(request, headers, CHAT_HANDLER_ORIGINATION_URL, "Chat handler origination")
-    
+
     # POST /jobs/{job_id}/feedback
     if request.method == "POST" and "/jobs/" in path and path.endswith("/feedback"):
         # Extract job_id from path: /jobs/{job_id}/feedback
         path_parts = path.strip("/").split("/")
         if len(path_parts) != 3 or path_parts[0] != "jobs" or path_parts[2] != "feedback":
             return jsonify({"error": "Invalid feedback path"}), 400, headers
-        
+
         job_id = path_parts[1]
         if not job_id:
             return jsonify({"error": "Job ID required"}), 400, headers
-        
+
         # Verify authentication (always required for feedback - need user_id)
         user_id, auth_error = verify_firebase_token(request)
         if auth_error:
             return jsonify(auth_error), 401, headers
-        
+
         # Get job and verify ownership
         job = get_job(job_id)
         if not job:
             return jsonify({"error": "Job not found"}), 404, headers
-        
+
         job_user_id = job.get("user_id")
         if job_user_id is not None and job_user_id != user_id:
             return jsonify({"error": "Unauthorized"}), 403, headers
-        
+
         # Parse and validate request body
         try:
             data = request.get_json() or {}
         except Exception:
             return jsonify({"error": "Invalid JSON"}), 400, headers
-        
+
         rating = (data.get("rating") or "").strip()
         comment = (data.get("comment") or "").strip()
-        
+
         if rating not in ("positive", "negative"):
             return jsonify({"error": "rating must be 'positive' or 'negative'"}), 400, headers
-        
+
         if len(comment) > 1000:
             return jsonify({"error": "comment must be 1000 characters or fewer"}), 400, headers
-        
+
         # Write feedback to the job document
         try:
             feedback_data = {
@@ -659,14 +684,20 @@ def main(request: Request):
             return jsonify({"status": "ok"}), 200, headers
         except Exception as e:
             return jsonify({"error": f"Failed to save feedback: {str(e)}"}), 500, headers
-    
+
     # Health check
     if request.method == "GET" and path in ("/health", "/"):
-        return jsonify({
-            "status": "healthy",
-            "service": "api_gateway",
-            "project": PROJECT_ID or "not_configured",
-            "region": LOCATION
-        }), 200, headers
-    
+        return (
+            jsonify(
+                {
+                    "status": "healthy",
+                    "service": "api_gateway",
+                    "project": PROJECT_ID or "not_configured",
+                    "region": LOCATION,
+                }
+            ),
+            200,
+            headers,
+        )
+
     return jsonify({"error": "Not found"}), 404, headers

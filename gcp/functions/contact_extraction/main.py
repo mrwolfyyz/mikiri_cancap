@@ -9,9 +9,9 @@ This function is called during Phase 2 of both skip trace and origination workfl
 running in parallel with domain_enrichment and address_geocoding.
 """
 
-import functions_framework
 import traceback
 
+import functions_framework
 from contact_extraction_utils import extract_contact_info_llm
 
 
@@ -59,9 +59,11 @@ def main(request):
 
     try:
         contacts = extract_contact_info_llm(queries, seed, exclude_email)
-        print(f"[ContactExtraction] Complete - returning {len(contacts.get('phones', []))} phones, {len(contacts.get('emails', []))} emails, {len(contacts.get('addresses', []))} addresses")
+        print(
+            f"[ContactExtraction] Complete - returning {len(contacts.get('phones', []))} phones, {len(contacts.get('emails', []))} emails, {len(contacts.get('addresses', []))} addresses"
+        )
 
-        return {"contacts": contacts}, 200, {'Content-Type': 'application/json'}
+        return {"contacts": contacts}, 200, {"Content-Type": "application/json"}
 
     except Exception as e:
         error_msg = str(e)

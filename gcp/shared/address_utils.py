@@ -20,15 +20,15 @@ def clean_address_for_geocoding(address: str) -> str:
     """
     # Remove common prefixes
     patterns_to_remove = [
-        r'^.*?©.*?Reserved\.\s*',  # Copyright text
-        r'^.*?\d{4}\s+.*?Reserved\.\s*',  # Year + Reserved
-        r'^.*?HEAD OFFICE\.\s*',  # HEAD OFFICE label
-        r'^.*?OFFICE\.\s*',  # OFFICE label
-        r'^.*?Contact:\s*',  # Contact: prefix
+        r"^.*?©.*?Reserved\.\s*",  # Copyright text
+        r"^.*?\d{4}\s+.*?Reserved\.\s*",  # Year + Reserved
+        r"^.*?HEAD OFFICE\.\s*",  # HEAD OFFICE label
+        r"^.*?OFFICE\.\s*",  # OFFICE label
+        r"^.*?Contact:\s*",  # Contact: prefix
     ]
 
     for pattern in patterns_to_remove:
-        address = re.sub(pattern, '', address, flags=re.IGNORECASE)
+        address = re.sub(pattern, "", address, flags=re.IGNORECASE)
 
     # Trim and clean up
     address = address.strip()

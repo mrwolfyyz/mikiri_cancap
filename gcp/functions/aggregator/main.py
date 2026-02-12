@@ -8,10 +8,10 @@ function fails, its result is set to null and an error is recorded,
 but aggregation continues.
 """
 
-import functions_framework
-import json
 import traceback
-from typing import Dict, Any, List, Optional
+from typing import Any
+
+import functions_framework
 
 
 def sanitize_for_json(obj: Any) -> Any:
@@ -26,12 +26,12 @@ def sanitize_for_json(obj: Any) -> Any:
         return None
     elif isinstance(obj, bytes):
         try:
-            return obj.decode('utf-8', errors='replace')
+            return obj.decode("utf-8", errors="replace")
         except Exception:
             return str(obj)
     elif isinstance(obj, bytearray):
         try:
-            return obj.decode('utf-8', errors='replace')
+            return obj.decode("utf-8", errors="replace")
         except Exception:
             return str(obj)
     elif isinstance(obj, dict):
@@ -40,12 +40,12 @@ def sanitize_for_json(obj: Any) -> Any:
         return [sanitize_for_json(item) for item in obj]
     elif isinstance(obj, (str, int, float, bool)):
         return obj
-    elif hasattr(obj, '__dict__'):
+    elif hasattr(obj, "__dict__"):
         return sanitize_for_json(obj.__dict__)
     else:
         try:
-            if hasattr(obj, 'decode') and callable(getattr(obj, 'decode')):
-                return obj.decode('utf-8', errors='replace')
+            if hasattr(obj, "decode") and callable(obj.decode):
+                return obj.decode("utf-8", errors="replace")
         except Exception:
             pass
         try:
@@ -55,9 +55,9 @@ def sanitize_for_json(obj: Any) -> Any:
 
 
 def compute_result_summary(
-    identity: Dict[str, Any],
-    errors: Dict[str, str],
-) -> Dict[str, Any]:
+    identity: dict[str, Any],
+    errors: dict[str, str],
+) -> dict[str, Any]:
     """
     Compute high-level result summary from identity and enrichment results.
 
@@ -66,7 +66,7 @@ def compute_result_summary(
     - headline: High-level summary text
     - bullets: List of key findings
     """
-    bullets: List[str] = []
+    bullets: list[str] = []
     has_partial_failure = bool(errors)
 
     # Check identity status
@@ -95,12 +95,12 @@ def compute_result_summary(
 
 
 def aggregate(
-    identity: Dict[str, Any],
-    domain_enrichment: Optional[Dict[str, Any]] = None,
-    address_geocoding: Optional[Dict[str, Any]] = None,
-    contact_extraction: Optional[Dict[str, Any]] = None,
-    errors: Optional[Dict[str, str]] = None,
-) -> Dict[str, Any]:
+    identity: dict[str, Any],
+    domain_enrichment: dict[str, Any] | None = None,
+    address_geocoding: dict[str, Any] | None = None,
+    contact_extraction: dict[str, Any] | None = None,
+    errors: dict[str, str] | None = None,
+) -> dict[str, Any]:
     """
     Aggregate identity and phase2 enrichment results into final result.
 
@@ -113,7 +113,7 @@ def aggregate(
     print(f"[Aggregator] {len(errors)} error keys, {len(final_errors)} actual errors")
 
     # Build final result structure
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "identity": identity,
     }
 
@@ -133,11 +133,7 @@ def aggregate(
     if contact_extraction:
         enrichment["contacts"] = contact_extraction.get("contacts", {})
     else:
-        enrichment["contacts"] = {
-            "phones": [],
-            "emails": [],
-            "addresses": []
-        }
+        enrichment["contacts"] = {"phones": [], "emails": [], "addresses": []}
 
     result["enrichment"] = enrichment
 
@@ -214,7 +210,7 @@ def main(request):
         )
 
         print("[Aggregator] Complete - returning JSON object")
-        return result_dict, 200, {'Content-Type': 'application/json'}
+        return result_dict, 200, {"Content-Type": "application/json"}
 
     except Exception as e:
         error_msg = str(e)

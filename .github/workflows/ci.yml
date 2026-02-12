@@ -37,8 +37,14 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Check Python syntax
-        run: python -m py_compile gcp/shared/*.py
+      - name: Install Ruff
+        run: pip install ruff
+
+      - name: Ruff lint check
+        run: ruff check gcp/ tests/
+
+      - name: Ruff format check
+        run: ruff format --check gcp/ tests/
 
   terraform-validate:
     runs-on: ubuntu-latest

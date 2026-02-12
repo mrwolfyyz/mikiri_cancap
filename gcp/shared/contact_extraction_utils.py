@@ -16,13 +16,13 @@ Dependencies:
 import json
 import os
 import re
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 # Vertex AI imports
 import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
-from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError
 from address_utils import clean_address_for_geocoding
+from retry_utils import EmptyLLMResponseError, RetryConfig, retry_with_backoff
+from vertexai.generative_models import GenerationConfig, GenerativeModel
 
 # -------------------------
 # Vertex AI Config
@@ -45,15 +45,12 @@ EXTRACTION_SCHEMA = {
                 "properties": {
                     "number_raw": {"type": "string"},
                     "number_digits": {"type": "string"},
-                    "confidence": {
-                        "type": "string",
-                        "enum": ["high", "medium", "low"]
-                    },
+                    "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
                     "source_url": {"type": "string"},
-                    "snippet": {"type": "string"}
+                    "snippet": {"type": "string"},
                 },
-                "required": ["number_raw", "number_digits", "confidence", "source_url"]
-            }
+                "required": ["number_raw", "number_digits", "confidence", "source_url"],
+            },
         },
         "emails": {
             "type": "array",
@@ -61,15 +58,12 @@ EXTRACTION_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "email": {"type": "string"},
-                    "confidence": {
-                        "type": "string",
-                        "enum": ["high", "medium", "low"]
-                    },
+                    "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
                     "source_url": {"type": "string"},
-                    "snippet": {"type": "string"}
+                    "snippet": {"type": "string"},
                 },
-                "required": ["email", "confidence", "source_url"]
-            }
+                "required": ["email", "confidence", "source_url"],
+            },
         },
         "addresses": {
             "type": "array",
@@ -77,26 +71,21 @@ EXTRACTION_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "address_raw": {"type": "string"},
-                    "confidence": {
-                        "type": "string",
-                        "enum": ["high", "medium", "low"]
-                    },
+                    "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
                     "source_url": {"type": "string"},
-                    "snippet": {"type": "string"}
+                    "snippet": {"type": "string"},
                 },
-                "required": ["address_raw", "confidence", "source_url"]
-            }
-        }
+                "required": ["address_raw", "confidence", "source_url"],
+            },
+        },
     },
-    "required": ["phones", "emails", "addresses"]
+    "required": ["phones", "emails", "addresses"],
 }
 
 
 def extract_contact_info_llm(
-    queries: List[Dict[str, Any]],
-    seed: Dict[str, Any],
-    exclude_email: Optional[str] = None
-) -> Dict[str, List[Dict[str, Any]]]:
+    queries: list[dict[str, Any]], seed: dict[str, Any], exclude_email: str | None = None
+) -> dict[str, list[dict[str, Any]]]:
     """
     Extract phone numbers, emails, and addresses from query hits using Vertex AI Gemini.
 
@@ -160,10 +149,10 @@ def extract_contact_info_llm(
     user_prompt = f"""Extract contact information from the following search results for:
 
 Target Person:
-- Name: {seed.get('full_name', '')}
-- Email: {seed.get('email', '')}
-- City: {seed.get('last_known_city', 'N/A')}
-- Company: {seed.get('company_name', 'N/A') if seed.get('company_name') else 'N/A'}
+- Name: {seed.get("full_name", "")}
+- Email: {seed.get("email", "")}
+- City: {seed.get("last_known_city", "N/A")}
+- Company: {seed.get("company_name", "N/A") if seed.get("company_name") else "N/A"}
 
 Search Results ({len(queries)} queries, {total_hits} total hits):
 {json.dumps(queries, indent=2)}
@@ -182,7 +171,7 @@ Return valid JSON with phones, emails, and addresses arrays. Each item should ha
                     temperature=0.1,
                     response_mime_type="application/json",
                     response_schema=EXTRACTION_SCHEMA,
-                )
+                ),
             )
 
             if not response:
@@ -216,9 +205,9 @@ Return valid JSON with phones, emails, and addresses arrays. Each item should ha
                 # that should be retried (similar to EmptyLLMResponseError)
                 error_msg = str(e).lower()
                 if "expecting value" in error_msg or "empty" in error_msg or len(content.strip()) == 0:
-                    raise EmptyLLMResponseError(f"JSON decode error (likely empty response): {e}")
+                    raise EmptyLLMResponseError(f"JSON decode error (likely empty response): {e}") from e
                 # For other JSON decode errors (malformed JSON), still retry as it might be transient
-                raise EmptyLLMResponseError(f"JSON decode error (malformed response): {e}")
+                raise EmptyLLMResponseError(f"JSON decode error (malformed response): {e}") from e
 
             # Validate structure - ensure all required keys exist and are lists
             for key in ("phones", "emails", "addresses"):
@@ -245,13 +234,15 @@ Return valid JSON with phones, emails, and addresses arrays. Each item should ha
                 if confidence not in ["high", "medium", "low"]:
                     confidence = "medium"
 
-                normalized_phones.append({
-                    "number_raw": number_raw,
-                    "number_digits": number_digits,
-                    "confidence": confidence,
-                    "source_url": phone.get("source_url", ""),
-                    "snippet": phone.get("snippet", "").strip()
-                })
+                normalized_phones.append(
+                    {
+                        "number_raw": number_raw,
+                        "number_digits": number_digits,
+                        "confidence": confidence,
+                        "source_url": phone.get("source_url", ""),
+                        "snippet": phone.get("snippet", "").strip(),
+                    }
+                )
 
             # Filter excluded email and normalize emails
             normalized_emails = []
@@ -279,12 +270,14 @@ Return valid JSON with phones, emails, and addresses arrays. Each item should ha
                 if confidence not in ["high", "medium", "low"]:
                     confidence = "medium"
 
-                normalized_emails.append({
-                    "email": email,
-                    "confidence": confidence,
-                    "source_url": email_obj.get("source_url", ""),
-                    "snippet": email_obj.get("snippet", "").strip()
-                })
+                normalized_emails.append(
+                    {
+                        "email": email,
+                        "confidence": confidence,
+                        "source_url": email_obj.get("source_url", ""),
+                        "snippet": email_obj.get("snippet", "").strip(),
+                    }
+                )
 
             # Normalize addresses
             normalized_addresses = []
@@ -303,9 +296,15 @@ Return valid JSON with phones, emails, and addresses arrays. Each item should ha
                 # Validate: Check if address contains street information
                 # Skip if it's just a city/state/province (no street number or street name pattern)
                 # Look for street number pattern (digit at start) or street name indicators
-                has_street_number = bool(re.search(r'^\d{1,6}\s+[A-Za-z]', addr_cleaned))
+                has_street_number = bool(re.search(r"^\d{1,6}\s+[A-Za-z]", addr_cleaned))
                 # Check for common street name patterns (Avenue, Street, Road, etc. preceded by text)
-                has_street_name = bool(re.search(r'\b([A-Za-z0-9.\-\s]+?(?:Avenue|Street|Road|Lane|Drive|Boulevard|Way|Court|Place|Crescent|Circle|Terrace|Parkway|Highway|Ave|St|Rd|Dr|Blvd|Ln|Way|Ct|Pl|Cres|Cir|Terr|Pkwy|Hwy))\b', addr_cleaned, re.IGNORECASE))
+                has_street_name = bool(
+                    re.search(
+                        r"\b([A-Za-z0-9.\-\s]+?(?:Avenue|Street|Road|Lane|Drive|Boulevard|Way|Court|Place|Crescent|Circle|Terrace|Parkway|Highway|Ave|St|Rd|Dr|Blvd|Ln|Way|Ct|Pl|Cres|Cir|Terr|Pkwy|Hwy))\b",
+                        addr_cleaned,
+                        re.IGNORECASE,
+                    )
+                )
 
                 if not has_street_number and not has_street_name:
                     # This appears to be a city-only address, skip it
@@ -313,8 +312,8 @@ Return valid JSON with phones, emails, and addresses arrays. Each item should ha
                     continue
 
                 addr_normalized = addr_cleaned.lower().strip()
-                addr_normalized = re.sub(r',', ' ', addr_normalized)
-                addr_normalized = re.sub(r'\s+', ' ', addr_normalized)
+                addr_normalized = re.sub(r",", " ", addr_normalized)
+                addr_normalized = re.sub(r"\s+", " ", addr_normalized)
 
                 if addr_normalized in seen_addresses:
                     continue
@@ -325,18 +324,22 @@ Return valid JSON with phones, emails, and addresses arrays. Each item should ha
                 if confidence not in ["high", "medium", "low"]:
                     confidence = "medium"
 
-                normalized_addresses.append({
-                    "address_raw": addr_cleaned,
-                    "confidence": confidence,
-                    "source_url": addr_obj.get("source_url", ""),
-                    "snippet": addr_obj.get("snippet", "").strip()
-                })
+                normalized_addresses.append(
+                    {
+                        "address_raw": addr_cleaned,
+                        "confidence": confidence,
+                        "source_url": addr_obj.get("source_url", ""),
+                        "snippet": addr_obj.get("snippet", "").strip(),
+                    }
+                )
 
             result["phones"] = normalized_phones
             result["emails"] = normalized_emails
             result["addresses"] = normalized_addresses
 
-            print(f"[LLM Extraction] Extracted {len(normalized_phones)} phones, {len(normalized_emails)} emails, {len(normalized_addresses)} addresses")
+            print(
+                f"[LLM Extraction] Extracted {len(normalized_phones)} phones, {len(normalized_emails)} emails, {len(normalized_addresses)} addresses"
+            )
             return result
 
         except Exception as e:
@@ -347,7 +350,7 @@ Return valid JSON with phones, emails, and addresses arrays. Each item should ha
         return retry_with_backoff(
             _call_vertex_ai,
             RetryConfig(max_attempts=3, base_delay_seconds=2.0, max_delay_seconds=60.0),
-            operation_name="LLM contact info extraction"
+            operation_name="LLM contact info extraction",
         )
     except Exception as e:
         print(f"[LLM Extraction] Error after retries: {e}")

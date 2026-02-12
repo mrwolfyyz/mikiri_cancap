@@ -11,24 +11,25 @@ Performs:
 Returns identity_bundle for use by Phase 2 functions.
 """
 
-import functions_framework
-import os
 import json
+import os
 import re
 import traceback
-import requests
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, asdict
-from typing import List, Dict, Any, Tuple, Optional
+from dataclasses import asdict, dataclass
+from typing import Any
 from urllib.parse import urlparse
-from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError, RateLimitExhaustedError
+
+import functions_framework
+import requests
 
 # Google Gen AI SDK imports (for Gemini with Google Search grounding support)
 from google import genai
-from google.genai.types import GenerateContentConfig, Tool, GoogleSearch, HttpOptions
 
 # Vertex AI Search import (module-level for faster warm invocations)
 from google.cloud import discoveryengine_v1 as discoveryengine
+from google.genai.types import GenerateContentConfig, GoogleSearch, HttpOptions, Tool
+from retry_utils import EmptyLLMResponseError, RateLimitExhaustedError, RetryConfig, retry_with_backoff
 
 # -------------------------
 # Config
@@ -89,29 +90,29 @@ def extract_domain(url: str) -> str:
         return ""
 
 
-def generate_name_variations(full_name: str) -> Tuple[str, Optional[str]]:
+def generate_name_variations(full_name: str) -> tuple[str, str | None]:
     """
     Generate name variations for search queries.
-    
+
     If the name has 3+ parts (indicating a middle name), returns both:
     - The full name
     - A variation with middle and last name only
-    
+
     Args:
         full_name: The full name string
-        
+
     Returns:
         Tuple of (full_name, variation) where variation is None if <3 parts
     """
     if not full_name:
         return full_name, None
-    
+
     parts = [p.strip() for p in full_name.split() if p.strip()]
-    
+
     # If less than 3 parts, no variation needed
     if len(parts) < 3:
         return full_name, None
-    
+
     # For 3+ parts, create middle+last variation
     # Use second-to-last and last parts (middle and last name)
     middle_last = f"{parts[-2]} {parts[-1]}"
@@ -122,7 +123,7 @@ def generate_name_variations(full_name: str) -> Tuple[str, Optional[str]]:
 # Email domain detection (shared utilities from gcp/shared/domain_utils.py)
 # -------------------------
 
-from domain_utils import COMMON_CANADIAN_EMAIL_DOMAINS, extract_email_domain, is_personal_email_domain
+from domain_utils import extract_email_domain, is_personal_email_domain
 
 
 def is_business_email(email: str) -> bool:
@@ -152,7 +153,7 @@ def _get_search_client():
     return _search_client
 
 
-def _vertex_ai_search(engine_id: str, query: str, num: int = 5, label: str = "Search") -> List[Dict[str, str]]:
+def _vertex_ai_search(engine_id: str, query: str, num: int = 5, label: str = "Search") -> list[dict[str, str]]:
     """
     Core Vertex AI Search implementation shared by precision, recall, and LinkedIn searches.
 
@@ -176,14 +177,10 @@ def _vertex_ai_search(engine_id: str, query: str, num: int = 5, label: str = "Se
         )
 
         content_search_spec = discoveryengine.SearchRequest.ContentSearchSpec(
-            snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
-                return_snippet=True
-            )
+            snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(return_snippet=True)
         )
 
-        relevance_score_spec = discoveryengine.SearchRequest.RelevanceScoreSpec(
-            return_relevance_score=True
-        )
+        relevance_score_spec = discoveryengine.SearchRequest.RelevanceScoreSpec(return_relevance_score=True)
 
         request = discoveryengine.SearchRequest(
             serving_config=serving_config,
@@ -211,12 +208,14 @@ def _vertex_ai_search(engine_id: str, query: str, num: int = 5, label: str = "Se
             # Note: relevance_score is always 0.0 for basic website indexing
             relevance_score = 0.0
 
-            results.append({
-                "url": url,
-                "title": title,
-                "snippet": snippet,
-                "relevance_score": relevance_score,
-            })
+            results.append(
+                {
+                    "url": url,
+                    "title": title,
+                    "snippet": snippet,
+                    "relevance_score": relevance_score,
+                }
+            )
 
         print(f"[Vertex AI Search {label}] Returning {len(results)} results")
         return results
@@ -227,7 +226,7 @@ def _vertex_ai_search(engine_id: str, query: str, num: int = 5, label: str = "Se
         return []
 
 
-def vertex_ai_search_linkedin(query: str, num: int = 5) -> List[Dict[str, str]]:
+def vertex_ai_search_linkedin(query: str, num: int = 5) -> list[dict[str, str]]:
     """Search LinkedIn profiles using Vertex AI Search."""
     engine_id = os.environ.get("LINKEDIN_ENGINE_ID", "linkedin-search-engine")
     return _vertex_ai_search(engine_id, query, num, label="LinkedIn")
@@ -259,84 +258,83 @@ def transform_pse_query_to_natural_language(pse_query: str) -> str:
     """
     # Remove intitle: and intext: operators, keep content
     # Handle quoted content: intitle:"content" -> content
-    query = re.sub(r'intitle:"([^"]+)"', r'\1', pse_query)
+    query = re.sub(r'intitle:"([^"]+)"', r"\1", pse_query)
     # Handle unquoted content: intitle:word -> word
-    query = re.sub(r'intitle:(\S+)', r'\1', query)
+    query = re.sub(r"intitle:(\S+)", r"\1", query)
     # Handle intext: with quotes: intext:"content" -> content
-    query = re.sub(r'intext:"([^"]+)"', r'\1', query)
+    query = re.sub(r'intext:"([^"]+)"', r"\1", query)
     # Handle intext: without quotes: intext:word -> word
-    query = re.sub(r'intext:(\S+)', r'\1', query)
+    query = re.sub(r"intext:(\S+)", r"\1", query)
     # Remove any remaining quotes (standalone quoted phrases)
-    query = re.sub(r'"([^"]+)"', r'\1', query)
+    query = re.sub(r'"([^"]+)"', r"\1", query)
     # Clean up extra whitespace (multiple spaces, tabs, etc.)
-    query = ' '.join(query.split())
+    query = " ".join(query.split())
     return query
 
 
-def vertex_ai_search_precision(query: str, num: int = 5) -> List[Dict[str, str]]:
+def vertex_ai_search_precision(query: str, num: int = 5) -> list[dict[str, str]]:
     """Search social platforms using Vertex AI Search.
     Transforms search operators (intitle:, intext:) to natural language if present."""
     # Only transform if query contains search operators
-    if 'intitle:' in query or 'intext:' in query:
+    if "intitle:" in query or "intext:" in query:
         query = transform_pse_query_to_natural_language(query)
     engine_id = os.environ.get("PRECISION_ENGINE_ID", "precision-search-engine")
     return _vertex_ai_search(engine_id, query, num, label="Precision")
 
 
-def vertex_ai_search_recall(query: str, num: int = 5) -> List[Dict[str, str]]:
+def vertex_ai_search_recall(query: str, num: int = 5) -> list[dict[str, str]]:
     """Search lifestyle/hobby sites using Vertex AI Search.
     Transforms search operators (intitle:, intext:) to natural language if present."""
-    if 'intitle:' in query or 'intext:' in query:
+    if "intitle:" in query or "intext:" in query:
         query = transform_pse_query_to_natural_language(query)
     engine_id = os.environ.get("RECALL_ENGINE_ID", "recall-search-engine")
     return _vertex_ai_search(engine_id, query, num, label="Recall")
 
 
-def extract_grounding_metadata(response) -> Dict[str, Any]:
+def extract_grounding_metadata(response) -> dict[str, Any]:
     """
     Extract grounding metadata from Google Gen AI SDK response for audit trail.
     """
-    metadata = {
-        "grounding_sources": [],
-        "search_queries": [],
-        "search_entry_point": ""
-    }
+    metadata = {"grounding_sources": [], "search_queries": [], "search_entry_point": ""}
 
     try:
-        if hasattr(response, 'candidates') and response.candidates:
+        if hasattr(response, "candidates") and response.candidates:
             candidate = response.candidates[0]
 
-            if hasattr(candidate, 'grounding_metadata'):
+            if hasattr(candidate, "grounding_metadata"):
                 grounding = candidate.grounding_metadata
 
-                if hasattr(grounding, 'web_search_queries') and grounding.web_search_queries is not None:
+                if hasattr(grounding, "web_search_queries") and grounding.web_search_queries is not None:
                     metadata["search_queries"] = list(grounding.web_search_queries)
 
-                if hasattr(grounding, 'grounding_chunks') and grounding.grounding_chunks is not None:
+                if hasattr(grounding, "grounding_chunks") and grounding.grounding_chunks is not None:
                     for chunk in grounding.grounding_chunks:
-                        if hasattr(chunk, 'web'):
-                            metadata["grounding_sources"].append({
-                                "url": getattr(chunk.web, 'uri', ''),
-                                "title": getattr(chunk.web, 'title', ''),
-                                "snippet": ""
-                            })
+                        if hasattr(chunk, "web"):
+                            metadata["grounding_sources"].append(
+                                {
+                                    "url": getattr(chunk.web, "uri", ""),
+                                    "title": getattr(chunk.web, "title", ""),
+                                    "snippet": "",
+                                }
+                            )
 
-                if hasattr(grounding, 'search_entry_point'):
+                if hasattr(grounding, "search_entry_point"):
                     entry_point = grounding.search_entry_point
-                    if hasattr(entry_point, 'rendered_content'):
+                    if hasattr(entry_point, "rendered_content"):
                         metadata["search_entry_point"] = entry_point.rendered_content
-                    elif hasattr(entry_point, 'html'):
+                    elif hasattr(entry_point, "html"):
                         metadata["search_entry_point"] = entry_point.html
 
     except Exception as e:
         print(f"[Grounding Metadata] Error extracting metadata: {e}")
         import traceback
+
         traceback.print_exc()
 
     return metadata
 
 
-def vertex_ai_score(seed: Dict[str, Any], queries_payload: List[Dict[str, Any]]) -> Dict[str, Any]:
+def vertex_ai_score(seed: dict[str, Any], queries_payload: list[dict[str, Any]]) -> dict[str, Any]:
     """Phase 1: Identity resolver LLM call using Gemini with Google Search grounding."""
     if not GCP_PROJECT:
         return {"error": "GCP_PROJECT not set"}
@@ -374,7 +372,7 @@ Search Results from {len(queries_payload)} queries:
 {json.dumps(queries_payload, indent=2)}
 
 Return valid JSON with all required fields."""
-    
+
     # Initialize Google Gen AI client once, outside retry closure.
     # This avoids re-creating the client (and its gRPC channel) on every retry attempt.
     # Timeout of 60s ensures slow/degraded Gemini responses fail fast so retry logic
@@ -391,7 +389,7 @@ Return valid JSON with all required fields."""
             # Configure Google Search grounding tool
             google_search_tool = Tool(google_search=GoogleSearch())
 
-            print(f"[Vertex AI] Calling Gemini 2.5 Flash with Google Search grounding...")
+            print("[Vertex AI] Calling Gemini 2.5 Flash with Google Search grounding...")
 
             # Generate response with grounding
             # NOTE: Structured output (response_schema) is not compatible with grounding tools.
@@ -404,7 +402,7 @@ Return valid JSON with all required fields."""
                     system_instruction=system_prompt,
                     tools=[google_search_tool],
                     temperature=0.1,
-                )
+                ),
             )
 
             # Check for empty/blocked response
@@ -412,20 +410,18 @@ Return valid JSON with all required fields."""
                 raise EmptyLLMResponseError("Empty response from Vertex AI")
 
             # Check for blocked content or missing candidates
-            if hasattr(response, 'candidates') and not response.candidates:
+            if hasattr(response, "candidates") and not response.candidates:
                 block_reason = ""
-                if hasattr(response, 'prompt_feedback'):
-                    block_reason = getattr(response.prompt_feedback, 'block_reason', '') or ''
-                raise EmptyLLMResponseError(
-                    f"No candidates returned from Vertex AI (block_reason={block_reason})"
-                )
+                if hasattr(response, "prompt_feedback"):
+                    block_reason = getattr(response.prompt_feedback, "block_reason", "") or ""
+                raise EmptyLLMResponseError(f"No candidates returned from Vertex AI (block_reason={block_reason})")
 
             # Access response.text safely - SDK raises ValueError when
             # candidates are blocked by safety filters
             try:
                 response_text = response.text
             except ValueError as e:
-                raise EmptyLLMResponseError(f"Could not extract text from response: {e}")
+                raise EmptyLLMResponseError(f"Could not extract text from response: {e}") from e
 
             if not response_text:
                 raise EmptyLLMResponseError("Empty response text from Vertex AI")
@@ -455,17 +451,19 @@ Return valid JSON with all required fields."""
                 # Check if the error suggests an empty response
                 error_msg = str(e).lower()
                 if "expecting value" in error_msg or "empty" in error_msg or len(content.strip()) == 0:
-                    raise EmptyLLMResponseError(f"JSON decode error (likely empty response): {e}")
+                    raise EmptyLLMResponseError(f"JSON decode error (likely empty response): {e}") from e
                 # For other JSON decode errors (malformed JSON), still retry as it might be transient
-                raise EmptyLLMResponseError(f"JSON decode error (malformed response): {e}")
+                raise EmptyLLMResponseError(f"JSON decode error (malformed response): {e}") from e
 
             # Validate the response is structurally meaningful (not just {})
             # An empty result across all fields likely means the LLM
             # returned a degenerate response worth retrying
-            if (not result.get("top_handles") and
-                not result.get("rationale") and
-                not result.get("identity_clues") and
-                not result.get("location")):
+            if (
+                not result.get("top_handles")
+                and not result.get("rationale")
+                and not result.get("identity_clues")
+                and not result.get("location")
+            ):
                 raise EmptyLLMResponseError(
                     "LLM returned structurally empty JSON (no handles, rationale, clues, or location)"
                 )
@@ -488,7 +486,7 @@ Return valid JSON with all required fields."""
             for handle in result.get("top_handles", []):
                 if "confidence" in handle and handle["confidence"] not in ["high", "medium", "low"]:
                     handle["confidence"] = "medium"
-                    print(f"[Vertex AI] Warning: Invalid confidence value, defaulting to 'medium'")
+                    print("[Vertex AI] Warning: Invalid confidence value, defaulting to 'medium'")
 
             # Validate identity_clues and location (no schema enforcement with grounding)
             if not isinstance(result.get("identity_clues"), list):
@@ -496,19 +494,19 @@ Return valid JSON with all required fields."""
             if not isinstance(result.get("location"), dict):
                 result["location"] = {}
 
-            print(f"[Vertex AI] Successfully analyzed identity results with grounding")
+            print("[Vertex AI] Successfully analyzed identity results with grounding")
             print(f"[Vertex AI] Grounding sources: {len(grounding_metadata.get('grounding_sources', []))}")
             return result
 
         except Exception as e:
             print(f"[Vertex AI] Error: {e}")
             raise
-    
+
     try:
         return retry_with_backoff(
             _call_vertex_ai,
             RetryConfig(max_attempts=8, base_delay_seconds=3.0, max_delay_seconds=60.0),
-            operation_name="Vertex AI identity scoring"
+            operation_name="Vertex AI identity scoring",
         )
     except json.JSONDecodeError as e:
         # Try to get content if available
@@ -525,7 +523,7 @@ Return valid JSON with all required fields."""
         return {"error": str(e)}
 
 
-def hibp_breaches(email: str) -> List[Dict[str, str]]:
+def hibp_breaches(email: str) -> list[dict[str, str]]:
     """Look up data breaches for an email via HIBP API."""
     print(f"[HIBP] Starting lookup for: {email!r}")
     if not HIBP_API_KEY:
@@ -550,12 +548,12 @@ def hibp_breaches(email: str) -> List[Dict[str, str]]:
             return []
         r.raise_for_status()
         return r.json() or []
-    
+
     try:
         data = retry_with_backoff(
             _call_hibp,
             RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=30.0),
-            operation_name=f"HIBP breach lookup: {email}"
+            operation_name=f"HIBP breach lookup: {email}",
         )
     except Exception as e:
         print(f"[HIBP] Error after retries: {e}")
@@ -573,9 +571,9 @@ def hibp_breaches(email: str) -> List[Dict[str, str]]:
 
 
 def classify_contactability(
-    top_handles: List[Dict[str, Any]],
-    breaches: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+    top_handles: list[dict[str, Any]],
+    breaches: list[dict[str, Any]],
+) -> dict[str, Any]:
     """Deterministically classify contactability based on footprint and breaches."""
     num_social = 0
     for h in top_handles or []:
@@ -649,12 +647,14 @@ def classify_contactability(
     }
 
     out = matrix[footprint_bucket][breach_bucket].copy()
-    out.update({
-        "num_social": num_social,
-        "num_breaches": num_breaches,
-        "footprint_bucket": footprint_bucket,
-        "breach_bucket": breach_bucket,
-    })
+    out.update(
+        {
+            "num_social": num_social,
+            "num_breaches": num_breaches,
+            "footprint_bucket": footprint_bucket,
+            "breach_bucket": breach_bucket,
+        }
+    )
     return out
 
 
@@ -665,7 +665,7 @@ def classify_contactability(
 def main(request):
     """
     HTTP Cloud Function entry point.
-    
+
     Expects JSON body:
     {
         "job_id": "abc123",
@@ -674,7 +674,7 @@ def main(request):
         "city": "Toronto, ON",  // optional
         "company_name": "Acme Corp"  // optional
     }
-    
+
     Returns identity_bundle JSON.
     """
     # Parse request
@@ -716,15 +716,17 @@ def main(request):
     print(f"[Phase1] Starting identity resolution for job {job_id}: {full_name} <{email}>")
 
     try:
-        return _run_identity_resolution(job_id, email, full_name, city, province, company_name, seed, prefix,
-                                        precision_query, generated_names)
+        return _run_identity_resolution(
+            job_id, email, full_name, city, province, company_name, seed, prefix, precision_query, generated_names
+        )
     except RateLimitExhaustedError as e:
         print(f"[Phase1] Returning 429 to workflow for retry: {e}")
         return {"error": str(e), "retryable": True}, 429
 
 
-def _run_identity_resolution(job_id, email, full_name, city, province, company_name, seed, prefix,
-                             precision_query, generated_names):
+def _run_identity_resolution(
+    job_id, email, full_name, city, province, company_name, seed, prefix, precision_query, generated_names
+):
     """Core identity resolution logic, separated to allow main() to catch rate limit errors."""
 
     # Eager-init the shared search client before spawning threads
@@ -745,15 +747,15 @@ def _run_identity_resolution(job_id, email, full_name, city, province, company_n
 
     # Add location to query (no quotes on city - original behavior)
     if city:
-        precision_query_base += f' {city.split(",")[0]}'
+        precision_query_base += f" {city.split(',')[0]}"
 
     # Provincial LinkedIn query
     provincial_linkedin_query = ""
     if generated_names and province:
         province_full = PROVINCE_NAMES.get(province, province)
         all_names = [full_name] + [n for n in generated_names if n.lower() != full_name.lower()]
-        name_parts = ' OR '.join(f'"{name}"' for name in all_names)
-        provincial_linkedin_query = f'{name_parts} {province_full}'
+        name_parts = " OR ".join(f'"{name}"' for name in all_names)
+        provincial_linkedin_query = f"{name_parts} {province_full}"
 
     # Company name LinkedIn query
     company_name_linkedin_query = ""
@@ -770,7 +772,7 @@ def _run_identity_resolution(job_id, email, full_name, city, province, company_n
     # -------------------------
     # Execute search queries in parallel
     # -------------------------
-    print(f"[Phase1] Running all searches in parallel...")
+    print("[Phase1] Running all searches in parallel...")
 
     # Raw results containers (populated by parallel futures)
     precision_raw = []
@@ -823,7 +825,7 @@ def _run_identity_resolution(job_id, email, full_name, city, province, company_n
             except Exception as e:
                 print(f"[Phase1] Search '{key}' failed: {e}")
 
-    print(f"[Phase1] All parallel searches complete")
+    print("[Phase1] All parallel searches complete")
 
     # Company LinkedIn fallback: if company search returned 0 results and city is provided,
     # try a city-based LinkedIn search (this depends on the company result, so runs sequentially)
@@ -837,7 +839,7 @@ def _run_identity_resolution(job_id, email, full_name, city, province, company_n
     # -------------------------
     # Convert raw results to SearchHit objects
     # -------------------------
-    def _to_hits(raw: List[Dict], source: str, query_id: str, query_type: str) -> List[SearchHit]:
+    def _to_hits(raw: list[dict], source: str, query_id: str, query_type: str) -> list[SearchHit]:
         return [
             SearchHit(
                 url=h["url"],
@@ -848,13 +850,18 @@ def _run_identity_resolution(job_id, email, full_name, city, province, company_n
                 query_type=query_type,
                 relevance_score=h.get("relevance_score", 0.0),
             )
-            for h in raw if h.get("url")
+            for h in raw
+            if h.get("url")
         ]
 
     precision_hits = _to_hits(precision_raw, "vertex_ai_precision", "precision", "high_precision")
     llm_precision_hits = _to_hits(llm_precision_raw, "vertex_ai_precision", "precision_llm", "high_precision")
-    provincial_linkedin_hits = _to_hits(provincial_linkedin_raw, "vertex_ai_linkedin", "provincial_linkedin", "high_precision")
-    company_name_linkedin_hits = _to_hits(company_name_linkedin_raw, "vertex_ai_linkedin", "company_name_linkedin", "high_precision")
+    provincial_linkedin_hits = _to_hits(
+        provincial_linkedin_raw, "vertex_ai_linkedin", "provincial_linkedin", "high_precision"
+    )
+    company_name_linkedin_hits = _to_hits(
+        company_name_linkedin_raw, "vertex_ai_linkedin", "company_name_linkedin", "high_precision"
+    )
     recall_hits = _to_hits(recall_raw, "vertex_ai_recall", "recall", "high_recall")
     recall_2_hits = _to_hits(recall_2_raw, "vertex_ai_precision", "recall_2", "high_recall")
 
@@ -866,19 +873,21 @@ def _run_identity_resolution(job_id, email, full_name, city, province, company_n
     precision_hits.extend(company_name_linkedin_hits)
     precision_hits.extend(city_linkedin_hits)
 
-    print(f"[Phase1] Precision: {len(precision_hits)} hits, LLM Precision: {len(llm_precision_hits)} hits, "
-          f"Recall: {len(recall_hits)} hits, Recall 2: {len(recall_2_hits)} hits")
+    print(
+        f"[Phase1] Precision: {len(precision_hits)} hits, LLM Precision: {len(llm_precision_hits)} hits, "
+        f"Recall: {len(recall_hits)} hits, Recall 2: {len(recall_2_hits)} hits"
+    )
 
     # Deduplicate hits
     seen = set()
-    combined_hits: List[SearchHit] = []
+    combined_hits: list[SearchHit] = []
     for hit in precision_hits + llm_precision_hits + recall_hits + recall_2_hits:
         if hit.url not in seen:
             seen.add(hit.url)
             combined_hits.append(hit)
 
     # Build queries payload for LLM
-    queries_payload: List[Dict[str, Any]] = [
+    queries_payload: list[dict[str, Any]] = [
         {
             "id": "precision",
             "type": "high_precision",
@@ -901,30 +910,36 @@ def _run_identity_resolution(job_id, email, full_name, city, province, company_n
 
     # Add company name LinkedIn query if it was executed
     if company_name_linkedin_query:
-        queries_payload.append({
-            "id": "company_name_linkedin",
-            "type": "high_precision",
-            "query": company_name_linkedin_query,
-            "hits": [asdict(h) for h in company_name_linkedin_hits],
-        })
-    
+        queries_payload.append(
+            {
+                "id": "company_name_linkedin",
+                "type": "high_precision",
+                "query": company_name_linkedin_query,
+                "hits": [asdict(h) for h in company_name_linkedin_hits],
+            }
+        )
+
     # Add provincial LinkedIn query if it was executed
     if provincial_linkedin_query:
-        queries_payload.append({
-            "id": "provincial_linkedin",
-            "type": "high_precision",
-            "query": provincial_linkedin_query,
-            "hits": [asdict(h) for h in provincial_linkedin_hits],
-        })
+        queries_payload.append(
+            {
+                "id": "provincial_linkedin",
+                "type": "high_precision",
+                "query": provincial_linkedin_query,
+                "hits": [asdict(h) for h in provincial_linkedin_hits],
+            }
+        )
 
     # Add LLM precision query if it was executed
     if precision_query:
-        queries_payload.append({
-            "id": "precision_llm",
-            "type": "high_precision",
-            "query": precision_query,
-            "hits": [asdict(h) for h in llm_precision_hits],
-        })
+        queries_payload.append(
+            {
+                "id": "precision_llm",
+                "type": "high_precision",
+                "query": precision_query,
+                "hits": [asdict(h) for h in llm_precision_hits],
+            }
+        )
 
     # -------------------------
     # LLM identity scoring + HIBP breach lookup (in parallel)
@@ -966,12 +981,7 @@ def _run_identity_resolution(job_id, email, full_name, city, province, company_n
     submitted_normalized = city.split(",")[0].strip().lower() if city else ""
     llm_normalized = llm_city.split(",")[0].strip().lower() if llm_city else ""
 
-    if (
-        full_name
-        and llm_confidence == "high"
-        and llm_normalized
-        and llm_normalized != submitted_normalized
-    ):
+    if full_name and llm_confidence == "high" and llm_normalized and llm_normalized != submitted_normalized:
         print(f"[Phase1] LLM location '{llm_city}' differs from submitted '{city}' - rerunning precision search")
 
         new_city_token = llm_city.split(",")[0].strip()
@@ -995,13 +1005,15 @@ def _run_identity_resolution(job_id, email, full_name, city, province, company_n
                 seen.add(url)
                 combined_hits.append(hit)
 
-        queries_payload.append({
-            "id": "precision_rerun",
-            "type": "high_precision",
-            "query": rerun_query,
-            "reason": f"LLM high-confidence location '{llm_city}' != submitted '{city}'",
-            "hits": [asdict(h) for h in rerun_hits],
-        })
+        queries_payload.append(
+            {
+                "id": "precision_rerun",
+                "type": "high_precision",
+                "query": rerun_query,
+                "reason": f"LLM high-confidence location '{llm_city}' != submitted '{city}'",
+                "hits": [asdict(h) for h in rerun_hits],
+            }
+        )
 
         print(f"[Phase1] Added {len(rerun_hits)} new hits from rerun")
 
@@ -1009,11 +1021,7 @@ def _run_identity_resolution(job_id, email, full_name, city, province, company_n
     # Process identity clues
     # -------------------------
     top_context_hits = scored.get("identity_clues") or []
-    handle_urls = {
-        h.get("url")
-        for h in scored.get("top_handles", [])
-        if isinstance(h, dict) and h.get("url")
-    }
+    handle_urls = {h.get("url") for h in scored.get("top_handles", []) if isinstance(h, dict) and h.get("url")}
 
     url_to_hit = {h.url: h for h in combined_hits}
 

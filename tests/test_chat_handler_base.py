@@ -12,9 +12,9 @@ Covers:
 """
 
 import sys
-import json
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 # ---------------------------------------------------------------------------
 # Mock Google Gen AI SDK BEFORE importing chat_handler_base.
@@ -40,14 +40,12 @@ sys.modules["google.genai.types"] = _mock_genai_types
 # Now safe to import
 import chat_handler_base
 from chat_handler_base import (
-    format_conversation_history,
-    extract_grounding_metadata,
-    _truncate_history_if_needed,
-    handle_chat_request,
-    ChatHandlerConfig,
-    CORS_PREFLIGHT_HEADERS,
-    CORS_HEADERS,
     MAX_PROMPT_CHARS,
+    ChatHandlerConfig,
+    _truncate_history_if_needed,
+    extract_grounding_metadata,
+    format_conversation_history,
+    handle_chat_request,
 )
 
 
@@ -428,27 +426,33 @@ class TestHandleChatRequest:
         assert status == 200
 
     def test_invalid_history_entry_missing_role(self):
-        request = self._make_request(json_data={
-            "message": "hi",
-            "conversation_history": [{"content": "no role key"}],
-        })
+        request = self._make_request(
+            json_data={
+                "message": "hi",
+                "conversation_history": [{"content": "no role key"}],
+            }
+        )
         body, status, headers = handle_chat_request(request, self._make_config())
         assert status == 400
         assert "format" in body["error"].lower()
 
     def test_invalid_history_entry_missing_content(self):
-        request = self._make_request(json_data={
-            "message": "hi",
-            "conversation_history": [{"role": "user"}],
-        })
+        request = self._make_request(
+            json_data={
+                "message": "hi",
+                "conversation_history": [{"role": "user"}],
+            }
+        )
         body, status, headers = handle_chat_request(request, self._make_config())
         assert status == 400
 
     def test_invalid_history_entry_not_dict(self):
-        request = self._make_request(json_data={
-            "message": "hi",
-            "conversation_history": ["not a dict"],
-        })
+        request = self._make_request(
+            json_data={
+                "message": "hi",
+                "conversation_history": ["not a dict"],
+            }
+        )
         body, status, headers = handle_chat_request(request, self._make_config())
         assert status == 400
 
@@ -508,10 +512,12 @@ class TestHandleChatRequest:
         mock_response.candidates = []
         mock_client.models.generate_content.return_value = mock_response
 
-        request = self._make_request(json_data={
-            "message": "Tell me about this person",
-            "conversation_history": [],
-        })
+        request = self._make_request(
+            json_data={
+                "message": "Tell me about this person",
+                "conversation_history": [],
+            }
+        )
 
         body, status, headers = handle_chat_request(request, self._make_config())
         assert status == 200
@@ -534,10 +540,12 @@ class TestHandleChatRequest:
             {"role": "user", "content": "old question"},
             {"role": "assistant", "content": "old answer"},
         ]
-        request = self._make_request(json_data={
-            "message": "new question",
-            "conversation_history": existing_history,
-        })
+        request = self._make_request(
+            json_data={
+                "message": "new question",
+                "conversation_history": existing_history,
+            }
+        )
 
         body, status, headers = handle_chat_request(request, self._make_config())
         assert status == 200
@@ -576,10 +584,12 @@ class TestHandleChatRequest:
         mock_client.models.generate_content.return_value = mock_response
 
         original_history = [{"role": "user", "content": "q1"}]
-        request = self._make_request(json_data={
-            "message": "q2",
-            "conversation_history": original_history,
-        })
+        request = self._make_request(
+            json_data={
+                "message": "q2",
+                "conversation_history": original_history,
+            }
+        )
 
         handle_chat_request(request, self._make_config())
         # Original list should be unchanged (the function uses .copy())
@@ -644,10 +654,12 @@ class TestHandleChatRequest:
         )
 
         md_context = {"report": "# Skip Trace Report\n..."}
-        request = self._make_request(json_data={
-            "message": "summarize the report",
-            "markdown_context": md_context,
-        })
+        request = self._make_request(
+            json_data={
+                "message": "summarize the report",
+                "markdown_context": md_context,
+            }
+        )
 
         handle_chat_request(request, config)
         assert received_ctx[0] == md_context
