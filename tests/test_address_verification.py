@@ -382,6 +382,80 @@ class TestGeocodeAddress:
         assert lat is None
         assert lon is None
 
+    def test_http_error_returns_none(self):
+        """HTTPError (e.g. 500) is caught and returns (None, None)."""
+        from urllib.error import HTTPError
+        with patch.object(av_main, "_last_nominatim_call", 0.0), \
+             patch("address_verification_main.urlopen",
+                   side_effect=HTTPError("http://...", 500, "Server Error", {}, None)), \
+             patch("address_verification_main.time") as mock_time:
+            mock_time.time.return_value = 100.0
+            mock_time.sleep = MagicMock()
+            lat, lon = geocode_address("123 Main St")
+
+        assert lat is None
+        assert lon is None
+
+    def test_json_decode_error_returns_none(self):
+        """Invalid JSON response from Nominatim returns (None, None)."""
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b"not json"
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch.object(av_main, "_last_nominatim_call", 0.0), \
+             patch("address_verification_main.urlopen", return_value=mock_resp), \
+             patch("address_verification_main.time") as mock_time:
+            mock_time.time.return_value = 100.0
+            mock_time.sleep = MagicMock()
+            lat, lon = geocode_address("123 Main St")
+
+        assert lat is None
+        assert lon is None
+
+    def test_key_error_missing_lat_returns_none(self):
+        """Response missing 'lat' key returns (None, None)."""
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps([{"other": "field"}]).encode()
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+
+        with patch.object(av_main, "_last_nominatim_call", 0.0), \
+             patch("address_verification_main.urlopen", return_value=mock_resp), \
+             patch("address_verification_main.time") as mock_time:
+            mock_time.time.return_value = 100.0
+            mock_time.sleep = MagicMock()
+            lat, lon = geocode_address("123 Main St")
+
+        assert lat is None
+        assert lon is None
+
+
+# ===========================================================================
+# extract_grounding_metadata - additional tests
+# ===========================================================================
+class TestExtractGroundingMetadataFallback:
+    """Additional edge case tests for grounding metadata extraction."""
+
+    def test_html_fallback_when_no_rendered_content(self):
+        """Falls back to entry_point.html when rendered_content is absent."""
+        grounding = MagicMock()
+        grounding.web_search_queries = []
+        grounding.grounding_chunks = []
+
+        entry_point = MagicMock(spec=[])  # no rendered_content attr
+        entry_point.html = "<div>test html</div>"
+        grounding.search_entry_point = entry_point
+
+        candidate = MagicMock()
+        candidate.grounding_metadata = grounding
+
+        resp = MagicMock()
+        resp.candidates = [candidate]
+
+        result = extract_grounding_metadata(resp)
+        assert result["search_entry_point"] == "<div>test html</div>"
+
 
 # ===========================================================================
 # main HTTP handler
@@ -459,3 +533,39 @@ class TestMainHandler:
             resp, status, headers = main_handler(_make_request(body))
 
         assert status == 500
+
+    def test_geocoding_fails_analysis_succeeds(self):
+        """When geocoding returns (None, None) but LLM analysis succeeds, return 200."""
+        body = {
+            "address": "123 Main St, Toronto, ON",
+            "business_name": "Acme Corp",
+        }
+        mock_analysis = _mock_llm_analysis()
+        mock_analysis["_grounding_metadata"] = {"grounding_sources": [], "search_queries": []}
+
+        with _app.test_request_context(), \
+             patch.object(av_main, "vertex_ai_analyze_address_grounded", return_value=mock_analysis), \
+             patch.object(av_main, "geocode_address", return_value=(None, None)):
+            resp, status, headers = main_handler(_make_request(body))
+
+        assert status == 200
+        data = json.loads(resp.get_data(as_text=True))
+        assert data["geocoding"]["lat"] is None
+        assert data["geocoding"]["lon"] is None
+        assert data["analysis"]["business_at_address"] is True
+
+    def test_analysis_error_with_geocoding_success(self):
+        """When LLM analysis raises, 500 is returned even if geocoding succeeds."""
+        body = {
+            "address": "123 Main St, Toronto, ON",
+            "business_name": "Acme Corp",
+        }
+        with _app.test_request_context(), \
+             patch.object(av_main, "vertex_ai_analyze_address_grounded",
+                          side_effect=RuntimeError("LLM failed")), \
+             patch.object(av_main, "geocode_address", return_value=(43.65, -79.38)):
+            resp, status, headers = main_handler(_make_request(body))
+
+        assert status == 500
+        data = json.loads(resp.get_data(as_text=True))
+        assert "LLM failed" in data["error"]

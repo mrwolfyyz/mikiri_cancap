@@ -297,6 +297,38 @@ class TestFormatJobResponse:
         resp = format_job_response("j1", job)
         assert resp["error"] == "Unknown error"
 
+    def test_created_at_none(self):
+        """Job with created_at=None should not raise."""
+        job = {"status": "pending", "created_at": None}
+        resp = format_job_response("j1", job)
+        assert resp["created_at"] is None
+
+    def test_complete_without_completed_at(self):
+        """Complete job with completed_at=None should not raise or include elapsed_seconds."""
+        job = {
+            "status": "complete",
+            "created_at": datetime.utcnow(),
+            "completed_at": None,
+            "partial_failure": False,
+            "report_urls": {"identity": "https://..."},
+        }
+        resp = format_job_response("j1", job)
+        assert resp["status"] == "complete"
+        assert "completed_at" not in resp
+        assert "elapsed_seconds" not in resp
+
+    def test_complete_empty_report_urls(self):
+        """Complete job with empty report_urls dict should not include report_urls."""
+        job = {
+            "status": "complete",
+            "created_at": datetime.utcnow(),
+            "completed_at": datetime.utcnow(),
+            "partial_failure": False,
+            "report_urls": {},
+        }
+        resp = format_job_response("j1", job)
+        assert "report_urls" not in resp
+
 
 # ===========================================================================
 # get_cors_headers
@@ -738,3 +770,129 @@ class TestMainRouting:
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 400
         assert "business_name" in data["error"]
+
+    # --- Address verification proxy: additional tests ---
+
+    def test_address_verification_not_configured(self):
+        """Returns 500 when ADDRESS_VERIFICATION_URL is empty."""
+        req = _authed_request(
+            method="POST", path="/address-verification",
+            body={"address": "123 Main St, Toronto, ON", "business_name": "Acme"},
+        )
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
+                 _stub_auth(), \
+                 patch.object(gw, "ADDRESS_VERIFICATION_URL", ""):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 500
+        assert "not configured" in data["error"]
+
+    def test_address_verification_request_exception(self):
+        """Returns 500 when the downstream service call fails."""
+        import requests as req_lib
+        req = _authed_request(
+            method="POST", path="/address-verification",
+            body={"address": "123 Main St, Toronto, ON", "business_name": "Acme"},
+        )
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
+                 _stub_auth(), \
+                 patch.object(gw, "retry_with_backoff",
+                              side_effect=req_lib.exceptions.ConnectionError("down")):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 500
+        assert "failed" in data["error"].lower()
+
+    def test_address_verification_invalid_json(self):
+        """Returns 400 when request body is not valid JSON."""
+        req = _authed_request(
+            method="POST", path="/address-verification",
+            bad_json=True,
+        )
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth():
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 400
+
+    def test_address_verification_combined_address_field(self):
+        """Accepts the legacy combined address field format."""
+        req = _authed_request(
+            method="POST", path="/address-verification",
+            body={"address": "123 Main St, Toronto, ON M5H 2N2", "business_name": "Acme"},
+        )
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"verified": True}
+        mock_resp.status_code = 200
+
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
+                 _stub_auth(), \
+                 patch.object(gw, "retry_with_backoff", return_value=mock_resp):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert data["verified"] is True
+
+    # --- Feedback route: additional tests ---
+
+    def test_feedback_invalid_path_format(self):
+        """Malformed feedback path returns 400."""
+        req = _authed_request(
+            method="POST", path="/jobs/j1/feedback/extra",
+            body={"rating": "positive", "comment": ""},
+        )
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth():
+                data, status, _ = _parse_response(main_handler(req))
+        # Either 400 (invalid feedback path) or 404 (doesn't match any route)
+        assert status in (400, 404)
+
+    def test_feedback_invalid_json(self):
+        """Returns 400 when feedback request body is not valid JSON."""
+        job = {"user_id": "user-123", "status": "complete"}
+        req = _authed_request(
+            method="POST", path="/jobs/j1/feedback",
+            bad_json=True,
+        )
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
+                 _stub_auth(), _stub_get_job(job):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 400
+
+    def test_feedback_firestore_exception(self):
+        """Returns 500 when Firestore update fails."""
+        job = {"user_id": "user-123", "status": "complete"}
+        req = _authed_request(
+            method="POST", path="/jobs/j1/feedback",
+            body={"rating": "positive", "comment": "great"},
+        )
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
+                 _stub_auth(), _stub_get_job(job):
+                gw.db.collection.return_value.document.return_value.update.side_effect = \
+                    RuntimeError("Firestore write failed")
+                data, status, _ = _parse_response(main_handler(req))
+                gw.db.collection.return_value.document.return_value.update.side_effect = None
+        assert status == 500
+        assert "Failed to save feedback" in data["error"]
+
+    # --- GET /get_markdown: additional tests ---
+
+    def test_get_markdown_empty_job_id(self):
+        """Returns 400 when job_id is empty."""
+        req = _make_request(method="GET", path="/get_markdown/")
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 400
+
+    def test_get_markdown_exception(self):
+        """Returns 500 when an exception occurs during markdown retrieval."""
+        req = _make_request(method="GET", path="/get_markdown/j1")
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
+                 patch.object(gw, "verify_job_ownership",
+                              side_effect=RuntimeError("db error")):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 500
+        assert "db error" in data["error"]
