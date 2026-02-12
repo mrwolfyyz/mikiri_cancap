@@ -224,7 +224,7 @@ def get_domain_registration_date(domain: str) -> dict[str, Any]:
                     try:
                         from dateutil import parser
 
-                        creation_date = parser.parse(creation_date)
+                        creation_date = parser.parse(date_str)
                     except Exception:  # nosec B110 — best-effort date parsing
                         pass
 
