@@ -158,6 +158,26 @@ class TestVertexAiDomainResolutionGrounded:
         assert result["confidence"] == "low"  # default
         assert "missing" in result["rationale"].lower() or "completed" in result["rationale"].lower()
 
+    def test_null_domain_normalized_to_empty_string(self):
+        """LLM returning domain: null should be normalized to empty string."""
+        mock_response = _mock_llm_response(
+            {"domain": None, "confidence": "low", "rationale": "Could not determine domain."}
+        )
+
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        with (
+            patch.object(cdl_main, "GCP_PROJECT", "test-project"),
+            patch.object(cdl_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
+            mock_genai_mod.Client.return_value = mock_client
+            result = vertex_ai_domain_resolution_grounded("Meorra Media")
+
+        assert result["domain"] == ""
+        assert result["confidence"] == "low"
+
     def test_invalid_confidence_corrected(self):
         data = _valid_domain_result()
         data["confidence"] = "very_high"
@@ -300,6 +320,32 @@ class TestMainHandler:
             resp, status, headers = main_handler(req)
 
         assert status == 200
+
+    def test_llm_returns_null_domain(self):
+        """LLM returning domain: None should return no_domain, not crash."""
+        mock_doc = MagicMock()
+        mock_doc.exists = True
+        mock_job_ref = MagicMock()
+        mock_job_ref.get.return_value = mock_doc
+
+        mock_db = MagicMock()
+        mock_db.collection.return_value.document.return_value = mock_job_ref
+
+        llm_result = {"domain": None, "confidence": "low", "rationale": "Could not determine"}
+
+        req = _make_request({"company_name": "Meorra Media", "job_id": "job123"})
+
+        with (
+            _app.test_request_context(),
+            patch.object(cdl_main, "db", mock_db),
+            patch.object(cdl_main, "vertex_ai_domain_resolution_grounded", return_value=llm_result),
+        ):
+            resp, status, headers = main_handler(req)
+
+        assert status == 200
+        data = resp.get_json()
+        assert data["status"] == "no_domain"
+        mock_job_ref.update.assert_not_called()
 
     def test_domain_cleaning(self):
         """Domain with protocol, www, and trailing slashes is cleaned."""
