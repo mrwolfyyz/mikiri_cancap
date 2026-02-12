@@ -7,16 +7,17 @@ Performs:
 - Returns structured JSON with original name, generated names, and vertex_query
 """
 
-import functions_framework
-import os
 import json
+import os
 import traceback
-from typing import Dict, Any
-from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError
+from typing import Any
+
+import functions_framework
 
 # Vertex AI imports
 import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+from retry_utils import EmptyLLMResponseError, RetryConfig, retry_with_backoff
+from vertexai.generative_models import GenerationConfig, GenerativeModel
 
 # -------------------------
 # Config
@@ -49,7 +50,7 @@ PROVINCE_NAMES = {
     "PE": "Prince Edward Island",
     "NT": "Northwest Territories",
     "YT": "Yukon",
-    "NU": "Nunavut"
+    "NU": "Nunavut",
 }
 
 
@@ -91,7 +92,7 @@ Output:
 """
 
 
-def generate_precision_query(full_name: str, city: str, province: str = "") -> Dict[str, Any]:
+def generate_precision_query(full_name: str, city: str, province: str = "") -> dict[str, Any]:
     """
     Use Gemini 2.5 Flash Lite to generate name variations and construct precision query.
 
@@ -126,18 +127,15 @@ Return valid JSON only."""
         "type": "object",
         "properties": {
             "original_name": {"type": "string"},
-            "generated_names": {
-                "type": "array",
-                "items": {"type": "string"}
-            },
-            "vertex_query": {"type": "string"}
+            "generated_names": {"type": "array", "items": {"type": "string"}},
+            "vertex_query": {"type": "string"},
         },
-        "required": ["original_name", "generated_names", "vertex_query"]
+        "required": ["original_name", "generated_names", "vertex_query"],
     }
 
     def _call_vertex_ai():
         try:
-            print(f"[Vertex AI] Calling Gemini 2.5 Flash Lite for query construction...")
+            print("[Vertex AI] Calling Gemini 2.5 Flash Lite for query construction...")
 
             # Combine system prompt and user prompt
             full_prompt = f"{SYSTEM_PROMPT}\n\n{user_prompt}"
@@ -147,7 +145,7 @@ Return valid JSON only."""
                     temperature=0.1,
                     response_mime_type="application/json",
                     response_schema=schema,
-                )
+                ),
             )
 
             # Check for empty response
@@ -156,8 +154,8 @@ Return valid JSON only."""
 
             try:
                 response_text = response.text
-            except AttributeError:
-                raise EmptyLLMResponseError("Response object missing text attribute")
+            except AttributeError as e:
+                raise EmptyLLMResponseError("Response object missing text attribute") from e
 
             if not response_text:
                 raise EmptyLLMResponseError("Empty response from Vertex AI")
@@ -185,9 +183,9 @@ Return valid JSON only."""
                 # that should be retried (similar to EmptyLLMResponseError)
                 error_msg = str(e).lower()
                 if "expecting value" in error_msg or "empty" in error_msg or len(content.strip()) == 0:
-                    raise EmptyLLMResponseError(f"JSON decode error (likely empty response): {e}")
+                    raise EmptyLLMResponseError(f"JSON decode error (likely empty response): {e}") from e
                 # For other JSON decode errors (malformed JSON), still retry as it might be transient
-                raise EmptyLLMResponseError(f"JSON decode error (malformed response): {e}")
+                raise EmptyLLMResponseError(f"JSON decode error (malformed response): {e}") from e
 
             # Validate required fields (defensive guard against model/SDK behavior changes)
             if "original_name" not in result:
@@ -213,7 +211,7 @@ Return valid JSON only."""
     return retry_with_backoff(
         _call_vertex_ai,
         RetryConfig(max_attempts=3, base_delay_seconds=2.0, max_delay_seconds=60.0),
-        operation_name="Vertex AI query construction"
+        operation_name="Vertex AI query construction",
     )
 
 
@@ -261,5 +259,5 @@ def main(request):
         print(f"[QueryConstructor] Error: {e}")
         return {"error": str(e)}, 500
 
-    print(f"[QueryConstructor] Successfully generated query")
+    print("[QueryConstructor] Successfully generated query")
     return result, 200

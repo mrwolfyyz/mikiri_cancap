@@ -1,9 +1,9 @@
 """Tests for gcp/shared/domain_utils.py"""
 
 from domain_utils import (
+    COMMON_CANADIAN_EMAIL_DOMAINS,
     extract_email_domain,
     is_personal_email_domain,
-    COMMON_CANADIAN_EMAIL_DOMAINS,
 )
 
 

@@ -5,10 +5,10 @@ Tests the full report generation function with mocked external dependencies
 """
 
 import sys
-import os
-from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
 from datetime import datetime, timedelta
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 import report_utils
 
 # ---------------------------------------------------------------------------
@@ -28,6 +28,7 @@ sys.modules.setdefault("vertexai.generative_models", _mock_vertexai_gm)
 sys.path.insert(0, FN_DIR)
 try:
     import generate_markdown_reports as _gm_module
+
     generate_identity_report = _gm_module.generate_identity_report
 finally:
     try:
@@ -65,7 +66,8 @@ def _minimal_data(
             "top_handles": top_handles or [],
         },
         "breaches": breaches or [],
-        "contactability": contactability or {
+        "contactability": contactability
+        or {
             "score": "medium",
             "reason": "Moderate digital footprint",
             "num_social": 2,
@@ -85,18 +87,21 @@ def _mock_all_external_calls():
     patches survive other test files overwriting sys.modules["generate_markdown_reports"].
     """
     return {
-        "whois": patch.object(_gm_module, "get_domain_registration_date", return_value={
-            "success": False, "registration_date": None, "error": "mocked"
-        }),
-        "mx": patch.object(_gm_module, "check_domain_mx_records", return_value={
-            "success": False, "error": "mocked"
-        }),
-        "gravatar": patch.object(_gm_module, "get_gravatar_profile", return_value={
-            "success": False, "profile_url": None, "thumbnail_url": None, "error": "mocked"
-        }),
+        "whois": patch.object(
+            _gm_module,
+            "get_domain_registration_date",
+            return_value={"success": False, "registration_date": None, "error": "mocked"},
+        ),
+        "mx": patch.object(_gm_module, "check_domain_mx_records", return_value={"success": False, "error": "mocked"}),
+        "gravatar": patch.object(
+            _gm_module,
+            "get_gravatar_profile",
+            return_value={"success": False, "profile_url": None, "thumbnail_url": None, "error": "mocked"},
+        ),
         "blocklist": patch.object(_gm_module, "load_disposable_email_blocklist", return_value=set()),
-        "street_view": patch.object(_gm_module, "generate_street_view_url",
-                            return_value="https://maps.google.com/test"),
+        "street_view": patch.object(
+            _gm_module, "generate_street_view_url", return_value="https://maps.google.com/test"
+        ),
     }
 
 
@@ -181,15 +186,26 @@ class TestIdentityReportEnrichmentData:
             "domains": {
                 "acme.com": {
                     "whois": {"success": True, "registration_date": "2010-01-15", "error": None},
-                    "mx": {"success": True, "risk_level": "LOW", "provider_detected": "Google Workspace",
-                           "mx_records": ["aspmx.l.google.com"], "status": "Legitimate Business Email"},
+                    "mx": {
+                        "success": True,
+                        "risk_level": "LOW",
+                        "provider_detected": "Google Workspace",
+                        "mx_records": ["aspmx.l.google.com"],
+                        "status": "Legitimate Business Email",
+                    },
                 }
             },
             "addresses": {},
             "contacts": {"phones": [], "emails": [], "addresses": []},
         }
         mocks = _mock_all_external_calls()
-        with mocks["whois"] as mock_whois, mocks["mx"] as mock_mx, mocks["gravatar"], mocks["blocklist"], mocks["street_view"]:
+        with (
+            mocks["whois"] as mock_whois,
+            mocks["mx"] as mock_mx,
+            mocks["gravatar"],
+            mocks["blocklist"],
+            mocks["street_view"],
+        ):
             generate_identity_report(data, "John Doe", tmp_path, enrichment_data=enrichment)
 
         # Inline WHOIS/MX should NOT have been called since enrichment data was provided
@@ -218,11 +234,17 @@ class TestIdentityReportAlerts:
 
     def test_no_breaches_generates_warning(self, tmp_path):
         """Zero breaches should produce a 'No Breach History' alert."""
-        data = _minimal_data(breaches=[], contactability={
-            "score": "low", "reason": "Low footprint",
-            "num_social": 0, "num_breaches": 0,
-            "footprint_bucket": "LOW", "breach_bucket": "NO",
-        })
+        data = _minimal_data(
+            breaches=[],
+            contactability={
+                "score": "low",
+                "reason": "Low footprint",
+                "num_social": 0,
+                "num_breaches": 0,
+                "footprint_bucket": "LOW",
+                "breach_bucket": "NO",
+            },
+        )
         mocks = _mock_all_external_calls()
         with mocks["whois"], mocks["mx"], mocks["gravatar"], mocks["blocklist"], mocks["street_view"]:
             generate_identity_report(data, "John Doe", tmp_path)
@@ -233,11 +255,21 @@ class TestIdentityReportAlerts:
     def test_disposable_email_generates_danger(self, tmp_path):
         """Disposable email should produce a 'Disposable Email Detected' alert."""
         data = _minimal_data(email="user@tempmail.com")
-        with patch.object(_gm_module, "get_domain_registration_date", return_value={"success": False, "registration_date": None, "error": "mocked"}), \
-             patch.object(_gm_module, "check_domain_mx_records", return_value={"success": False, "error": "mocked"}), \
-             patch.object(_gm_module, "get_gravatar_profile", return_value={"success": False, "profile_url": None, "thumbnail_url": None, "error": "mocked"}), \
-             patch.object(_gm_module, "load_disposable_email_blocklist", return_value={"tempmail.com"}), \
-             patch.object(_gm_module, "generate_street_view_url", return_value="https://maps.google.com/test"):
+        with (
+            patch.object(
+                _gm_module,
+                "get_domain_registration_date",
+                return_value={"success": False, "registration_date": None, "error": "mocked"},
+            ),
+            patch.object(_gm_module, "check_domain_mx_records", return_value={"success": False, "error": "mocked"}),
+            patch.object(
+                _gm_module,
+                "get_gravatar_profile",
+                return_value={"success": False, "profile_url": None, "thumbnail_url": None, "error": "mocked"},
+            ),
+            patch.object(_gm_module, "load_disposable_email_blocklist", return_value={"tempmail.com"}),
+            patch.object(_gm_module, "generate_street_view_url", return_value="https://maps.google.com/test"),
+        ):
             generate_identity_report(data, "John Doe", tmp_path)
 
         content = (tmp_path / "Identity___John_Doe.md").read_text()
@@ -245,11 +277,28 @@ class TestIdentityReportAlerts:
 
     def test_low_linkedin_connections_alert(self, tmp_path):
         """LinkedIn profile with very few connections generates an alert."""
-        handles = [{"platform": "LinkedIn", "handle": "johndoe", "url": "https://linkedin.com/in/johndoe",
-                     "confidence": "high"}]
-        queries = [{"id": "name_linkedin", "type": "linkedin", "query": "John Doe linkedin",
-                     "hits": [{"url": "https://linkedin.com/in/johndoe", "title": "John Doe",
-                               "snippet": "5 connections on LinkedIn"}]}]
+        handles = [
+            {
+                "platform": "LinkedIn",
+                "handle": "johndoe",
+                "url": "https://linkedin.com/in/johndoe",
+                "confidence": "high",
+            }
+        ]
+        queries = [
+            {
+                "id": "name_linkedin",
+                "type": "linkedin",
+                "query": "John Doe linkedin",
+                "hits": [
+                    {
+                        "url": "https://linkedin.com/in/johndoe",
+                        "title": "John Doe",
+                        "snippet": "5 connections on LinkedIn",
+                    }
+                ],
+            }
+        ]
         data = _minimal_data(top_handles=handles, queries=queries)
         mocks = _mock_all_external_calls()
         with mocks["whois"], mocks["mx"], mocks["gravatar"], mocks["blocklist"], mocks["street_view"]:
@@ -266,8 +315,13 @@ class TestIdentityReportAlerts:
             "domains": {
                 "newcorp.com": {
                     "whois": {"success": True, "registration_date": recent_date, "error": None},
-                    "mx": {"success": True, "risk_level": "LOW", "provider_detected": "Google Workspace",
-                           "mx_records": ["aspmx.l.google.com"], "status": "Legitimate"},
+                    "mx": {
+                        "success": True,
+                        "risk_level": "LOW",
+                        "provider_detected": "Google Workspace",
+                        "mx_records": ["aspmx.l.google.com"],
+                        "status": "Legitimate",
+                    },
                 }
             },
             "addresses": {},
@@ -384,8 +438,16 @@ class TestIdentityReportSocialHandles:
         handles = [
             {"platform": "Twitter", "handle": "@johndoe", "url": "https://twitter.com/johndoe", "confidence": "high"},
         ]
-        queries = [{"id": "test", "type": "search", "query": "test",
-                     "hits": [{"url": "https://twitter.com/johndoe", "title": "John", "snippet": "Software Developer in Toronto"}]}]
+        queries = [
+            {
+                "id": "test",
+                "type": "search",
+                "query": "test",
+                "hits": [
+                    {"url": "https://twitter.com/johndoe", "title": "John", "snippet": "Software Developer in Toronto"}
+                ],
+            }
+        ]
         data = _minimal_data(top_handles=handles, queries=queries)
         mocks = _mock_all_external_calls()
         with mocks["whois"], mocks["mx"], mocks["gravatar"], mocks["blocklist"], mocks["street_view"]:
@@ -407,8 +469,15 @@ class TestIdentityReportContactInfo:
             "domains": {},
             "addresses": {},
             "contacts": {
-                "phones": [{"number_raw": "416-555-1234", "number_digits": "4165551234",
-                            "confidence": "high", "source_url": "http://example.com", "snippet": "Call John"}],
+                "phones": [
+                    {
+                        "number_raw": "416-555-1234",
+                        "number_digits": "4165551234",
+                        "confidence": "high",
+                        "source_url": "http://example.com",
+                        "snippet": "Call John",
+                    }
+                ],
                 "emails": [],
                 "addresses": [],
             },
@@ -482,13 +551,23 @@ class TestIdentityReportCompanyDomain:
             "domains": {
                 "acme.com": {
                     "whois": {"success": True, "registration_date": "2010-01-15", "error": None},
-                    "mx": {"success": True, "risk_level": "LOW", "provider_detected": "Google Workspace",
-                           "mx_records": ["aspmx.l.google.com"], "status": "Legitimate"},
+                    "mx": {
+                        "success": True,
+                        "risk_level": "LOW",
+                        "provider_detected": "Google Workspace",
+                        "mx_records": ["aspmx.l.google.com"],
+                        "status": "Legitimate",
+                    },
                 },
                 "acmecorp.com": {
                     "whois": {"success": True, "registration_date": "2015-06-01", "error": None},
-                    "mx": {"success": True, "risk_level": "LOW", "provider_detected": "Microsoft 365",
-                           "mx_records": ["acmecorp-com.mail.protection.outlook.com"], "status": "Legitimate"},
+                    "mx": {
+                        "success": True,
+                        "risk_level": "LOW",
+                        "provider_detected": "Microsoft 365",
+                        "mx_records": ["acmecorp-com.mail.protection.outlook.com"],
+                        "status": "Legitimate",
+                    },
                 },
             },
             "addresses": {},
@@ -496,8 +575,9 @@ class TestIdentityReportCompanyDomain:
         }
         mocks = _mock_all_external_calls()
         with mocks["whois"], mocks["mx"], mocks["gravatar"], mocks["blocklist"], mocks["street_view"]:
-            generate_identity_report(data, "John Doe", tmp_path,
-                                    company_domain="acmecorp.com", enrichment_data=enrichment)
+            generate_identity_report(
+                data, "John Doe", tmp_path, company_domain="acmecorp.com", enrichment_data=enrichment
+            )
 
         content = (tmp_path / "Identity___John_Doe.md").read_text()
         assert "Company Domain Registration" in content

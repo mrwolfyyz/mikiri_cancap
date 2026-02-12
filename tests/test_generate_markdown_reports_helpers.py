@@ -5,9 +5,9 @@ and high-confidence gains for the report generation pipeline.
 """
 
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
-from datetime import datetime, timedelta
 
 # ---------------------------------------------------------------------------
 # Load the module using the same pattern as other test files.
@@ -29,20 +29,20 @@ sys.modules.setdefault("vertexai.generative_models", _mock_vertexai_gm)
 sys.path.insert(0, FN_DIR)
 try:
     from generate_markdown_reports import (
-        format_name,
-        get_mx_callout,
-        get_domain_age_callout,
-        extract_linkedin_connections,
-        get_all_linkedin_snippets,
-        extract_email_handle,
         clean_address,
+        extract_1st_addresses_fallback,
         extract_address_components,
+        extract_addresses_from_queries,
+        extract_email_handle,
+        extract_linkedin_connections,
+        format_name,
         generate_canada411_url,
         generate_google_doc_search_url,
-        generate_google_doc_search_url_for_phone,
         generate_google_doc_search_url_for_email,
-        extract_1st_addresses_fallback,
-        extract_addresses_from_queries,
+        generate_google_doc_search_url_for_phone,
+        get_all_linkedin_snippets,
+        get_domain_age_callout,
+        get_mx_callout,
     )
 finally:
     try:
@@ -311,39 +311,73 @@ class TestExtractAddressComponents:
         assert result["postal_code"] == "M5V2K1"
 
     def test_street_name_only(self):
-        data = {"address_raw": "", "street_number": None, "street_name": "Main St",
-                "city": "Toronto", "province": "ON", "state": None, "postal_code": "M5V2K1", "zip_code": None}
+        data = {
+            "address_raw": "",
+            "street_number": None,
+            "street_name": "Main St",
+            "city": "Toronto",
+            "province": "ON",
+            "state": None,
+            "postal_code": "M5V2K1",
+            "zip_code": None,
+        }
         result = extract_address_components(data)
         assert result["street"] == "Main St"
 
     def test_street_number_only(self):
-        data = {"address_raw": "", "street_number": "123", "street_name": None,
-                "city": "Toronto", "province": "ON", "state": None, "postal_code": "M5V2K1", "zip_code": None}
+        data = {
+            "address_raw": "",
+            "street_number": "123",
+            "street_name": None,
+            "city": "Toronto",
+            "province": "ON",
+            "state": None,
+            "postal_code": "M5V2K1",
+            "zip_code": None,
+        }
         result = extract_address_components(data)
         assert result["street"] == "123"
 
     def test_fallback_to_raw_canadian(self):
-        data = {"address_raw": "456 Queen Ave Toronto ON M5V 2K1",
-                "street_number": None, "street_name": None,
-                "city": None, "province": None, "state": None,
-                "postal_code": None, "zip_code": None}
+        data = {
+            "address_raw": "456 Queen Ave Toronto ON M5V 2K1",
+            "street_number": None,
+            "street_name": None,
+            "city": None,
+            "province": None,
+            "state": None,
+            "postal_code": None,
+            "zip_code": None,
+        }
         result = extract_address_components(data)
         assert result["province"] == "ON"
 
     def test_fallback_to_raw_us(self):
-        data = {"address_raw": "789 Oak Blvd, Chicago, IL 60601",
-                "street_number": None, "street_name": None,
-                "city": None, "province": None, "state": None,
-                "postal_code": None, "zip_code": None}
+        data = {
+            "address_raw": "789 Oak Blvd, Chicago, IL 60601",
+            "street_number": None,
+            "street_name": None,
+            "city": None,
+            "province": None,
+            "state": None,
+            "postal_code": None,
+            "zip_code": None,
+        }
         result = extract_address_components(data)
         assert result["state"] == "IL"
         assert result["zip_code"] == "60601"
 
     def test_no_components_no_raw_fallback(self):
-        data = {"address_raw": "unknown location",
-                "street_number": None, "street_name": None,
-                "city": None, "province": None, "state": None,
-                "postal_code": None, "zip_code": None}
+        data = {
+            "address_raw": "unknown location",
+            "street_number": None,
+            "street_name": None,
+            "city": None,
+            "province": None,
+            "state": None,
+            "postal_code": None,
+            "zip_code": None,
+        }
         result = extract_address_components(data)
         assert result["street"] is None
         assert result["city"] is None
@@ -374,18 +408,30 @@ class TestGenerateCanada411Url:
         assert "pv=" in url
 
     def test_partial_components(self):
-        data = {"address_raw": "123 Main St, Toronto",
-                "street_number": None, "street_name": None,
-                "city": None, "province": None, "state": None,
-                "postal_code": None, "zip_code": None}
+        data = {
+            "address_raw": "123 Main St, Toronto",
+            "street_number": None,
+            "street_name": None,
+            "city": None,
+            "province": None,
+            "state": None,
+            "postal_code": None,
+            "zip_code": None,
+        }
         url = generate_canada411_url(data)
         assert "canada411.ca" in url
 
     def test_empty_address_fallback(self):
-        data = {"address_raw": "unknown",
-                "street_number": None, "street_name": None,
-                "city": None, "province": None, "state": None,
-                "postal_code": None, "zip_code": None}
+        data = {
+            "address_raw": "unknown",
+            "street_number": None,
+            "street_name": None,
+            "city": None,
+            "province": None,
+            "state": None,
+            "postal_code": None,
+            "zip_code": None,
+        }
         url = generate_canada411_url(data)
         assert "canada411.ca" in url
 
@@ -495,10 +541,12 @@ class TestExtractAddressesFromQueries:
         _mock_pyap.parse.return_value = [mock_addr]
 
         queries = [
-            {"hits": [
-                {"title": "Page 1", "snippet": "at 123 Main St Toronto ON M5V 2K1", "url": "http://a.com"},
-                {"title": "Page 2", "snippet": "at 123 Main St Toronto ON M5V 2K1", "url": "http://b.com"},
-            ]}
+            {
+                "hits": [
+                    {"title": "Page 1", "snippet": "at 123 Main St Toronto ON M5V 2K1", "url": "http://a.com"},
+                    {"title": "Page 2", "snippet": "at 123 Main St Toronto ON M5V 2K1", "url": "http://b.com"},
+                ]
+            }
         ]
         result = extract_addresses_from_queries(queries)
         # Should be deduplicated to 1 result

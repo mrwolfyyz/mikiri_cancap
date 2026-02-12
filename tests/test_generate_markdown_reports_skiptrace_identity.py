@@ -7,8 +7,8 @@ no public sector employment.
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-from datetime import datetime, timedelta
+from unittest.mock import patch
+
 import report_utils
 
 # ---------------------------------------------------------------------------
@@ -23,6 +23,7 @@ FN_DIR = str(REPO_ROOT / "gcp" / "functions" / "report_generator_skiptrace")
 sys.path.insert(0, FN_DIR)
 try:
     import generate_markdown_reports_skiptrace as _gm_st_module
+
     get_navigation_bar_skiptrace = _gm_st_module.get_navigation_bar_skiptrace
     generate_identity_report_skiptrace = _gm_st_module.generate_identity_report_skiptrace
 finally:
@@ -61,7 +62,8 @@ def _minimal_data(
             "top_handles": top_handles or [],
         },
         "breaches": breaches or [],
-        "contactability": contactability or {
+        "contactability": contactability
+        or {
             "score": "medium",
             "reason": "Moderate footprint",
             "num_social": 2,
@@ -81,18 +83,23 @@ def _mock_all_external_calls():
     patches survive other test files overwriting sys.modules["generate_markdown_reports_skiptrace"].
     """
     return {
-        "whois": patch.object(_gm_st_module, "get_domain_registration_date", return_value={
-            "success": False, "registration_date": None, "error": "mocked"
-        }),
-        "mx": patch.object(_gm_st_module, "check_domain_mx_records", return_value={
-            "success": False, "error": "mocked"
-        }),
-        "gravatar": patch.object(_gm_st_module, "get_gravatar_profile", return_value={
-            "success": False, "profile_url": None, "thumbnail_url": None, "error": "mocked"
-        }),
+        "whois": patch.object(
+            _gm_st_module,
+            "get_domain_registration_date",
+            return_value={"success": False, "registration_date": None, "error": "mocked"},
+        ),
+        "mx": patch.object(
+            _gm_st_module, "check_domain_mx_records", return_value={"success": False, "error": "mocked"}
+        ),
+        "gravatar": patch.object(
+            _gm_st_module,
+            "get_gravatar_profile",
+            return_value={"success": False, "profile_url": None, "thumbnail_url": None, "error": "mocked"},
+        ),
         "blocklist": patch.object(_gm_st_module, "load_disposable_email_blocklist", return_value=set()),
-        "street_view": patch.object(_gm_st_module, "generate_street_view_url",
-                            return_value="https://maps.google.com/test"),
+        "street_view": patch.object(
+            _gm_st_module, "generate_street_view_url", return_value="https://maps.google.com/test"
+        ),
     }
 
 
@@ -161,11 +168,17 @@ class TestSkipTraceIdentityReportBasic:
 
     def test_skip_trace_has_no_alerts(self, tmp_path):
         """Skip trace reports should NOT contain alert/warning callouts."""
-        data = _minimal_data(breaches=[], contactability={
-            "score": "low", "reason": "Low footprint",
-            "num_social": 0, "num_breaches": 0,
-            "footprint_bucket": "LOW", "breach_bucket": "NO",
-        })
+        data = _minimal_data(
+            breaches=[],
+            contactability={
+                "score": "low",
+                "reason": "Low footprint",
+                "num_social": 0,
+                "num_breaches": 0,
+                "footprint_bucket": "LOW",
+                "breach_bucket": "NO",
+            },
+        )
         mocks = _mock_all_external_calls()
         with mocks["whois"], mocks["mx"], mocks["gravatar"], mocks["blocklist"], mocks["street_view"]:
             generate_identity_report_skiptrace(data, "John Doe", tmp_path)
@@ -201,15 +214,26 @@ class TestSkipTraceEnrichmentData:
             "domains": {
                 "acme.com": {
                     "whois": {"success": True, "registration_date": "2010-01-15", "error": None},
-                    "mx": {"success": True, "risk_level": "LOW", "provider_detected": "Google Workspace",
-                           "mx_records": ["aspmx.l.google.com"], "status": "Legitimate"},
+                    "mx": {
+                        "success": True,
+                        "risk_level": "LOW",
+                        "provider_detected": "Google Workspace",
+                        "mx_records": ["aspmx.l.google.com"],
+                        "status": "Legitimate",
+                    },
                 }
             },
             "addresses": {},
             "contacts": {"phones": [], "emails": [], "addresses": []},
         }
         mocks = _mock_all_external_calls()
-        with mocks["whois"] as mock_whois, mocks["mx"] as mock_mx, mocks["gravatar"], mocks["blocklist"], mocks["street_view"]:
+        with (
+            mocks["whois"] as mock_whois,
+            mocks["mx"] as mock_mx,
+            mocks["gravatar"],
+            mocks["blocklist"],
+            mocks["street_view"],
+        ):
             generate_identity_report_skiptrace(data, "John Doe", tmp_path, enrichment_data=enrichment)
 
         mock_whois.assert_not_called()
@@ -221,8 +245,7 @@ class TestSkipTraceEnrichmentData:
             "domains": {},
             "addresses": {},
             "contacts": {
-                "phones": [{"number_raw": "416-555-9999", "number_digits": "4165559999",
-                            "confidence": "high"}],
+                "phones": [{"number_raw": "416-555-9999", "number_digits": "4165559999", "confidence": "high"}],
                 "emails": [{"email": "alt@example.com", "confidence": "medium"}],
                 "addresses": [{"address_raw": "789 Oak St, Vancouver, BC V6B 1A1", "confidence": "high"}],
             },
@@ -248,9 +271,19 @@ class TestSkipTraceSourcesSection:
 
     def test_sources_rendered(self, tmp_path):
         queries = [
-            {"id": "name_search", "type": "precision", "query": "John Doe Toronto",
-             "hits": [{"url": "https://example.com", "title": "John Doe Page",
-                        "snippet": "Found on example.com", "source": "vertex_ai_precision"}]},
+            {
+                "id": "name_search",
+                "type": "precision",
+                "query": "John Doe Toronto",
+                "hits": [
+                    {
+                        "url": "https://example.com",
+                        "title": "John Doe Page",
+                        "snippet": "Found on example.com",
+                        "source": "vertex_ai_precision",
+                    }
+                ],
+            },
         ]
         data = _minimal_data(queries=queries)
         mocks = _mock_all_external_calls()
@@ -264,9 +297,19 @@ class TestSkipTraceSourcesSection:
 
     def test_linkedin_source_uses_site_prefix(self, tmp_path):
         queries = [
-            {"id": "company_name_linkedin", "type": "linkedin", "query": "John Doe Acme",
-             "hits": [{"url": "https://linkedin.com/in/johndoe", "title": "John Doe",
-                        "snippet": "Software Engineer", "source": "vertex_ai_linkedin"}]},
+            {
+                "id": "company_name_linkedin",
+                "type": "linkedin",
+                "query": "John Doe Acme",
+                "hits": [
+                    {
+                        "url": "https://linkedin.com/in/johndoe",
+                        "title": "John Doe",
+                        "snippet": "Software Engineer",
+                        "source": "vertex_ai_linkedin",
+                    }
+                ],
+            },
         ]
         data = _minimal_data(queries=queries)
         mocks = _mock_all_external_calls()
@@ -278,8 +321,7 @@ class TestSkipTraceSourcesSection:
 
     def test_empty_hits_shows_none(self, tmp_path):
         queries = [
-            {"id": "name_search", "type": "precision", "query": "Jane Doe Unknown",
-             "hits": []},
+            {"id": "name_search", "type": "precision", "query": "Jane Doe Unknown", "hits": []},
         ]
         data = _minimal_data(queries=queries)
         mocks = _mock_all_external_calls()

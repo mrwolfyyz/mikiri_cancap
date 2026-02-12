@@ -13,7 +13,7 @@ import sys
 import time
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
 # Mock heavy dependencies BEFORE loading the module
@@ -22,12 +22,15 @@ _mock_ff = MagicMock()
 _mock_ff.http = lambda f: f
 sys.modules.setdefault("functions_framework", _mock_ff)
 
+
 # Mock dns.resolver — need real exception subclasses for except clauses
 class _NoAnswer(Exception):
     pass
 
+
 class _NXDOMAIN(Exception):
     pass
+
 
 _mock_dns = MagicMock()
 _mock_dns_resolver = MagicMock()
@@ -162,8 +165,7 @@ class TestGetDomainRegistrationDate:
     def test_raw_text_parsing(self):
         """Fallback to parsing creation date from raw WHOIS text."""
         whois_result = _mock_whois_result(
-            creation_date=None,
-            text="Domain Name: example.com\nCreation Date: 2021-07-15\nExpiry Date: 2025-07-15"
+            creation_date=None, text="Domain Name: example.com\nCreation Date: 2021-07-15\nExpiry Date: 2025-07-15"
         )
         with patch.object(de_main, "whois") as mock_whois_mod:
             mock_whois_mod.whois.return_value = whois_result
@@ -175,9 +177,7 @@ class TestGetDomainRegistrationDate:
     def test_exception_with_date_in_error(self):
         """Some WHOIS libraries include date data in exception messages."""
         with patch.object(de_main, "whois") as mock_whois_mod:
-            mock_whois_mod.whois.side_effect = Exception(
-                "WhoisCommandFailed: creation date: 2022-01-01"
-            )
+            mock_whois_mod.whois.side_effect = Exception("WhoisCommandFailed: creation date: 2022-01-01")
             result = get_domain_registration_date("example.com")
 
         assert result["success"] is True
@@ -265,8 +265,7 @@ class TestCheckDomainMxRecords:
         assert "Not Found" in result["status"]
 
     def test_generic_exception(self):
-        with patch.object(de_main.dns.resolver, "resolve",
-                          side_effect=RuntimeError("resolver error")):
+        with patch.object(de_main.dns.resolver, "resolve", side_effect=RuntimeError("resolver error")):
             result = check_domain_mx_records("example.com")
 
         assert result["success"] is False
@@ -394,8 +393,15 @@ class TestEnrichSingleDomain:
 
     def test_both_lookups_succeed(self):
         whois_result = {"success": True, "registration_date": "2020-01-01", "error": None}
-        mx_result = {"success": True, "status": "Legitimate", "risk_level": "LOW",
-                     "provider_detected": "Google", "mx_records": [], "domain": "example.com", "error": None}
+        mx_result = {
+            "success": True,
+            "status": "Legitimate",
+            "risk_level": "LOW",
+            "provider_detected": "Google",
+            "mx_records": [],
+            "domain": "example.com",
+            "error": None,
+        }
 
         with patch.object(de_main, "_retry_lookup", side_effect=[whois_result, mx_result]):
             result = enrich_single_domain("example.com", time.time())
@@ -407,8 +413,15 @@ class TestEnrichSingleDomain:
 
     def test_whois_exception_mx_succeeds(self):
         """WHOIS future raises but MX succeeds."""
-        mx_result = {"success": True, "status": "Legitimate", "risk_level": "LOW",
-                     "provider_detected": "Google", "mx_records": [], "domain": "example.com", "error": None}
+        mx_result = {
+            "success": True,
+            "status": "Legitimate",
+            "risk_level": "LOW",
+            "provider_detected": "Google",
+            "mx_records": [],
+            "domain": "example.com",
+            "error": None,
+        }
 
         def mock_retry(fn, domain, name, start_time):
             if name == "WHOIS":
@@ -438,6 +451,7 @@ class TestEnrichSingleDomain:
 
     def test_both_lookups_fail(self):
         """Both WHOIS and MX futures raise, error contains both messages."""
+
         def mock_retry(fn, domain, name, start_time):
             raise RuntimeError(f"{name} failed")
 
@@ -473,8 +487,15 @@ class TestMainHandler:
         mock_enrichment = {
             "domain": "acmecorp.com",
             "whois": {"success": True, "registration_date": "2020-01-01", "error": None},
-            "mx": {"success": True, "status": "Legitimate", "risk_level": "LOW",
-                   "provider_detected": "Google", "mx_records": [], "domain": "acmecorp.com", "error": None},
+            "mx": {
+                "success": True,
+                "status": "Legitimate",
+                "risk_level": "LOW",
+                "provider_detected": "Google",
+                "mx_records": [],
+                "domain": "acmecorp.com",
+                "error": None,
+            },
             "error": None,
         }
 
@@ -489,6 +510,7 @@ class TestMainHandler:
         body = {"email": "john@acmecorp.com", "company_domain": "acmecorp.com"}
 
         call_count = 0
+
         def mock_enrich(domain, start_time):
             nonlocal call_count
             call_count += 1
@@ -505,6 +527,7 @@ class TestMainHandler:
         body = {"email": "john@acmecorp.com", "company_domain": "otherco.com"}
 
         call_count = 0
+
         def mock_enrich(domain, start_time):
             nonlocal call_count
             call_count += 1

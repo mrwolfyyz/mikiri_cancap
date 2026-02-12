@@ -12,7 +12,6 @@ Covers:
 
 import json
 import sys
-import time
 from unittest.mock import MagicMock, patch
 
 import flask
@@ -307,9 +306,11 @@ class TestVertexAiAnalyzeAddressGrounded:
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
-        with patch.object(av_main, "GCP_PROJECT", "test-project"), \
-             patch.object(av_main, "_get_genai_client", return_value=mock_client), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(av_main, "GCP_PROJECT", "test-project"),
+            patch.object(av_main, "_get_genai_client", return_value=mock_client),
+            patch("retry_utils.time.sleep"),
+        ):
             result = vertex_ai_analyze_address_grounded("123 Main St", "Acme Corp")
 
         assert result["business_at_address"] is True
@@ -322,9 +323,11 @@ class TestVertexAiAnalyzeAddressGrounded:
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
-        with patch.object(av_main, "GCP_PROJECT", "test-project"), \
-             patch.object(av_main, "_get_genai_client", return_value=mock_client), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(av_main, "GCP_PROJECT", "test-project"),
+            patch.object(av_main, "_get_genai_client", return_value=mock_client),
+            patch("retry_utils.time.sleep"),
+        ):
             try:
                 vertex_ai_analyze_address_grounded("123 Main St", "Acme Corp")
                 assert False, "Should have raised after retries"
@@ -344,9 +347,11 @@ class TestGeocodeAddress:
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch.object(av_main, "_last_nominatim_call", 0.0), \
-             patch("address_verification_main.urlopen", return_value=mock_resp), \
-             patch("address_verification_main.time") as mock_time:
+        with (
+            patch.object(av_main, "_last_nominatim_call", 0.0),
+            patch("address_verification_main.urlopen", return_value=mock_resp),
+            patch("address_verification_main.time") as mock_time,
+        ):
             mock_time.time.return_value = 100.0
             mock_time.sleep = MagicMock()
             lat, lon = geocode_address("123 Main St, Toronto")
@@ -360,9 +365,11 @@ class TestGeocodeAddress:
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch.object(av_main, "_last_nominatim_call", 0.0), \
-             patch("address_verification_main.urlopen", return_value=mock_resp), \
-             patch("address_verification_main.time") as mock_time:
+        with (
+            patch.object(av_main, "_last_nominatim_call", 0.0),
+            patch("address_verification_main.urlopen", return_value=mock_resp),
+            patch("address_verification_main.time") as mock_time,
+        ):
             mock_time.time.return_value = 100.0
             mock_time.sleep = MagicMock()
             lat, lon = geocode_address("nonexistent address")
@@ -372,9 +379,12 @@ class TestGeocodeAddress:
 
     def test_network_error_returns_none(self):
         from urllib.error import URLError
-        with patch.object(av_main, "_last_nominatim_call", 0.0), \
-             patch("address_verification_main.urlopen", side_effect=URLError("timeout")), \
-             patch("address_verification_main.time") as mock_time:
+
+        with (
+            patch.object(av_main, "_last_nominatim_call", 0.0),
+            patch("address_verification_main.urlopen", side_effect=URLError("timeout")),
+            patch("address_verification_main.time") as mock_time,
+        ):
             mock_time.time.return_value = 100.0
             mock_time.sleep = MagicMock()
             lat, lon = geocode_address("123 Main St")
@@ -385,10 +395,14 @@ class TestGeocodeAddress:
     def test_http_error_returns_none(self):
         """HTTPError (e.g. 500) is caught and returns (None, None)."""
         from urllib.error import HTTPError
-        with patch.object(av_main, "_last_nominatim_call", 0.0), \
-             patch("address_verification_main.urlopen",
-                   side_effect=HTTPError("http://...", 500, "Server Error", {}, None)), \
-             patch("address_verification_main.time") as mock_time:
+
+        with (
+            patch.object(av_main, "_last_nominatim_call", 0.0),
+            patch(
+                "address_verification_main.urlopen", side_effect=HTTPError("http://...", 500, "Server Error", {}, None)
+            ),
+            patch("address_verification_main.time") as mock_time,
+        ):
             mock_time.time.return_value = 100.0
             mock_time.sleep = MagicMock()
             lat, lon = geocode_address("123 Main St")
@@ -403,9 +417,11 @@ class TestGeocodeAddress:
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch.object(av_main, "_last_nominatim_call", 0.0), \
-             patch("address_verification_main.urlopen", return_value=mock_resp), \
-             patch("address_verification_main.time") as mock_time:
+        with (
+            patch.object(av_main, "_last_nominatim_call", 0.0),
+            patch("address_verification_main.urlopen", return_value=mock_resp),
+            patch("address_verification_main.time") as mock_time,
+        ):
             mock_time.time.return_value = 100.0
             mock_time.sleep = MagicMock()
             lat, lon = geocode_address("123 Main St")
@@ -420,9 +436,11 @@ class TestGeocodeAddress:
         mock_resp.__enter__ = MagicMock(return_value=mock_resp)
         mock_resp.__exit__ = MagicMock(return_value=False)
 
-        with patch.object(av_main, "_last_nominatim_call", 0.0), \
-             patch("address_verification_main.urlopen", return_value=mock_resp), \
-             patch("address_verification_main.time") as mock_time:
+        with (
+            patch.object(av_main, "_last_nominatim_call", 0.0),
+            patch("address_verification_main.urlopen", return_value=mock_resp),
+            patch("address_verification_main.time") as mock_time,
+        ):
             mock_time.time.return_value = 100.0
             mock_time.sleep = MagicMock()
             lat, lon = geocode_address("123 Main St")
@@ -481,9 +499,11 @@ class TestMainHandler:
         mock_analysis = _mock_llm_analysis()
         mock_analysis["_grounding_metadata"] = {"grounding_sources": [], "search_queries": []}
 
-        with _app.test_request_context(), \
-             patch.object(av_main, "vertex_ai_analyze_address_grounded", return_value=mock_analysis), \
-             patch.object(av_main, "geocode_address", return_value=(43.65, -79.38)):
+        with (
+            _app.test_request_context(),
+            patch.object(av_main, "vertex_ai_analyze_address_grounded", return_value=mock_analysis),
+            patch.object(av_main, "geocode_address", return_value=(43.65, -79.38)),
+        ):
             resp, status, headers = main_handler(_make_request(body))
 
         assert status == 200
@@ -496,9 +516,11 @@ class TestMainHandler:
         mock_analysis = _mock_llm_analysis()
         mock_analysis["_grounding_metadata"] = {"grounding_sources": [], "search_queries": []}
 
-        with _app.test_request_context(), \
-             patch.object(av_main, "vertex_ai_analyze_address_grounded", return_value=mock_analysis), \
-             patch.object(av_main, "geocode_address", return_value=(43.65, -79.38)):
+        with (
+            _app.test_request_context(),
+            patch.object(av_main, "vertex_ai_analyze_address_grounded", return_value=mock_analysis),
+            patch.object(av_main, "geocode_address", return_value=(43.65, -79.38)),
+        ):
             resp, status, headers = main_handler(_make_request(body))
 
         assert status == 200
@@ -527,9 +549,11 @@ class TestMainHandler:
             "address": "123 Main St, Toronto, ON",
             "business_name": "Acme Corp",
         }
-        with _app.test_request_context(), \
-             patch.object(av_main, "vertex_ai_analyze_address_grounded", side_effect=RuntimeError("LLM down")), \
-             patch.object(av_main, "geocode_address", return_value=(None, None)):
+        with (
+            _app.test_request_context(),
+            patch.object(av_main, "vertex_ai_analyze_address_grounded", side_effect=RuntimeError("LLM down")),
+            patch.object(av_main, "geocode_address", return_value=(None, None)),
+        ):
             resp, status, headers = main_handler(_make_request(body))
 
         assert status == 500
@@ -543,9 +567,11 @@ class TestMainHandler:
         mock_analysis = _mock_llm_analysis()
         mock_analysis["_grounding_metadata"] = {"grounding_sources": [], "search_queries": []}
 
-        with _app.test_request_context(), \
-             patch.object(av_main, "vertex_ai_analyze_address_grounded", return_value=mock_analysis), \
-             patch.object(av_main, "geocode_address", return_value=(None, None)):
+        with (
+            _app.test_request_context(),
+            patch.object(av_main, "vertex_ai_analyze_address_grounded", return_value=mock_analysis),
+            patch.object(av_main, "geocode_address", return_value=(None, None)),
+        ):
             resp, status, headers = main_handler(_make_request(body))
 
         assert status == 200
@@ -560,10 +586,11 @@ class TestMainHandler:
             "address": "123 Main St, Toronto, ON",
             "business_name": "Acme Corp",
         }
-        with _app.test_request_context(), \
-             patch.object(av_main, "vertex_ai_analyze_address_grounded",
-                          side_effect=RuntimeError("LLM failed")), \
-             patch.object(av_main, "geocode_address", return_value=(43.65, -79.38)):
+        with (
+            _app.test_request_context(),
+            patch.object(av_main, "vertex_ai_analyze_address_grounded", side_effect=RuntimeError("LLM failed")),
+            patch.object(av_main, "geocode_address", return_value=(43.65, -79.38)),
+        ):
             resp, status, headers = main_handler(_make_request(body))
 
         assert status == 500

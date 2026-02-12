@@ -7,9 +7,7 @@ Covers:
 
 import json
 import sys
-from pathlib import Path
-from unittest.mock import MagicMock, patch, call
-from datetime import datetime
+from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
 # Mock heavy dependencies BEFORE loading the module
@@ -42,6 +40,7 @@ sys.modules.setdefault("firebase_admin.firestore", _mock_fb_firestore)
 _mock_google_auth = MagicMock()
 sys.modules.setdefault("google.auth", _mock_google_auth)
 
+
 # googleapiclient — HttpError must be a real Exception subclass
 class _HttpError(Exception):
     def __init__(self, resp=None, content=b"", uri=""):
@@ -49,6 +48,7 @@ class _HttpError(Exception):
         self.content = content
         self.uri = uri
         super().__init__(str(content))
+
 
 _mock_googleapiclient = MagicMock()
 _mock_googleapiclient_discovery = MagicMock()
@@ -246,8 +246,7 @@ class TestOnJobUpdated:
             md_file = output_dir / f"Identity___{borrower_name.replace(' ', '_')}.md"
             md_file.write_text("# Identity Report\nTest content")
 
-        with patch.object(rgo_main, "firestore_client", mock_client), \
-             patch.object(rgo_main, "md_gen") as mock_md:
+        with patch.object(rgo_main, "firestore_client", mock_client), patch.object(rgo_main, "md_gen") as mock_md:
             mock_md.generate_identity_report = fake_generate
             on_job_updated(_make_cloud_event())
 
@@ -272,13 +271,20 @@ class TestOnJobUpdated:
 
         mock_drive_service = MagicMock()
 
-        with patch.object(rgo_main, "firestore_client", mock_client), \
-             patch.object(rgo_main, "md_gen") as mock_md, \
-             patch.object(rgo_main, "get_drive_service", return_value=mock_drive_service), \
-             patch.object(rgo_main, "find_or_create_folder", return_value="subfolder456"), \
-             patch.object(rgo_main, "upload_single_file",
-                          return_value=("Identity___Jane_Smith.md",
-                                        {"id": "file1", "webViewLink": "https://drive.google.com/file1"})):
+        with (
+            patch.object(rgo_main, "firestore_client", mock_client),
+            patch.object(rgo_main, "md_gen") as mock_md,
+            patch.object(rgo_main, "get_drive_service", return_value=mock_drive_service),
+            patch.object(rgo_main, "find_or_create_folder", return_value="subfolder456"),
+            patch.object(
+                rgo_main,
+                "upload_single_file",
+                return_value=(
+                    "Identity___Jane_Smith.md",
+                    {"id": "file1", "webViewLink": "https://drive.google.com/file1"},
+                ),
+            ),
+        ):
             mock_md.generate_identity_report = fake_generate
             on_job_updated(_make_cloud_event())
 
@@ -303,9 +309,11 @@ class TestOnJobUpdated:
         mock_resp = MagicMock(status=404)
         drive_error = _HttpError(resp=mock_resp, content=b"Not Found")
 
-        with patch.object(rgo_main, "firestore_client", mock_client), \
-             patch.object(rgo_main, "md_gen") as mock_md, \
-             patch.object(rgo_main, "get_drive_service", side_effect=drive_error):
+        with (
+            patch.object(rgo_main, "firestore_client", mock_client),
+            patch.object(rgo_main, "md_gen") as mock_md,
+            patch.object(rgo_main, "get_drive_service", side_effect=drive_error),
+        ):
             mock_md.generate_identity_report = fake_generate
             on_job_updated(_make_cloud_event())
 
@@ -322,8 +330,7 @@ class TestOnJobUpdated:
         mock_client = MagicMock()
         mock_client.collection.return_value.document.return_value = mock_ref
 
-        with patch.object(rgo_main, "firestore_client", mock_client), \
-             patch.object(rgo_main, "md_gen") as mock_md:
+        with patch.object(rgo_main, "firestore_client", mock_client), patch.object(rgo_main, "md_gen") as mock_md:
             mock_md.generate_identity_report.side_effect = RuntimeError("generation failed")
             on_job_updated(_make_cloud_event())
 
@@ -346,8 +353,7 @@ class TestOnJobUpdated:
             md_file = output_dir / f"Identity___{borrower_name.replace(' ', '_')}.md"
             md_file.write_text("# Report")
 
-        with patch.object(rgo_main, "firestore_client", mock_client), \
-             patch.object(rgo_main, "md_gen") as mock_md:
+        with patch.object(rgo_main, "firestore_client", mock_client), patch.object(rgo_main, "md_gen") as mock_md:
             mock_md.generate_identity_report = fake_generate
             on_job_updated(_make_cloud_event())
 
@@ -369,13 +375,13 @@ class TestOnJobUpdated:
         mock_client.collection.return_value.document.return_value = mock_ref
 
         generated_names = []
+
         def fake_generate(report_data, borrower_name, output_dir, **kwargs):
             generated_names.append(borrower_name)
             md_file = output_dir / f"Identity___{borrower_name.replace(' ', '_')}.md"
             md_file.write_text("# Report")
 
-        with patch.object(rgo_main, "firestore_client", mock_client), \
-             patch.object(rgo_main, "md_gen") as mock_md:
+        with patch.object(rgo_main, "firestore_client", mock_client), patch.object(rgo_main, "md_gen") as mock_md:
             mock_md.generate_identity_report = fake_generate
             on_job_updated(_make_cloud_event())
 

@@ -68,8 +68,8 @@ class TestMainHandler:
         mock_extract.assert_called_once()
         call_args = mock_extract.call_args
         assert call_args[0][0] == body["identity"]["queries"]  # queries
-        assert call_args[0][1] == body["identity"]["seed"]     # seed
-        assert call_args[0][2] == "john@example.com"           # exclude_email
+        assert call_args[0][1] == body["identity"]["seed"]  # seed
+        assert call_args[0][2] == "john@example.com"  # exclude_email
 
     def test_exclude_email_from_seed(self):
         """exclude_email is extracted from seed.email."""
@@ -80,7 +80,9 @@ class TestMainHandler:
                 "queries": [{"hits": [{"title": "t"}]}],
             },
         }
-        with patch.object(ce_main, "extract_contact_info_llm", return_value={"phones": [], "emails": [], "addresses": []}) as mock_extract:
+        with patch.object(
+            ce_main, "extract_contact_info_llm", return_value={"phones": [], "emails": [], "addresses": []}
+        ) as mock_extract:
             main_handler(_make_request(body))
 
         assert mock_extract.call_args[0][2] == "jane@test.com"
@@ -94,7 +96,9 @@ class TestMainHandler:
                 "queries": [{"hits": [{"title": "t"}]}],
             },
         }
-        with patch.object(ce_main, "extract_contact_info_llm", return_value={"phones": [], "emails": [], "addresses": []}) as mock_extract:
+        with patch.object(
+            ce_main, "extract_contact_info_llm", return_value={"phones": [], "emails": [], "addresses": []}
+        ) as mock_extract:
             main_handler(_make_request(body))
 
         assert mock_extract.call_args[0][2] is None
@@ -130,9 +134,11 @@ class TestMainHandler:
     def test_missing_queries_and_seed_default_to_empty(self):
         """If identity has no queries/seed keys, they default to empty."""
         body = {"identity": {"some_key": "value"}}
-        with patch.object(ce_main, "extract_contact_info_llm", return_value={"phones": [], "emails": [], "addresses": []}) as mock_extract:
+        with patch.object(
+            ce_main, "extract_contact_info_llm", return_value={"phones": [], "emails": [], "addresses": []}
+        ) as mock_extract:
             result, status, _ = main_handler(_make_request(body))
 
         assert status == 200
-        assert mock_extract.call_args[0][0] == []   # queries
-        assert mock_extract.call_args[0][1] == {}   # seed
+        assert mock_extract.call_args[0][0] == []  # queries
+        assert mock_extract.call_args[0][1] == {}  # seed

@@ -9,7 +9,6 @@ from the source file at test time using exec().
 import re
 from pathlib import Path
 
-
 # ---------------------------------------------------------------------------
 # Extract validation functions from main.py source without importing the module
 # ---------------------------------------------------------------------------
@@ -23,11 +22,7 @@ _namespace = {"re": re}
 
 # Extract VALID_PROVINCES
 exec(
-    "\n".join(
-        line
-        for line in _source.splitlines()
-        if line.startswith("VALID_PROVINCES")
-    ),
+    "\n".join(line for line in _source.splitlines() if line.startswith("VALID_PROVINCES")),
     _namespace,
 )
 
@@ -57,6 +52,7 @@ VALID_PROVINCES = _namespace["VALID_PROVINCES"]
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
 
 class TestValidateEmail:
     """Tests for the validate_email function."""

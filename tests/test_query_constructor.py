@@ -103,9 +103,11 @@ class TestGeneratePrecisionQuery:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = _mock_llm_response(llm_data)
 
-        with patch.object(qc_main, "_MODEL", mock_model), \
-             patch.object(qc_main, "GCP_PROJECT", "test-project"), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
             result = generate_precision_query("Timothy Lewis", "Cobourg", "ON")
 
         assert result["original_name"] == "Timothy Lewis"
@@ -122,10 +124,12 @@ class TestGeneratePrecisionQuery:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = _mock_llm_response(llm_data)
 
-        with patch.object(qc_main, "_MODEL", mock_model), \
-             patch.object(qc_main, "GCP_PROJECT", "test-project"), \
-             patch("retry_utils.time.sleep"):
-            result = generate_precision_query("John Doe", "Toronto", "ON")
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
+            _result = generate_precision_query("John Doe", "Toronto", "ON")
 
         # The actual model call should have received "Ontario" not "ON"
         call_args = mock_model.generate_content.call_args
@@ -141,9 +145,11 @@ class TestGeneratePrecisionQuery:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = _mock_llm_response(llm_data)
 
-        with patch.object(qc_main, "_MODEL", mock_model), \
-             patch.object(qc_main, "GCP_PROJECT", "test-project"), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
             result = generate_precision_query("Jane Smith", "Vancouver", "")
 
         assert result["original_name"] == "Jane Smith"
@@ -157,9 +163,11 @@ class TestGeneratePrecisionQuery:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = _mock_llm_response(llm_data)
 
-        with patch.object(qc_main, "_MODEL", mock_model), \
-             patch.object(qc_main, "GCP_PROJECT", "test-project"), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
             result = generate_precision_query("Timothy Lewis", "Cobourg")
 
         assert result["original_name"] == "Timothy Lewis"
@@ -172,9 +180,11 @@ class TestGeneratePrecisionQuery:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = _mock_llm_response(llm_data)
 
-        with patch.object(qc_main, "_MODEL", mock_model), \
-             patch.object(qc_main, "GCP_PROJECT", "test-project"), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
             result = generate_precision_query("John Doe", "Toronto")
 
         assert result["generated_names"] == []
@@ -188,9 +198,11 @@ class TestGeneratePrecisionQuery:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = _mock_llm_response(llm_data)
 
-        with patch.object(qc_main, "_MODEL", mock_model), \
-             patch.object(qc_main, "GCP_PROJECT", "test-project"), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
             result = generate_precision_query("John Doe", "Toronto", "ON")
 
         assert '"John Doe"' in result["vertex_query"]
@@ -205,16 +217,17 @@ class TestGeneratePrecisionQuery:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = _mock_llm_response(llm_data)
 
-        with patch.object(qc_main, "_MODEL", mock_model), \
-             patch.object(qc_main, "GCP_PROJECT", "test-project"), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
             result = generate_precision_query("John Doe", "Toronto")
 
         assert result["generated_names"] == []
 
     def test_gcp_project_not_set_raises(self):
-        with patch.object(qc_main, "GCP_PROJECT", ""), \
-             patch.object(qc_main, "_MODEL", None):
+        with patch.object(qc_main, "GCP_PROJECT", ""), patch.object(qc_main, "_MODEL", None):
             try:
                 generate_precision_query("John Doe", "Toronto")
                 assert False, "Should have raised RuntimeError"
@@ -234,9 +247,11 @@ class TestGeneratePrecisionQuery:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        with patch.object(qc_main, "_MODEL", mock_model), \
-             patch.object(qc_main, "GCP_PROJECT", "test-project"), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
             result = generate_precision_query("John Doe", "Toronto")
 
         assert result["original_name"] == "John Doe"
@@ -249,9 +264,11 @@ class TestGeneratePrecisionQuery:
         mock_model = MagicMock()
         mock_model.generate_content.return_value = mock_response
 
-        with patch.object(qc_main, "_MODEL", mock_model), \
-             patch.object(qc_main, "GCP_PROJECT", "test-project"), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
             try:
                 generate_precision_query("John Doe", "Toronto")
                 assert False, "Should have raised after retries"
@@ -276,9 +293,11 @@ class TestMainHandler:
 
         req = _make_request({"full_name": "John Doe", "city": "Toronto", "province": "ON"})
 
-        with patch.object(qc_main, "_MODEL", mock_model), \
-             patch.object(qc_main, "GCP_PROJECT", "test-project"), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
             result, status = main_handler(req)
 
         assert status == 200
@@ -307,9 +326,11 @@ class TestMainHandler:
 
         req = _make_request({"full_name": "John Doe", "city": "Toronto", "province": "ON"})
 
-        with patch.object(qc_main, "_MODEL", mock_model), \
-             patch.object(qc_main, "GCP_PROJECT", "test-project"), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
             result, status = main_handler(req)
 
         assert status == 500
@@ -325,9 +346,11 @@ class TestMainHandler:
 
         req = _make_request({"full_name": "  John Doe  ", "city": "  Toronto  ", "province": "  ON  "})
 
-        with patch.object(qc_main, "_MODEL", mock_model), \
-             patch.object(qc_main, "GCP_PROJECT", "test-project"), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
             result, status = main_handler(req)
 
         assert status == 200

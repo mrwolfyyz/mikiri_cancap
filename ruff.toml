@@ -1,0 +1,41 @@
+# Ruff linter and formatter configuration
+# https://docs.astral.sh/ruff/configuration/
+
+target-version = "py312"
+
+# Lint all Python under gcp/ and tests/
+src = ["gcp", "tests"]
+
+# Exclude generated/vendored directories
+extend-exclude = [".claude"]
+
+line-length = 120
+
+[lint]
+# Start with a practical rule set:
+#   F  = Pyflakes (unused imports, undefined names, etc.)
+#   E  = pycodestyle errors
+#   W  = pycodestyle warnings
+#   I  = isort (import ordering)
+#   UP = pyupgrade (modernize syntax for target Python version)
+#   B  = flake8-bugbear (common bug patterns)
+select = ["F", "E", "W", "I", "UP", "B"]
+
+# Rules to ignore:
+#   E501  = line too long (handled by formatter)
+#   E712  = comparison to True/False (common in test assertions)
+#   UP047 = PEP 695 type parameter syntax (too new to enforce broadly)
+ignore = ["E501", "E712", "UP047"]
+
+[lint.per-file-ignores]
+# Tests can use assert, magic values, and broader imports.
+# E402: tests intentionally set up mocks/env vars before importing modules under test.
+"tests/**" = ["B011", "B007", "E402"]
+# Cloud Functions import local modules (copied by prepare-functions.sh) after stdlib/third-party.
+"gcp/functions/*/main.py" = ["E402"]
+# retry_utils.py uses RetryConfig() as a default arg — safe because it's a dataclass.
+"**/retry_utils.py" = ["B008"]
+
+[format]
+quote-style = "double"
+indent-style = "space"

@@ -10,14 +10,14 @@ Returns enrichment data that gets passed to aggregator.
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from typing import Any
 
 import dns.resolver
 import functions_framework
 import whois
 from dateutil import parser as dateutil_parser
-from typing import Dict, Any, Tuple
-from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # -------------------------
 
 # Import shared domain utilities (copied by prepare-functions.sh from gcp/shared/)
-from domain_utils import COMMON_CANADIAN_EMAIL_DOMAINS, extract_email_domain, is_personal_email_domain
+from domain_utils import extract_email_domain, is_personal_email_domain
 
 # MX Record Provider Classifications
 HIGH_TRUST_PROVIDERS = {
@@ -73,9 +73,16 @@ LOW_TRUST_FLAGS = {
 
 # Transient error patterns for result-based retry
 _TRANSIENT_ERROR_PATTERNS = [
-    "timeout", "timed out", "connection reset", "connection refused",
-    "too many requests", "rate limit", "temporarily unavailable",
-    "try again", "socket error", "network unreachable",
+    "timeout",
+    "timed out",
+    "connection reset",
+    "connection refused",
+    "too many requests",
+    "rate limit",
+    "temporarily unavailable",
+    "try again",
+    "socket error",
+    "network unreachable",
 ]
 
 # Retry configuration
@@ -87,6 +94,7 @@ _FUNCTION_TIME_BUDGET_SECONDS = 45  # Leave headroom within 60s function timeout
 # -------------------------
 # Utility Functions
 # -------------------------
+
 
 def _is_transient_error(error_msg: str) -> bool:
     """Check if an error message indicates a transient/retryable failure."""
@@ -100,7 +108,8 @@ def _is_transient_error(error_msg: str) -> bool:
 # WHOIS Lookup
 # -------------------------
 
-def get_domain_registration_date(domain: str) -> Dict[str, Any]:
+
+def get_domain_registration_date(domain: str) -> dict[str, Any]:
     """
     Perform whois lookup and extract registration date.
     Returns dict with 'success', 'registration_date', and 'error' fields.
@@ -111,35 +120,35 @@ def get_domain_registration_date(domain: str) -> Dict[str, Any]:
 
         # Try multiple field names for registration date
         creation_date = None
-        for field_name in ['creation_date', 'created', 'registered', 'registration_date', 'domain_date_created']:
+        for field_name in ["creation_date", "created", "registered", "registration_date", "domain_date_created"]:
             field_value = getattr(w, field_name, None)
             if field_value:
                 creation_date = field_value
                 break
 
         # If no standard field found, check the raw dict
-        if not creation_date and hasattr(w, '__dict__'):
-            for key in ['creation_date', 'created', 'registered', 'registration_date', 'domain_date_created']:
+        if not creation_date and hasattr(w, "__dict__"):
+            for key in ["creation_date", "created", "registered", "registration_date", "domain_date_created"]:
                 if key in w.__dict__ and w.__dict__[key]:
                     creation_date = w.__dict__[key]
                     break
 
         # For domains that don't parse dates, try parsing raw text
-        if not creation_date and hasattr(w, 'text') and w.text:
+        if not creation_date and hasattr(w, "text") and w.text:
             date_patterns = [
-                r'creation date[:\s]+(\d{4}-\d{2}-\d{2})',
-                r'created[:\s]+(\d{4}-\d{2}-\d{2})',
-                r'registration date[:\s]+(\d{4}-\d{2}-\d{2})',
-                r'registered on[:\s]+(\d{4}-\d{2}-\d{2})',
-                r'domain created[:\s]+(\d{4}-\d{2}-\d{2})',
-                r'creation date[:\s]+(\d{2}/\d{2}/\d{4})',
-                r'created[:\s]+(\d{2}/\d{2}/\d{4})',
+                r"creation date[:\s]+(\d{4}-\d{2}-\d{2})",
+                r"created[:\s]+(\d{4}-\d{2}-\d{2})",
+                r"registration date[:\s]+(\d{4}-\d{2}-\d{2})",
+                r"registered on[:\s]+(\d{4}-\d{2}-\d{2})",
+                r"domain created[:\s]+(\d{4}-\d{2}-\d{2})",
+                r"creation date[:\s]+(\d{2}/\d{2}/\d{4})",
+                r"created[:\s]+(\d{2}/\d{2}/\d{4})",
             ]
             for pattern in date_patterns:
                 match = re.search(pattern, w.text, re.IGNORECASE)
                 if match:
                     date_str = match.group(1)
-                    for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%d-%m-%Y']:
+                    for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%d-%m-%Y"]:
                         try:
                             creation_date = datetime.strptime(date_str, fmt)
                             break
@@ -155,7 +164,7 @@ def get_domain_registration_date(domain: str) -> Dict[str, Any]:
 
             # Convert to datetime if it's a string
             if isinstance(creation_date, str):
-                for fmt in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%d-%b-%Y', '%Y-%m-%dT%H:%M:%S', '%Y-%m-%dT%H:%M:%SZ']:
+                for fmt in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%d-%b-%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ"]:
                     try:
                         creation_date = datetime.strptime(creation_date, fmt)
                         break
@@ -171,18 +180,10 @@ def get_domain_registration_date(domain: str) -> Dict[str, Any]:
             if isinstance(creation_date, datetime):
                 reg_date_str = creation_date.strftime("%Y-%m-%d")
                 logger.info("WHOIS lookup successful: %s registered %s", domain, reg_date_str)
-                return {
-                    "success": True,
-                    "registration_date": reg_date_str,
-                    "error": None
-                }
+                return {"success": True, "registration_date": reg_date_str, "error": None}
 
         logger.warning("No registration date found for %s", domain)
-        return {
-            "success": False,
-            "registration_date": None,
-            "error": "No registration date in whois data"
-        }
+        return {"success": False, "registration_date": None, "error": "No registration date in whois data"}
 
     except Exception as e:
         error_msg = str(e)
@@ -190,10 +191,10 @@ def get_domain_registration_date(domain: str) -> Dict[str, Any]:
 
         # Try to parse creation date from error message (some whois libraries return data in error)
         date_patterns = [
-            r'creation date[:\s]+(\d{4}-\d{2}-\d{2})T?\d*:?\d*:?\d*Z?',
-            r'creation date[:\s]+(\d{4}-\d{2}-\d{2})',
-            r'created[:\s]+(\d{4}-\d{2}-\d{2})T?\d*:?\d*:?\d*Z?',
-            r'created[:\s]+(\d{4}-\d{2}-\d{2})',
+            r"creation date[:\s]+(\d{4}-\d{2}-\d{2})T?\d*:?\d*:?\d*Z?",
+            r"creation date[:\s]+(\d{4}-\d{2}-\d{2})",
+            r"created[:\s]+(\d{4}-\d{2}-\d{2})T?\d*:?\d*:?\d*Z?",
+            r"created[:\s]+(\d{4}-\d{2}-\d{2})",
         ]
 
         for pattern in date_patterns:
@@ -203,27 +204,22 @@ def get_domain_registration_date(domain: str) -> Dict[str, Any]:
                 try:
                     creation_date = datetime.strptime(date_str, "%Y-%m-%d")
                     reg_date_str = creation_date.strftime("%Y-%m-%d")
-                    logger.info("Extracted registration date from error message: %s registered %s", domain, reg_date_str)
-                    return {
-                        "success": True,
-                        "registration_date": reg_date_str,
-                        "error": None
-                    }
+                    logger.info(
+                        "Extracted registration date from error message: %s registered %s", domain, reg_date_str
+                    )
+                    return {"success": True, "registration_date": reg_date_str, "error": None}
                 except ValueError:
                     continue
 
-        return {
-            "success": False,
-            "registration_date": None,
-            "error": error_msg
-        }
+        return {"success": False, "registration_date": None, "error": error_msg}
 
 
 # -------------------------
 # MX Record Lookup
 # -------------------------
 
-def check_domain_mx_records(domain: str) -> Dict[str, Any]:
+
+def check_domain_mx_records(domain: str) -> dict[str, Any]:
     """
     Analyze a domain's MX records to determine if it uses legitimate
     business email infrastructure or default/parked services.
@@ -236,18 +232,18 @@ def check_domain_mx_records(domain: str) -> Dict[str, Any]:
         "provider_detected": None,
         "mx_records": [],
         "risk_level": "UNKNOWN",
-        "error": None
+        "error": None,
     }
 
     try:
         # Fetch MX records
-        answers = dns.resolver.resolve(domain, 'MX')
+        answers = dns.resolver.resolve(domain, "MX")
 
         # Sort by priority (lowest number is primary)
         sorted_mx = sorted(answers, key=lambda r: r.preference)
 
         for rdata in sorted_mx:
-            mx_value = rdata.exchange.to_text().lower().strip('.')
+            mx_value = rdata.exchange.to_text().lower().strip(".")
             results["mx_records"].append(mx_value)
 
         # ANALYSIS LOGIC
@@ -328,7 +324,8 @@ def check_domain_mx_records(domain: str) -> Dict[str, Any]:
 # Domain Enrichment
 # -------------------------
 
-def _retry_lookup(lookup_fn, domain: str, lookup_name: str, start_time: float) -> Dict[str, Any]:
+
+def _retry_lookup(lookup_fn, domain: str, lookup_name: str, start_time: float) -> dict[str, Any]:
     """
     Result-based retry for WHOIS/MX lookups.
 
@@ -343,13 +340,20 @@ def _retry_lookup(lookup_fn, domain: str, lookup_name: str, start_time: float) -
         if attempt > 0:
             elapsed = time.time() - start_time
             if elapsed > _FUNCTION_TIME_BUDGET_SECONDS:
-                logger.warning("%s for %s: time budget exceeded (%.1fs), returning last result",
-                               lookup_name, domain, elapsed)
+                logger.warning(
+                    "%s for %s: time budget exceeded (%.1fs), returning last result", lookup_name, domain, elapsed
+                )
                 break
 
             delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
-            logger.info("%s for %s: attempt %d/%d failed with transient error, retrying in %.1fs",
-                        lookup_name, domain, attempt, _MAX_RETRY_ATTEMPTS + 1, delay)
+            logger.info(
+                "%s for %s: attempt %d/%d failed with transient error, retrying in %.1fs",
+                lookup_name,
+                domain,
+                attempt,
+                _MAX_RETRY_ATTEMPTS + 1,
+                delay,
+            )
             time.sleep(delay)
 
         result = lookup_fn(domain)
@@ -364,24 +368,18 @@ def _retry_lookup(lookup_fn, domain: str, lookup_name: str, start_time: float) -
             return result
 
     # All retries exhausted
-    logger.warning("%s for %s: all %d attempts exhausted",
-                   lookup_name, domain, _MAX_RETRY_ATTEMPTS + 1)
+    logger.warning("%s for %s: all %d attempts exhausted", lookup_name, domain, _MAX_RETRY_ATTEMPTS + 1)
     return last_result
 
 
-def enrich_single_domain(domain: str, start_time: float) -> Dict[str, Any]:
+def enrich_single_domain(domain: str, start_time: float) -> dict[str, Any]:
     """
     Enrich a single domain with WHOIS and MX record lookups in parallel.
 
     Uses result-based retry: if a lookup returns success=False with a
     transient error, it will be retried up to _MAX_RETRY_ATTEMPTS times.
     """
-    result = {
-        'domain': domain,
-        'whois': None,
-        'mx': None,
-        'error': None
-    }
+    result = {"domain": domain, "whois": None, "mx": None, "error": None}
 
     # Run WHOIS and MX lookups in parallel
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -389,24 +387,24 @@ def enrich_single_domain(domain: str, start_time: float) -> Dict[str, Any]:
         mx_future = executor.submit(_retry_lookup, check_domain_mx_records, domain, "MX", start_time)
 
         try:
-            result['whois'] = whois_future.result()
+            result["whois"] = whois_future.result()
         except Exception as e:
-            result['error'] = f"WHOIS lookup failed: {str(e)}"
+            result["error"] = f"WHOIS lookup failed: {str(e)}"
 
         try:
-            result['mx'] = mx_future.result()
+            result["mx"] = mx_future.result()
         except Exception as e:
             error_msg = f"MX lookup failed: {str(e)}"
-            if result['error']:
-                result['error'] += f"; {error_msg}"
+            if result["error"]:
+                result["error"] += f"; {error_msg}"
             else:
-                result['error'] = error_msg
+                result["error"] = error_msg
 
     return result
 
 
 @functions_framework.http
-def main(request) -> Tuple[dict, int]:
+def main(request) -> tuple[dict, int]:
     """
     HTTP Cloud Function entry point.
 
@@ -426,8 +424,8 @@ def main(request) -> Tuple[dict, int]:
     except Exception:
         return {"error": "Invalid JSON"}, 400
 
-    email = req_data.get('email', '').strip()
-    company_domain = req_data.get('company_domain', '').strip()
+    email = req_data.get("email", "").strip()
+    company_domain = req_data.get("company_domain", "").strip()
 
     if not email:
         return {"error": "email is required"}, 400
@@ -455,7 +453,7 @@ def main(request) -> Tuple[dict, int]:
 
     if not domains_to_enrich:
         logger.info("No domains to enrich (all personal email domains)")
-        return {'domains': {}}, 200
+        return {"domains": {}}, 200
 
     enrichment_results = {}
 
@@ -472,13 +470,13 @@ def main(request) -> Tuple[dict, int]:
                 enrichment_results[domain] = future.result()
             except Exception as e:
                 enrichment_results[domain] = {
-                    'domain': domain,
-                    'whois': None,
-                    'mx': None,
-                    'error': f"Enrichment failed: {str(e)}"
+                    "domain": domain,
+                    "whois": None,
+                    "mx": None,
+                    "error": f"Enrichment failed: {str(e)}",
                 }
 
     elapsed = time.time() - start_time
     logger.info("Domain enrichment complete - enriched %d domain(s) in %.1fs", len(domains_to_enrich), elapsed)
 
-    return {'domains': enrichment_results}, 200
+    return {"domains": enrichment_results}, 200

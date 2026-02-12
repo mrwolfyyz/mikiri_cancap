@@ -9,16 +9,18 @@ system prompt, build_prompt function, and temperature.
 
 import os
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Dict, Any, List, Callable, Optional, Tuple
+from typing import Any
+
 from flask import Request, jsonify
 
 # Google Gen AI SDK imports
 from google import genai
-from google.genai.types import GenerateContentConfig, Tool, GoogleSearch
+from google.genai.types import GenerateContentConfig, GoogleSearch, Tool
 
 # Retry utilities (copied to function dir by prepare-functions.sh)
-from retry_utils import retry_with_backoff, RetryConfig, EmptyLLMResponseError
+from retry_utils import EmptyLLMResponseError, RetryConfig, retry_with_backoff
 
 # -------------------------
 # Config
@@ -36,11 +38,7 @@ TOP_P = 0.9
 MAX_PROMPT_CHARS = 28000
 
 # Retry configuration for Gemini API calls
-GEMINI_RETRY_CONFIG = RetryConfig(
-    max_attempts=3,
-    base_delay_seconds=1.0,
-    max_delay_seconds=10.0
-)
+GEMINI_RETRY_CONFIG = RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=10.0)
 
 # CORS headers - origin set from environment (restrict in production)
 _CORS_ORIGIN = os.environ.get("CORS_ALLOWED_ORIGINS", "*")
@@ -55,18 +53,14 @@ CORS_HEADERS = {"Access-Control-Allow-Origin": _CORS_ORIGIN}
 # -------------------------
 # Lazy client singleton
 # -------------------------
-_client: Optional[genai.Client] = None
+_client: genai.Client | None = None
 
 
 def _get_client() -> genai.Client:
     """Get or create the Gemini client singleton (lazy initialization)."""
     global _client
     if _client is None:
-        _client = genai.Client(
-            vertexai=True,
-            project=GCP_PROJECT,
-            location=GCP_LOCATION
-        )
+        _client = genai.Client(vertexai=True, project=GCP_PROJECT, location=GCP_LOCATION)
     return _client
 
 
@@ -76,7 +70,8 @@ def _get_client() -> genai.Client:
 @dataclass
 class ChatHandlerConfig:
     """Configuration for a chat handler instance."""
-    build_prompt_fn: Callable[[str, List[Dict[str, str]], Optional[Dict[str, str]]], str]
+
+    build_prompt_fn: Callable[[str, list[dict[str, str]], dict[str, str] | None], str]
     temperature: float
     log_prefix: str
 
@@ -84,7 +79,7 @@ class ChatHandlerConfig:
 # -------------------------
 # Shared utilities
 # -------------------------
-def format_conversation_history(history: List[Dict[str, str]]) -> str:
+def format_conversation_history(history: list[dict[str, str]]) -> str:
     """Format conversation history for the prompt."""
     if not history:
         return ""
@@ -101,48 +96,44 @@ def format_conversation_history(history: List[Dict[str, str]]) -> str:
     return "\n".join(formatted)
 
 
-def extract_grounding_metadata(response, log_prefix: str = "[ChatHandler]") -> Dict[str, Any]:
+def extract_grounding_metadata(response, log_prefix: str = "[ChatHandler]") -> dict[str, Any]:
     """Extract grounding metadata from Google Gen AI SDK response."""
-    metadata = {
-        "search_entry_point": "",
-        "web_search_queries": [],
-        "grounding_chunks": []
-    }
+    metadata = {"search_entry_point": "", "web_search_queries": [], "grounding_chunks": []}
 
     try:
-        if hasattr(response, 'candidates') and response.candidates:
+        if hasattr(response, "candidates") and response.candidates:
             candidate = response.candidates[0]
 
-            if hasattr(candidate, 'grounding_metadata'):
+            if hasattr(candidate, "grounding_metadata"):
                 grounding = candidate.grounding_metadata
 
                 # Extract search queries
-                if hasattr(grounding, 'web_search_queries'):
+                if hasattr(grounding, "web_search_queries"):
                     metadata["web_search_queries"] = list(grounding.web_search_queries)
 
                 # Extract grounding chunks
-                if hasattr(grounding, 'grounding_chunks'):
+                if hasattr(grounding, "grounding_chunks"):
                     chunks = []
                     for chunk in grounding.grounding_chunks:
                         chunk_data = {}
-                        if hasattr(chunk, 'web'):
+                        if hasattr(chunk, "web"):
                             chunk_data["web"] = {
-                                "uri": getattr(chunk.web, 'uri', ''),
-                                "title": getattr(chunk.web, 'title', '')
+                                "uri": getattr(chunk.web, "uri", ""),
+                                "title": getattr(chunk.web, "title", ""),
                             }
                         chunks.append(chunk_data)
                     metadata["grounding_chunks"] = chunks
 
                 # Extract search entry point (HTML/CSS for display)
-                if hasattr(grounding, 'search_entry_point'):
+                if hasattr(grounding, "search_entry_point"):
                     entry_point = grounding.search_entry_point
-                    if hasattr(entry_point, 'rendered_content'):
+                    if hasattr(entry_point, "rendered_content"):
                         metadata["search_entry_point"] = entry_point.rendered_content
-                    elif hasattr(entry_point, 'html'):
+                    elif hasattr(entry_point, "html"):
                         metadata["search_entry_point"] = entry_point.html
 
         # Log usage metadata
-        if hasattr(response, 'usage_metadata'):
+        if hasattr(response, "usage_metadata"):
             print(f"{log_prefix} Usage metadata: {response.usage_metadata}")
 
     except Exception as e:
@@ -155,10 +146,10 @@ def extract_grounding_metadata(response, log_prefix: str = "[ChatHandler]") -> D
 def _truncate_history_if_needed(
     prompt: str,
     message: str,
-    conversation_history: List[Dict[str, str]],
-    markdown_context: Optional[Dict[str, str]],
+    conversation_history: list[dict[str, str]],
+    markdown_context: dict[str, str] | None,
     build_prompt_fn: Callable,
-    log_prefix: str
+    log_prefix: str,
 ) -> str:
     """Truncate oldest conversation history entries if prompt exceeds size limit."""
     if len(prompt) <= MAX_PROMPT_CHARS:
@@ -183,7 +174,7 @@ def _truncate_history_if_needed(
 # -------------------------
 # Main request handler
 # -------------------------
-def handle_chat_request(request: Request, config: ChatHandlerConfig) -> Tuple[Any, int, Dict[str, str]]:
+def handle_chat_request(request: Request, config: ChatHandlerConfig) -> tuple[Any, int, dict[str, str]]:
     """
     Main orchestrator for chat requests. Handles CORS, validation, client init,
     prompt building, retry-wrapped Gemini call, and response formatting.
@@ -242,8 +233,7 @@ def handle_chat_request(request: Request, config: ChatHandlerConfig) -> Tuple[An
     try:
         prompt = config.build_prompt_fn(message, conversation_history, markdown_context)
         prompt = _truncate_history_if_needed(
-            prompt, message, conversation_history, markdown_context,
-            config.build_prompt_fn, log_prefix
+            prompt, message, conversation_history, markdown_context, config.build_prompt_fn, log_prefix
         )
     except Exception as e:
         print(f"{log_prefix} Error building prompt: {e}")
@@ -263,19 +253,13 @@ def handle_chat_request(request: Request, config: ChatHandlerConfig) -> Tuple[An
         print(f"{log_prefix} Calling {MODEL_NAME} with Google Search grounding...")
 
         def _call_gemini():
-            resp = client.models.generate_content(
-                model=MODEL_NAME,
-                contents=prompt,
-                config=gen_config
-            )
-            if not resp or not hasattr(resp, 'text') or not resp.text:
+            resp = client.models.generate_content(model=MODEL_NAME, contents=prompt, config=gen_config)
+            if not resp or not hasattr(resp, "text") or not resp.text:
                 raise EmptyLLMResponseError(f"Empty response from {MODEL_NAME}")
             return resp
 
         response = retry_with_backoff(
-            _call_gemini,
-            GEMINI_RETRY_CONFIG,
-            operation_name=f"{log_prefix} {MODEL_NAME} API call"
+            _call_gemini, GEMINI_RETRY_CONFIG, operation_name=f"{log_prefix} {MODEL_NAME} API call"
         )
 
         response_text = response.text.strip()
@@ -288,24 +272,42 @@ def handle_chat_request(request: Request, config: ChatHandlerConfig) -> Tuple[An
         updated_history.append({"role": "user", "content": message})
         updated_history.append({"role": "assistant", "content": response_text})
 
-        return jsonify({
-            "response": response_text,
-            "conversation_history": updated_history,
-            "grounding_metadata": grounding_metadata
-        }), 200, CORS_HEADERS
+        return (
+            jsonify(
+                {
+                    "response": response_text,
+                    "conversation_history": updated_history,
+                    "grounding_metadata": grounding_metadata,
+                }
+            ),
+            200,
+            CORS_HEADERS,
+        )
 
     except EmptyLLMResponseError:
         print(f"{log_prefix} All retry attempts returned empty responses")
-        return jsonify({
-            "error": "Empty response from LLM",
-            "response": "I couldn't generate a response after multiple attempts. Please try again."
-        }), 500, CORS_HEADERS
+        return (
+            jsonify(
+                {
+                    "error": "Empty response from LLM",
+                    "response": "I couldn't generate a response after multiple attempts. Please try again.",
+                }
+            ),
+            500,
+            CORS_HEADERS,
+        )
 
     except Exception as e:
         print(f"{log_prefix} Error calling Gemini: {e}")
         traceback.print_exc()
 
-        return jsonify({
-            "error": "Chat processing failed",
-            "response": "I encountered an error while processing your request. Please try again."
-        }), 500, CORS_HEADERS
+        return (
+            jsonify(
+                {
+                    "error": "Chat processing failed",
+                    "response": "I encountered an error while processing your request. Please try again.",
+                }
+            ),
+            500,
+            CORS_HEADERS,
+        )

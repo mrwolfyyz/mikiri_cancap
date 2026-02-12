@@ -13,10 +13,9 @@ import json
 import os
 import sys
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import flask
-import pytest
 
 # ---------------------------------------------------------------------------
 # Mock heavy GCP dependencies BEFORE loading the module.
@@ -44,13 +43,16 @@ sys.modules.setdefault("google.cloud.workflows", _mock_gc_workflows)
 sys.modules.setdefault("google.cloud.workflows_v1", _mock_gc_workflows_v1)
 sys.modules.setdefault("google.cloud.workflows.executions_v1", _mock_gc_workflows_exec)
 
+
 # firebase_admin — auth exception classes must be real Exception subclasses
 # so they can be used in except clauses.
 class _InvalidIdTokenError(Exception):
     pass
 
+
 class _ExpiredIdTokenError(Exception):
     pass
+
 
 _mock_fb_admin = MagicMock()
 _mock_fb_auth = MagicMock()
@@ -126,9 +128,7 @@ def _authed_request(user_id="user-123", **kwargs):
 
 def _stub_auth(user_id="user-123"):
     """Patch verify_id_token to return a decoded token with the given uid."""
-    return patch.object(
-        gw.auth, "verify_id_token", return_value={"uid": user_id}
-    )
+    return patch.object(gw.auth, "verify_id_token", return_value={"uid": user_id})
 
 
 def _stub_rate_limit(allowed=True):
@@ -170,7 +170,6 @@ def _parse_response(resp):
 # verify_firebase_token
 # ===========================================================================
 class TestVerifyFirebaseToken:
-
     def test_valid_token(self):
         req = _make_request(headers={"Authorization": "Bearer good-token"})
         with patch.object(gw.auth, "verify_id_token", return_value={"uid": "u1"}):
@@ -193,7 +192,8 @@ class TestVerifyFirebaseToken:
     def test_invalid_token(self):
         req = _make_request(headers={"Authorization": "Bearer bad"})
         with patch.object(
-            gw.auth, "verify_id_token",
+            gw.auth,
+            "verify_id_token",
             side_effect=_InvalidIdTokenError("invalid"),
         ):
             uid, err = verify_firebase_token(req)
@@ -212,17 +212,20 @@ class TestVerifyFirebaseToken:
 # check_rate_limit
 # ===========================================================================
 class TestCheckRateLimit:
-
     def test_under_limit(self):
         mock_count = MagicMock()
         mock_count.value = 3
-        gw.db.collection.return_value.where.return_value.where.return_value.count.return_value.get.return_value = [[mock_count]]
+        gw.db.collection.return_value.where.return_value.where.return_value.count.return_value.get.return_value = [
+            [mock_count]
+        ]
         assert check_rate_limit("user-1") is True
 
     def test_at_limit(self):
         mock_count = MagicMock()
         mock_count.value = 5
-        gw.db.collection.return_value.where.return_value.where.return_value.count.return_value.get.return_value = [[mock_count]]
+        gw.db.collection.return_value.where.return_value.where.return_value.count.return_value.get.return_value = [
+            [mock_count]
+        ]
         assert check_rate_limit("user-1") is False
 
     def test_firestore_error_allows_request(self):
@@ -236,7 +239,6 @@ class TestCheckRateLimit:
 # format_job_response
 # ===========================================================================
 class TestFormatJobResponse:
-
     def test_pending_job(self):
         now = datetime.utcnow()
         job = {"status": "pending", "created_at": now}
@@ -334,7 +336,6 @@ class TestFormatJobResponse:
 # get_cors_headers
 # ===========================================================================
 class TestGetCorsHeaders:
-
     def test_wildcard(self):
         with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"):
             req = _make_request(headers={"Origin": "https://app.example.com"})
@@ -358,7 +359,6 @@ class TestGetCorsHeaders:
 # verify_job_ownership
 # ===========================================================================
 class TestVerifyJobOwnership:
-
     def test_job_not_found(self):
         with _app.test_request_context():
             with _stub_get_job(None):
@@ -409,7 +409,6 @@ class TestVerifyJobOwnership:
 # handle_investigation
 # ===========================================================================
 class TestHandleInvestigation:
-
     def _valid_body(self):
         return {
             "email": "john@example.com",
@@ -421,51 +420,42 @@ class TestHandleInvestigation:
 
     def test_happy_path(self):
         req = _authed_request(
-            method="POST", path="/investigate-skiptrace",
+            method="POST",
+            path="/investigate-skiptrace",
             body=self._valid_body(),
         )
         with _app.test_request_context():
             with _stub_auth(), _stub_rate_limit(), _stub_create_job("j1"), _stub_trigger_workflow():
                 gw.db.collection.return_value.document.return_value.update = MagicMock()
-                data, status, _ = _parse_response(
-                    handle_investigation(req, {}, "investigate-skiptrace")
-                )
+                data, status, _ = _parse_response(handle_investigation(req, {}, "investigate-skiptrace"))
         assert status == 202
         assert data["job_id"] == "j1"
 
     def test_auth_failure(self):
         req = _make_request(method="POST", headers={})
         with _app.test_request_context():
-            data, status, _ = _parse_response(
-                handle_investigation(req, {}, "investigate-skiptrace")
-            )
+            data, status, _ = _parse_response(handle_investigation(req, {}, "investigate-skiptrace"))
         assert status == 401
 
     def test_oversized_body(self):
         req = _authed_request(method="POST", content_length=60_000)
         with _app.test_request_context():
             with _stub_auth():
-                data, status, _ = _parse_response(
-                    handle_investigation(req, {}, "x")
-                )
+                data, status, _ = _parse_response(handle_investigation(req, {}, "x"))
         assert status == 413
 
     def test_rate_limited(self):
         req = _authed_request(method="POST", body=self._valid_body())
         with _app.test_request_context():
             with _stub_auth(), _stub_rate_limit(allowed=False):
-                data, status, _ = _parse_response(
-                    handle_investigation(req, {}, "x")
-                )
+                data, status, _ = _parse_response(handle_investigation(req, {}, "x"))
         assert status == 429
 
     def test_validation_errors(self):
         req = _authed_request(method="POST", body={"email": "bad"})
         with _app.test_request_context():
             with _stub_auth(), _stub_rate_limit():
-                data, status, _ = _parse_response(
-                    handle_investigation(req, {}, "x")
-                )
+                data, status, _ = _parse_response(handle_investigation(req, {}, "x"))
         assert status == 400
         assert data["error"] == "validation_error"
         fields = [d["field"] for d in data["details"]]
@@ -478,9 +468,7 @@ class TestHandleInvestigation:
             with _stub_auth(), _stub_rate_limit(), _stub_create_job("j1"):
                 with patch.object(gw, "trigger_workflow", side_effect=RuntimeError("boom")):
                     gw.db.collection.return_value.document.return_value.update = MagicMock()
-                    data, status, _ = _parse_response(
-                        handle_investigation(req, {}, "x")
-                    )
+                    data, status, _ = _parse_response(handle_investigation(req, {}, "x"))
         assert status == 500
         assert "boom" in data["error"]
 
@@ -489,7 +477,6 @@ class TestHandleInvestigation:
 # proxy_chat_request
 # ===========================================================================
 class TestProxyChatRequest:
-
     def test_happy_path(self):
         req = _authed_request(method="POST", body={"message": "hello"})
         mock_resp = MagicMock()
@@ -498,36 +485,28 @@ class TestProxyChatRequest:
 
         with _app.test_request_context():
             with _stub_auth(), patch.object(gw, "retry_with_backoff", return_value=mock_resp):
-                data, status, _ = _parse_response(
-                    proxy_chat_request(req, {}, "https://chat.example.com", "Chat")
-                )
+                data, status, _ = _parse_response(proxy_chat_request(req, {}, "https://chat.example.com", "Chat"))
         assert status == 200
         assert data["reply"] == "hi"
 
     def test_auth_failure(self):
         req = _make_request(method="POST", headers={})
         with _app.test_request_context():
-            data, status, _ = _parse_response(
-                proxy_chat_request(req, {}, "https://chat.example.com", "Chat")
-            )
+            data, status, _ = _parse_response(proxy_chat_request(req, {}, "https://chat.example.com", "Chat"))
         assert status == 401
 
     def test_oversized_body(self):
         req = _authed_request(method="POST", content_length=600_000)
         with _app.test_request_context():
             with _stub_auth():
-                data, status, _ = _parse_response(
-                    proxy_chat_request(req, {}, "https://chat.example.com", "Chat")
-                )
+                data, status, _ = _parse_response(proxy_chat_request(req, {}, "https://chat.example.com", "Chat"))
         assert status == 413
 
     def test_target_url_not_configured(self):
         req = _authed_request(method="POST", body={"message": "hi"})
         with _app.test_request_context():
             with _stub_auth():
-                data, status, _ = _parse_response(
-                    proxy_chat_request(req, {}, "", "Chat")
-                )
+                data, status, _ = _parse_response(proxy_chat_request(req, {}, "", "Chat"))
         assert status == 500
         assert "not configured" in data["error"]
 
@@ -536,31 +515,30 @@ class TestProxyChatRequest:
         req = _authed_request(method="POST", body={"job_id": "j1", "message": "hi"})
         with _app.test_request_context():
             with _stub_auth("u1"), _stub_get_job({"user_id": "u-other"}):
-                data, status, _ = _parse_response(
-                    proxy_chat_request(req, {}, "https://chat.example.com", "Chat")
-                )
+                data, status, _ = _parse_response(proxy_chat_request(req, {}, "https://chat.example.com", "Chat"))
         assert status == 403
 
     def test_job_not_found_for_ownership(self):
         req = _authed_request(method="POST", body={"job_id": "j1", "message": "hi"})
         with _app.test_request_context():
             with _stub_auth(), _stub_get_job(None):
-                data, status, _ = _parse_response(
-                    proxy_chat_request(req, {}, "https://chat.example.com", "Chat")
-                )
+                data, status, _ = _parse_response(proxy_chat_request(req, {}, "https://chat.example.com", "Chat"))
         assert status == 404
 
     def test_service_failure(self):
         import requests as req_lib
+
         req = _authed_request(method="POST", body={"message": "hi"})
         with _app.test_request_context():
-            with _stub_auth(), patch.object(
-                gw, "retry_with_backoff",
-                side_effect=req_lib.exceptions.ConnectionError("down"),
+            with (
+                _stub_auth(),
+                patch.object(
+                    gw,
+                    "retry_with_backoff",
+                    side_effect=req_lib.exceptions.ConnectionError("down"),
+                ),
             ):
-                data, status, _ = _parse_response(
-                    proxy_chat_request(req, {}, "https://chat.example.com", "Chat")
-                )
+                data, status, _ = _parse_response(proxy_chat_request(req, {}, "https://chat.example.com", "Chat"))
         assert status == 500
         assert "failed" in data["error"].lower()
 
@@ -569,7 +547,6 @@ class TestProxyChatRequest:
 # Main routing
 # ===========================================================================
 class TestMainRouting:
-
     def test_options_cors_preflight(self):
         req = _make_request(method="OPTIONS", headers={"Origin": "https://app.com"})
         with _app.test_request_context():
@@ -605,8 +582,10 @@ class TestMainRouting:
     def test_post_investigate_skiptrace_routes_correctly(self):
         req = _authed_request(method="POST", path="/investigate-skiptrace")
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 patch.object(gw, "handle_investigation", return_value=("ok", 202, {})) as mock_hi:
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                patch.object(gw, "handle_investigation", return_value=("ok", 202, {})) as mock_hi,
+            ):
                 main_handler(req)
         mock_hi.assert_called_once()
         # Second arg is headers dict, third is workflow name
@@ -615,8 +594,10 @@ class TestMainRouting:
     def test_post_investigate_origination_routes_correctly(self):
         req = _authed_request(method="POST", path="/investigate-origination")
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 patch.object(gw, "handle_investigation", return_value=("ok", 202, {})) as mock_hi:
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                patch.object(gw, "handle_investigation", return_value=("ok", 202, {})) as mock_hi,
+            ):
                 main_handler(req)
         mock_hi.assert_called_once()
         assert mock_hi.call_args[0][2] == gw.ORIGINATION_WORKFLOW_NAME
@@ -626,8 +607,10 @@ class TestMainRouting:
         job = {"status": "pending", "created_at": now}
         req = _make_request(method="GET", path="/jobs/j1")
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 patch.object(gw, "verify_job_ownership", return_value=(job, None, None)):
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                patch.object(gw, "verify_job_ownership", return_value=(job, None, None)),
+            ):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 200
         assert data["job_id"] == "j1"
@@ -644,8 +627,10 @@ class TestMainRouting:
         job = {"markdown_reports": {"identity": "# Identity\nJohn Smith"}}
         req = _make_request(method="GET", path="/get_markdown/j1")
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 patch.object(gw, "verify_job_ownership", return_value=(job, None, None)):
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                patch.object(gw, "verify_job_ownership", return_value=(job, None, None)),
+            ):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 200
         assert data["identity"] == "# Identity\nJohn Smith"
@@ -654,16 +639,20 @@ class TestMainRouting:
         job = {"markdown_reports": {}}
         req = _make_request(method="GET", path="/get_markdown/j1")
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 patch.object(gw, "verify_job_ownership", return_value=(job, None, None)):
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                patch.object(gw, "verify_job_ownership", return_value=(job, None, None)),
+            ):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 404
 
     def test_post_chat_handler_routes_to_proxy(self):
         req = _authed_request(method="POST", path="/chat_handler", body={"message": "hi"})
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 patch.object(gw, "proxy_chat_request", return_value=("ok", 200, {})) as mock_proxy:
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                patch.object(gw, "proxy_chat_request", return_value=("ok", 200, {})) as mock_proxy,
+            ):
                 main_handler(req)
         mock_proxy.assert_called_once()
         assert mock_proxy.call_args[0][2] == gw.CHAT_HANDLER_URL
@@ -671,8 +660,10 @@ class TestMainRouting:
     def test_post_chat_handler_origination_routes_to_proxy(self):
         req = _authed_request(method="POST", path="/chat_handler_origination", body={"message": "hi"})
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 patch.object(gw, "proxy_chat_request", return_value=("ok", 200, {})) as mock_proxy:
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                patch.object(gw, "proxy_chat_request", return_value=("ok", 200, {})) as mock_proxy,
+            ):
                 main_handler(req)
         mock_proxy.assert_called_once()
         assert mock_proxy.call_args[0][2] == gw.CHAT_HANDLER_ORIGINATION_URL
@@ -680,12 +671,12 @@ class TestMainRouting:
     def test_post_feedback_happy_path(self):
         job = {"user_id": "u1", "status": "complete"}
         req = _authed_request(
-            method="POST", path="/jobs/j1/feedback",
+            method="POST",
+            path="/jobs/j1/feedback",
             body={"rating": "positive", "comment": "Great results"},
         )
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 _stub_auth("u1"), _stub_get_job(job):
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u1"), _stub_get_job(job):
                 gw.db.collection.return_value.document.return_value.update = MagicMock()
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 200
@@ -694,12 +685,12 @@ class TestMainRouting:
     def test_post_feedback_invalid_rating(self):
         job = {"user_id": "u1", "status": "complete"}
         req = _authed_request(
-            method="POST", path="/jobs/j1/feedback",
+            method="POST",
+            path="/jobs/j1/feedback",
             body={"rating": "neutral", "comment": "ok"},
         )
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 _stub_auth("u1"), _stub_get_job(job):
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u1"), _stub_get_job(job):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 400
         assert "positive" in data["error"] or "negative" in data["error"]
@@ -707,30 +698,31 @@ class TestMainRouting:
     def test_post_feedback_comment_too_long(self):
         job = {"user_id": "u1", "status": "complete"}
         req = _authed_request(
-            method="POST", path="/jobs/j1/feedback",
+            method="POST",
+            path="/jobs/j1/feedback",
             body={"rating": "positive", "comment": "x" * 1001},
         )
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 _stub_auth("u1"), _stub_get_job(job):
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u1"), _stub_get_job(job):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 400
 
     def test_post_feedback_wrong_user(self):
         job = {"user_id": "u-owner", "status": "complete"}
         req = _authed_request(
-            method="POST", path="/jobs/j1/feedback",
+            method="POST",
+            path="/jobs/j1/feedback",
             body={"rating": "positive", "comment": ""},
         )
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 _stub_auth("u-other"), _stub_get_job(job):
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u-other"), _stub_get_job(job):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 403
 
     def test_post_address_verification_happy_path(self):
         req = _authed_request(
-            method="POST", path="/address-verification",
+            method="POST",
+            path="/address-verification",
             body={
                 "business_name": "Acme Inc",
                 "street_address": "123 Main St",
@@ -743,16 +735,19 @@ class TestMainRouting:
         mock_resp.status_code = 200
 
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 _stub_auth(), \
-                 patch.object(gw, "retry_with_backoff", return_value=mock_resp):
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth(),
+                patch.object(gw, "retry_with_backoff", return_value=mock_resp),
+            ):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 200
         assert data["verified"] is True
 
     def test_post_address_verification_missing_fields(self):
         req = _authed_request(
-            method="POST", path="/address-verification",
+            method="POST",
+            path="/address-verification",
             body={"business_name": "Acme Inc"},  # no address fields
         )
         with _app.test_request_context():
@@ -762,7 +757,8 @@ class TestMainRouting:
 
     def test_post_address_verification_missing_business_name(self):
         req = _authed_request(
-            method="POST", path="/address-verification",
+            method="POST",
+            path="/address-verification",
             body={"address": "123 Main St, Toronto, ON"},
         )
         with _app.test_request_context():
@@ -776,13 +772,16 @@ class TestMainRouting:
     def test_address_verification_not_configured(self):
         """Returns 500 when ADDRESS_VERIFICATION_URL is empty."""
         req = _authed_request(
-            method="POST", path="/address-verification",
+            method="POST",
+            path="/address-verification",
             body={"address": "123 Main St, Toronto, ON", "business_name": "Acme"},
         )
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 _stub_auth(), \
-                 patch.object(gw, "ADDRESS_VERIFICATION_URL", ""):
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth(),
+                patch.object(gw, "ADDRESS_VERIFICATION_URL", ""),
+            ):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 500
         assert "not configured" in data["error"]
@@ -790,15 +789,18 @@ class TestMainRouting:
     def test_address_verification_request_exception(self):
         """Returns 500 when the downstream service call fails."""
         import requests as req_lib
+
         req = _authed_request(
-            method="POST", path="/address-verification",
+            method="POST",
+            path="/address-verification",
             body={"address": "123 Main St, Toronto, ON", "business_name": "Acme"},
         )
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 _stub_auth(), \
-                 patch.object(gw, "retry_with_backoff",
-                              side_effect=req_lib.exceptions.ConnectionError("down")):
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth(),
+                patch.object(gw, "retry_with_backoff", side_effect=req_lib.exceptions.ConnectionError("down")),
+            ):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 500
         assert "failed" in data["error"].lower()
@@ -806,7 +808,8 @@ class TestMainRouting:
     def test_address_verification_invalid_json(self):
         """Returns 400 when request body is not valid JSON."""
         req = _authed_request(
-            method="POST", path="/address-verification",
+            method="POST",
+            path="/address-verification",
             bad_json=True,
         )
         with _app.test_request_context():
@@ -817,7 +820,8 @@ class TestMainRouting:
     def test_address_verification_combined_address_field(self):
         """Accepts the legacy combined address field format."""
         req = _authed_request(
-            method="POST", path="/address-verification",
+            method="POST",
+            path="/address-verification",
             body={"address": "123 Main St, Toronto, ON M5H 2N2", "business_name": "Acme"},
         )
         mock_resp = MagicMock()
@@ -825,9 +829,11 @@ class TestMainRouting:
         mock_resp.status_code = 200
 
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 _stub_auth(), \
-                 patch.object(gw, "retry_with_backoff", return_value=mock_resp):
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth(),
+                patch.object(gw, "retry_with_backoff", return_value=mock_resp),
+            ):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 200
         assert data["verified"] is True
@@ -837,7 +843,8 @@ class TestMainRouting:
     def test_feedback_invalid_path_format(self):
         """Malformed feedback path returns 400."""
         req = _authed_request(
-            method="POST", path="/jobs/j1/feedback/extra",
+            method="POST",
+            path="/jobs/j1/feedback/extra",
             body={"rating": "positive", "comment": ""},
         )
         with _app.test_request_context():
@@ -850,12 +857,12 @@ class TestMainRouting:
         """Returns 400 when feedback request body is not valid JSON."""
         job = {"user_id": "user-123", "status": "complete"}
         req = _authed_request(
-            method="POST", path="/jobs/j1/feedback",
+            method="POST",
+            path="/jobs/j1/feedback",
             bad_json=True,
         )
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 _stub_auth(), _stub_get_job(job):
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth(), _stub_get_job(job):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 400
 
@@ -863,14 +870,15 @@ class TestMainRouting:
         """Returns 500 when Firestore update fails."""
         job = {"user_id": "user-123", "status": "complete"}
         req = _authed_request(
-            method="POST", path="/jobs/j1/feedback",
+            method="POST",
+            path="/jobs/j1/feedback",
             body={"rating": "positive", "comment": "great"},
         )
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 _stub_auth(), _stub_get_job(job):
-                gw.db.collection.return_value.document.return_value.update.side_effect = \
-                    RuntimeError("Firestore write failed")
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth(), _stub_get_job(job):
+                gw.db.collection.return_value.document.return_value.update.side_effect = RuntimeError(
+                    "Firestore write failed"
+                )
                 data, status, _ = _parse_response(main_handler(req))
                 gw.db.collection.return_value.document.return_value.update.side_effect = None
         assert status == 500
@@ -890,9 +898,10 @@ class TestMainRouting:
         """Returns 500 when an exception occurs during markdown retrieval."""
         req = _make_request(method="GET", path="/get_markdown/j1")
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), \
-                 patch.object(gw, "verify_job_ownership",
-                              side_effect=RuntimeError("db error")):
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                patch.object(gw, "verify_job_ownership", side_effect=RuntimeError("db error")),
+            ):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 500
         assert "db error" in data["error"]

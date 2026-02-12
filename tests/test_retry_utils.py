@@ -1,15 +1,15 @@
 """Tests for gcp/shared/retry_utils.py"""
 
-import pytest
 from unittest.mock import MagicMock, patch
-import requests
 
+import pytest
+import requests
 from retry_utils import (
-    RetryConfig,
     EmptyLLMResponseError,
     RateLimitExhaustedError,
-    is_retryable_error,
+    RetryConfig,
     extract_retry_after,
+    is_retryable_error,
     retry_with_backoff,
 )
 
@@ -160,9 +160,7 @@ class TestRetryWithBackoff:
 
     @patch("retry_utils.time.sleep")
     def test_retries_on_retryable_error(self, mock_sleep):
-        fn = MagicMock(
-            side_effect=[requests.exceptions.ConnectionError(), "success"]
-        )
+        fn = MagicMock(side_effect=[requests.exceptions.ConnectionError(), "success"])
         result = retry_with_backoff(fn, RetryConfig(max_attempts=3, jitter=False))
         assert result == "success"
         assert fn.call_count == 2

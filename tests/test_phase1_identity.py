@@ -81,8 +81,7 @@ def _mock_scored_result():
     """Return a valid LLM identity scoring result."""
     return {
         "top_handles": [
-            {"platform": "linkedin", "handle": "jdoe", "url": "https://linkedin.com/in/jdoe",
-             "confidence": "high"},
+            {"platform": "linkedin", "handle": "jdoe", "url": "https://linkedin.com/in/jdoe", "confidence": "high"},
         ],
         "identity_clues": [],
         "location": {"city": "Toronto", "confidence": "high"},
@@ -174,9 +173,7 @@ class TestTransformPseQueryToNaturalLanguage:
         assert result == "John Smith"
 
     def test_mixed_operators(self):
-        result = transform_pse_query_to_natural_language(
-            'intitle:"John Smith" OR intitle:"Smith" Toronto'
-        )
+        result = transform_pse_query_to_natural_language('intitle:"John Smith" OR intitle:"Smith" Toronto')
         assert "John Smith" in result
         assert "Smith" in result
         assert "Toronto" in result
@@ -265,9 +262,7 @@ class TestExtractGroundingMetadata:
         resp = MagicMock()
         # Make candidates[0] raise when accessing grounding_metadata
         bad_candidate = MagicMock()
-        type(bad_candidate).grounding_metadata = property(
-            lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
-        )
+        type(bad_candidate).grounding_metadata = property(lambda self: (_ for _ in ()).throw(RuntimeError("boom")))
         resp.candidates = [bad_candidate]
 
         result = extract_grounding_metadata(resp)
@@ -294,9 +289,11 @@ class TestVertexAiScore:
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
-        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
-             patch.object(p1_main, "genai") as mock_genai_mod, \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch.object(p1_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result = vertex_ai_score({"full_name": "John Doe"}, [])
 
@@ -310,9 +307,11 @@ class TestVertexAiScore:
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
-        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
-             patch.object(p1_main, "genai") as mock_genai_mod, \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch.object(p1_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result = vertex_ai_score({"full_name": "John Doe"}, [])
 
@@ -326,9 +325,11 @@ class TestVertexAiScore:
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
-        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
-             patch.object(p1_main, "genai") as mock_genai_mod, \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch.object(p1_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result = vertex_ai_score({"full_name": "John Doe"}, [])
 
@@ -344,9 +345,11 @@ class TestVertexAiScore:
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
-        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
-             patch.object(p1_main, "genai") as mock_genai_mod, \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch.object(p1_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result = vertex_ai_score({"full_name": "John Doe"}, [])
 
@@ -362,9 +365,11 @@ class TestVertexAiScore:
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
-        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
-             patch.object(p1_main, "genai") as mock_genai_mod, \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch.object(p1_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result = vertex_ai_score({"full_name": "John Doe"}, [])
 
@@ -374,16 +379,16 @@ class TestVertexAiScore:
         """ValueError from response.text (safety filter) is treated as empty response."""
         mock_response = MagicMock()
         mock_response.candidates = [MagicMock()]  # Non-empty
-        type(mock_response).text = property(
-            lambda self: (_ for _ in ()).throw(ValueError("blocked by safety filters"))
-        )
+        type(mock_response).text = property(lambda self: (_ for _ in ()).throw(ValueError("blocked by safety filters")))
 
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
-        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
-             patch.object(p1_main, "genai") as mock_genai_mod, \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch.object(p1_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result = vertex_ai_score({"full_name": "John Doe"}, [])
 
@@ -400,9 +405,11 @@ class TestVertexAiScore:
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
-        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
-             patch.object(p1_main, "genai") as mock_genai_mod, \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch.object(p1_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result = vertex_ai_score({"full_name": "John Doe"}, [])
 
@@ -418,9 +425,11 @@ class TestVertexAiScore:
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
-        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
-             patch.object(p1_main, "genai") as mock_genai_mod, \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch.object(p1_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result = vertex_ai_score({"full_name": "John Doe"}, [])
 
@@ -428,17 +437,17 @@ class TestVertexAiScore:
 
     def test_rate_limit_error_propagates(self):
         """resource_exhausted in outer exception handler raises RateLimitExhaustedError."""
-        from retry_utils import RateLimitExhaustedError
         import pytest
+        from retry_utils import RateLimitExhaustedError
 
         mock_client = MagicMock()
-        mock_client.models.generate_content.side_effect = RuntimeError(
-            "429 resource_exhausted: too many requests"
-        )
+        mock_client.models.generate_content.side_effect = RuntimeError("429 resource_exhausted: too many requests")
 
-        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
-             patch.object(p1_main, "genai") as mock_genai_mod, \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch.object(p1_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             with pytest.raises(RateLimitExhaustedError):
                 vertex_ai_score({"full_name": "John Doe"}, [])
@@ -466,9 +475,11 @@ class TestHibpBreaches:
             {"Title": "LinkedIn", "Name": "LinkedIn", "BreachDate": "2012-05-05"},
         ]
 
-        with patch.object(p1_main, "HIBP_API_KEY", "test-key"), \
-             patch("phase1_identity_main.requests.get", return_value=mock_response), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "HIBP_API_KEY", "test-key"),
+            patch("phase1_identity_main.requests.get", return_value=mock_response),
+            patch("retry_utils.time.sleep"),
+        ):
             result = hibp_breaches("john@example.com")
 
         assert len(result) == 2
@@ -480,18 +491,21 @@ class TestHibpBreaches:
         mock_response.status_code = 404
         mock_response.raise_for_status = MagicMock()
 
-        with patch.object(p1_main, "HIBP_API_KEY", "test-key"), \
-             patch("phase1_identity_main.requests.get", return_value=mock_response), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "HIBP_API_KEY", "test-key"),
+            patch("phase1_identity_main.requests.get", return_value=mock_response),
+            patch("retry_utils.time.sleep"),
+        ):
             result = hibp_breaches("john@example.com")
 
         assert result == []
 
     def test_api_error_returns_empty(self):
-        with patch.object(p1_main, "HIBP_API_KEY", "test-key"), \
-             patch("phase1_identity_main.requests.get",
-                   side_effect=RuntimeError("connection error")), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "HIBP_API_KEY", "test-key"),
+            patch("phase1_identity_main.requests.get", side_effect=RuntimeError("connection error")),
+            patch("retry_utils.time.sleep"),
+        ):
             result = hibp_breaches("john@example.com")
 
         assert result == []
@@ -596,15 +610,17 @@ class TestMainHandler:
         mock_hibp_resp.status_code = 200
         mock_hibp_resp.json.return_value = hibp_data
 
-        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
-             patch.object(p1_main, "HIBP_API_KEY", "test-key"), \
-             patch.object(p1_main, "_get_search_client", return_value=MagicMock()), \
-             patch.object(p1_main, "vertex_ai_search_precision", return_value=mock_search_results), \
-             patch.object(p1_main, "vertex_ai_search_recall", return_value=[]), \
-             patch.object(p1_main, "vertex_ai_search_linkedin", return_value=[]), \
-             patch.object(p1_main, "genai") as mock_genai_mod, \
-             patch("phase1_identity_main.requests.get", return_value=mock_hibp_resp), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch.object(p1_main, "HIBP_API_KEY", "test-key"),
+            patch.object(p1_main, "_get_search_client", return_value=MagicMock()),
+            patch.object(p1_main, "vertex_ai_search_precision", return_value=mock_search_results),
+            patch.object(p1_main, "vertex_ai_search_recall", return_value=[]),
+            patch.object(p1_main, "vertex_ai_search_linkedin", return_value=[]),
+            patch.object(p1_main, "genai") as mock_genai_mod,
+            patch("phase1_identity_main.requests.get", return_value=mock_hibp_resp),
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result, status = main_handler(_make_request(body))
 
@@ -626,15 +642,16 @@ class TestMainHandler:
             "province": "ON",
         }
 
-        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
-             patch.object(p1_main, "HIBP_API_KEY", ""), \
-             patch.object(p1_main, "_get_search_client", return_value=MagicMock()), \
-             patch.object(p1_main, "vertex_ai_search_precision", return_value=[]), \
-             patch.object(p1_main, "vertex_ai_search_recall", return_value=[]), \
-             patch.object(p1_main, "vertex_ai_search_linkedin", return_value=[]), \
-             patch.object(p1_main, "vertex_ai_score",
-                          side_effect=RateLimitExhaustedError("rate limited")), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch.object(p1_main, "HIBP_API_KEY", ""),
+            patch.object(p1_main, "_get_search_client", return_value=MagicMock()),
+            patch.object(p1_main, "vertex_ai_search_precision", return_value=[]),
+            patch.object(p1_main, "vertex_ai_search_recall", return_value=[]),
+            patch.object(p1_main, "vertex_ai_search_linkedin", return_value=[]),
+            patch.object(p1_main, "vertex_ai_score", side_effect=RateLimitExhaustedError("rate limited")),
+            patch("retry_utils.time.sleep"),
+        ):
             result, status = main_handler(_make_request(body))
 
         assert status == 429
@@ -652,9 +669,11 @@ class TestVertexAiSearch:
         mock_client = MagicMock()
         mock_client.search.side_effect = RuntimeError("gRPC error")
 
-        with patch.object(p1_main, "_search_client", mock_client), \
-             patch.object(p1_main, "_get_search_client", return_value=mock_client), \
-             patch.object(p1_main, "GCP_PROJECT", "test-project"):
+        with (
+            patch.object(p1_main, "_search_client", mock_client),
+            patch.object(p1_main, "_get_search_client", return_value=mock_client),
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+        ):
             result = vertex_ai_search_precision("John Doe Toronto", 5)
 
         assert result == []
@@ -681,9 +700,11 @@ class TestVertexAiSearch:
         mock_client = MagicMock()
         mock_client.search.return_value = mock_response
 
-        with patch.object(p1_main, "_search_client", mock_client), \
-             patch.object(p1_main, "_get_search_client", return_value=mock_client), \
-             patch.object(p1_main, "GCP_PROJECT", "test-project"):
+        with (
+            patch.object(p1_main, "_search_client", mock_client),
+            patch.object(p1_main, "_get_search_client", return_value=mock_client),
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+        ):
             result = vertex_ai_search_precision("John Doe", 5)
 
         assert len(result) == 2
@@ -728,17 +749,17 @@ class TestRunIdentityResolution:
         mock_hibp_resp.status_code = 404
         mock_hibp_resp.raise_for_status = MagicMock()
 
-        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
-             patch.object(p1_main, "HIBP_API_KEY", "test-key"), \
-             patch.object(p1_main, "_get_search_client", return_value=MagicMock()), \
-             patch.object(p1_main, "vertex_ai_search_precision",
-                          return_value=precision_results or []) as mock_precision, \
-             patch.object(p1_main, "vertex_ai_search_recall", return_value=[]), \
-             patch.object(p1_main, "vertex_ai_search_linkedin",
-                          return_value=linkedin_results or []) as mock_linkedin, \
-             patch.object(p1_main, "genai") as mock_genai_mod, \
-             patch("phase1_identity_main.requests.get", return_value=mock_hibp_resp), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch.object(p1_main, "HIBP_API_KEY", "test-key"),
+            patch.object(p1_main, "_get_search_client", return_value=MagicMock()),
+            patch.object(p1_main, "vertex_ai_search_precision", return_value=precision_results or []) as mock_precision,
+            patch.object(p1_main, "vertex_ai_search_recall", return_value=[]),
+            patch.object(p1_main, "vertex_ai_search_linkedin", return_value=linkedin_results or []) as mock_linkedin,
+            patch.object(p1_main, "genai") as mock_genai_mod,
+            patch("phase1_identity_main.requests.get", return_value=mock_hibp_resp),
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result, status = main_handler(_make_request(body))
 
@@ -747,9 +768,7 @@ class TestRunIdentityResolution:
     def test_location_rerun_triggered_when_city_differs(self):
         """When LLM resolves a different city with high confidence, a rerun precision search fires."""
         scored = self._make_scored(city="Vancouver", confidence="high")
-        result, status, mock_precision, _ = self._run_main(
-            self._base_body(), scored
-        )
+        result, status, mock_precision, _ = self._run_main(self._base_body(), scored)
 
         assert status == 200
         # Precision should be called at least twice: initial + rerun
@@ -763,9 +782,7 @@ class TestRunIdentityResolution:
     def test_location_rerun_not_triggered_same_city(self):
         """When LLM resolves the same city, no rerun search happens."""
         scored = self._make_scored(city="Toronto", confidence="high")
-        result, status, mock_precision, _ = self._run_main(
-            self._base_body(), scored
-        )
+        result, status, mock_precision, _ = self._run_main(self._base_body(), scored)
 
         assert status == 200
         # No precision_rerun entry in queries (rerun did not fire)
@@ -780,9 +797,7 @@ class TestRunIdentityResolution:
         a city-based LinkedIn search fires as fallback."""
         body = self._base_body(company_name="Acme Corp")
         scored = self._make_scored()
-        result, status, _, mock_linkedin = self._run_main(
-            body, scored, linkedin_results=[]
-        )
+        result, status, _, mock_linkedin = self._run_main(body, scored, linkedin_results=[])
 
         assert status == 200
         # LinkedIn called for company query (returns []), then city fallback
@@ -791,18 +806,18 @@ class TestRunIdentityResolution:
     def test_identity_clues_normalized_from_combined_hits(self):
         """Identity clues get snippet/source_query_id enriched from combined_hits."""
         precision_results = [
-            {"url": "https://news.com/article", "title": "John Doe in News",
-             "snippet": "John Doe was featured...", "relevance_score": 0.0}
+            {
+                "url": "https://news.com/article",
+                "title": "John Doe in News",
+                "snippet": "John Doe was featured...",
+                "relevance_score": 0.0,
+            }
         ]
         scored = self._make_scored()
-        scored["identity_clues"] = [
-            {"url": "https://news.com/article", "title": ""}
-        ]
+        scored["identity_clues"] = [{"url": "https://news.com/article", "title": ""}]
         scored["top_handles"] = []  # no handles to filter out
 
-        result, status, _, _ = self._run_main(
-            self._base_body(), scored, precision_results=precision_results
-        )
+        result, status, _, _ = self._run_main(self._base_body(), scored, precision_results=precision_results)
 
         assert status == 200
         clues = result.get("identity_clues", [])
@@ -834,16 +849,17 @@ class TestRunIdentityResolution:
                 raise TimeoutError("search timed out")
             return []
 
-        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
-             patch.object(p1_main, "HIBP_API_KEY", "test-key"), \
-             patch.object(p1_main, "_get_search_client", return_value=MagicMock()), \
-             patch.object(p1_main, "vertex_ai_search_precision",
-                          side_effect=precision_side_effect), \
-             patch.object(p1_main, "vertex_ai_search_recall", return_value=[]), \
-             patch.object(p1_main, "vertex_ai_search_linkedin", return_value=[]), \
-             patch.object(p1_main, "genai") as mock_genai_mod, \
-             patch("phase1_identity_main.requests.get", return_value=mock_hibp_resp), \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch.object(p1_main, "HIBP_API_KEY", "test-key"),
+            patch.object(p1_main, "_get_search_client", return_value=MagicMock()),
+            patch.object(p1_main, "vertex_ai_search_precision", side_effect=precision_side_effect),
+            patch.object(p1_main, "vertex_ai_search_recall", return_value=[]),
+            patch.object(p1_main, "vertex_ai_search_linkedin", return_value=[]),
+            patch.object(p1_main, "genai") as mock_genai_mod,
+            patch("phase1_identity_main.requests.get", return_value=mock_hibp_resp),
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result, status = main_handler(_make_request(self._base_body()))
 

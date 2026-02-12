@@ -94,9 +94,11 @@ class TestVertexAiDomainResolutionGrounded:
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = _mock_llm_response(_valid_domain_result())
 
-        with patch.object(cdl_main, "GCP_PROJECT", "test-project"), \
-             patch.object(cdl_main, "genai") as mock_genai_mod, \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(cdl_main, "GCP_PROJECT", "test-project"),
+            patch.object(cdl_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result = vertex_ai_domain_resolution_grounded("Acme Corp")
 
@@ -110,9 +112,11 @@ class TestVertexAiDomainResolutionGrounded:
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
-        with patch.object(cdl_main, "GCP_PROJECT", "test-project"), \
-             patch.object(cdl_main, "genai") as mock_genai_mod, \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(cdl_main, "GCP_PROJECT", "test-project"),
+            patch.object(cdl_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result = vertex_ai_domain_resolution_grounded("Acme Corp")
 
@@ -127,9 +131,11 @@ class TestVertexAiDomainResolutionGrounded:
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
-        with patch.object(cdl_main, "GCP_PROJECT", "test-project"), \
-             patch.object(cdl_main, "genai") as mock_genai_mod, \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(cdl_main, "GCP_PROJECT", "test-project"),
+            patch.object(cdl_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result = vertex_ai_domain_resolution_grounded("Acme Corp")
 
@@ -141,9 +147,11 @@ class TestVertexAiDomainResolutionGrounded:
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
-        with patch.object(cdl_main, "GCP_PROJECT", "test-project"), \
-             patch.object(cdl_main, "genai") as mock_genai_mod, \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(cdl_main, "GCP_PROJECT", "test-project"),
+            patch.object(cdl_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result = vertex_ai_domain_resolution_grounded("Acme Corp")
 
@@ -158,9 +166,11 @@ class TestVertexAiDomainResolutionGrounded:
         mock_client = MagicMock()
         mock_client.models.generate_content.return_value = mock_response
 
-        with patch.object(cdl_main, "GCP_PROJECT", "test-project"), \
-             patch.object(cdl_main, "genai") as mock_genai_mod, \
-             patch("retry_utils.time.sleep"):
+        with (
+            patch.object(cdl_main, "GCP_PROJECT", "test-project"),
+            patch.object(cdl_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
             mock_genai_mod.Client.return_value = mock_client
             result = vertex_ai_domain_resolution_grounded("Acme Corp")
 
@@ -215,8 +225,7 @@ class TestMainHandler:
 
         req = _make_request({"company_name": "Acme Corp", "job_id": "nonexistent"})
 
-        with _app.test_request_context(), \
-             patch.object(cdl_main, "db", mock_db):
+        with _app.test_request_context(), patch.object(cdl_main, "db", mock_db):
             resp, status, headers = main_handler(req)
 
         assert status == 404
@@ -234,9 +243,11 @@ class TestMainHandler:
 
         req = _make_request({"company_name": "Acme Corp", "job_id": "job123"})
 
-        with _app.test_request_context(), \
-             patch.object(cdl_main, "db", mock_db), \
-             patch.object(cdl_main, "vertex_ai_domain_resolution_grounded", return_value=llm_result):
+        with (
+            _app.test_request_context(),
+            patch.object(cdl_main, "db", mock_db),
+            patch.object(cdl_main, "vertex_ai_domain_resolution_grounded", return_value=llm_result),
+        ):
             resp, status, headers = main_handler(req)
 
         assert status == 200
@@ -257,10 +268,13 @@ class TestMainHandler:
 
         req = _make_request({"company_name": "Acme Corp", "job_id": "job123"})
 
-        with _app.test_request_context(), \
-             patch.object(cdl_main, "db", mock_db), \
-             patch.object(cdl_main, "vertex_ai_domain_resolution_grounded",
-                          return_value={"error": "GCP_PROJECT not set"}):
+        with (
+            _app.test_request_context(),
+            patch.object(cdl_main, "db", mock_db),
+            patch.object(
+                cdl_main, "vertex_ai_domain_resolution_grounded", return_value={"error": "GCP_PROJECT not set"}
+            ),
+        ):
             resp, status, headers = main_handler(req)
 
         assert status == 200  # Returns 200 with error status
@@ -278,9 +292,11 @@ class TestMainHandler:
 
         req = _make_request({"company_name": "Acme Corp", "job_id": "job123"})
 
-        with _app.test_request_context(), \
-             patch.object(cdl_main, "db", mock_db), \
-             patch.object(cdl_main, "vertex_ai_domain_resolution_grounded", return_value=llm_result):
+        with (
+            _app.test_request_context(),
+            patch.object(cdl_main, "db", mock_db),
+            patch.object(cdl_main, "vertex_ai_domain_resolution_grounded", return_value=llm_result),
+        ):
             resp, status, headers = main_handler(req)
 
         assert status == 200
@@ -303,9 +319,11 @@ class TestMainHandler:
 
         req = _make_request({"company_name": "Acme Corp", "job_id": "job123"})
 
-        with _app.test_request_context(), \
-             patch.object(cdl_main, "db", mock_db), \
-             patch.object(cdl_main, "vertex_ai_domain_resolution_grounded", return_value=llm_result):
+        with (
+            _app.test_request_context(),
+            patch.object(cdl_main, "db", mock_db),
+            patch.object(cdl_main, "vertex_ai_domain_resolution_grounded", return_value=llm_result),
+        ):
             resp, status, headers = main_handler(req)
 
         assert status == 200
@@ -324,10 +342,11 @@ class TestMainHandler:
 
         req = _make_request({"company_name": "Acme Corp", "job_id": "job123"})
 
-        with _app.test_request_context(), \
-             patch.object(cdl_main, "db", mock_db), \
-             patch.object(cdl_main, "vertex_ai_domain_resolution_grounded",
-                          side_effect=RuntimeError("unexpected")):
+        with (
+            _app.test_request_context(),
+            patch.object(cdl_main, "db", mock_db),
+            patch.object(cdl_main, "vertex_ai_domain_resolution_grounded", side_effect=RuntimeError("unexpected")),
+        ):
             resp, status, headers = main_handler(req)
 
         assert status == 200  # Non-fatal: returns 200 so workflow continues
