@@ -95,8 +95,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install mypy
-        run: pip install mypy
+      - name: Install mypy and type stubs
+        run: pip install mypy types-requests types-python-dateutil
 
       - name: Type check shared code
         run: mypy gcp/shared/
