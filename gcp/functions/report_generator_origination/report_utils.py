@@ -79,7 +79,7 @@ def geocode_address(address: str) -> tuple:
     return (None, None)
 
 
-def generate_street_view_url(address: str, geocode: bool = True, cached_coords: dict[str, float] = None) -> str:
+def generate_street_view_url(address: str, geocode: bool = True, cached_coords: dict[str, float] | None = None) -> str:
     """
     Generate a Google Maps Street View URL for a given address.
     When coordinates are available, uses official map_action=pano format to open Street View directly.
@@ -213,9 +213,10 @@ def get_domain_registration_date(domain: str) -> dict[str, Any]:
 
             # Convert to datetime if it's a string
             if isinstance(creation_date, str):
+                date_str = creation_date
                 for fmt in ["%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%d-%b-%Y", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ"]:
                     try:
-                        creation_date = datetime.strptime(creation_date, fmt)
+                        creation_date = datetime.strptime(date_str, fmt)
                         break
                     except ValueError:
                         continue
@@ -372,7 +373,7 @@ def check_domain_mx_records(domain: str) -> dict[str, Any]:
         "bodis.com": "Bodis (Domain Parking)",
     }
 
-    results = {
+    results: dict[str, Any] = {
         "success": False,
         "domain": domain,
         "status": "Unknown",

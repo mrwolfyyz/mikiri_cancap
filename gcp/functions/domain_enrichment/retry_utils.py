@@ -73,7 +73,7 @@ def extract_retry_after(exception: Exception) -> float | None:
                             import time
 
                             delay = retry_date.timestamp() - time.time()
-                            return max(0, delay)  # Ensure non-negative
+                            return max(0, delay)  # type: ignore[no-any-return]  # Ensure non-negative
                     except Exception:  # nosec B110 — best-effort Retry-After parsing
                         pass
     return None
