@@ -62,6 +62,29 @@ jobs:
       - name: Bandit security scan
         run: bandit -r gcp/ -x gcp/functions/*/test_* --quiet
 
+  dep-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Audit test dependencies
+        run: pip-audit -r requirements-test.txt
+
+      - name: Audit function dependencies
+        run: |
+          for req in gcp/functions/*/requirements.txt; do
+            echo "Auditing $req..."
+            pip-audit -r "$req"
+          done
+
   terraform-validate:
     runs-on: ubuntu-latest
     steps:
