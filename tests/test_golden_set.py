@@ -13,8 +13,11 @@ CLI overrides are available if needed.
 Each golden case is parameterized as its own test, so you can run
 individual cases:
 
-    # Run all golden cases
+    # Run all golden cases (default: skiptrace workflow)
     python3.13 -m pytest tests/test_golden_set.py -v
+
+    # Run against the origination workflow
+    python3.13 -m pytest tests/test_golden_set.py -v --golden-workflow=origination
 
     # Run a single case
     python3.13 -m pytest tests/test_golden_set.py -v -k sari_cornfield
@@ -23,7 +26,7 @@ individual cases:
     python3.13 -m pytest tests/test_golden_set.py -v --golden-save-reports
 
     # Override auto-discovered URL or token (optional)
-    python3.13 -m pytest tests/test_golden_set.py -v \
+    python3.13 -m pytest tests/test_golden_set.py -v \\
         --golden-url=https://... --golden-token=...
 
 Skip in CI (unit tests only):
@@ -118,6 +121,12 @@ def firestore_client():
 
 
 @pytest.fixture(scope="session")
+def golden_workflow(request):
+    """Workflow type — 'skiptrace' or 'origination' from --golden-workflow CLI option."""
+    return request.config.getoption("--golden-workflow")
+
+
+@pytest.fixture(scope="session")
 def save_reports_dir(request):
     """Return a directory path for saving markdown reports, or None."""
     if not request.config.getoption("--golden-save-reports"):
@@ -132,13 +141,24 @@ def save_reports_dir(request):
 
 
 # ---------------------------------------------------------------------------
+# Workflow endpoint mapping
+# ---------------------------------------------------------------------------
+
+WORKFLOW_ENDPOINTS = {
+    "skiptrace": "/investigate-skiptrace",
+    "origination": "/investigate-origination",
+}
+
+
+# ---------------------------------------------------------------------------
 # API helpers
 # ---------------------------------------------------------------------------
 
-def submit_investigation(api_url: str, token: str, case_input: dict) -> str:
+def submit_investigation(api_url: str, token: str, case_input: dict, workflow: str = "skiptrace") -> str:
     """Submit an investigation and return the job_id."""
+    endpoint = WORKFLOW_ENDPOINTS[workflow]
     resp = requests.post(
-        f"{api_url}/investigate-skiptrace",
+        f"{api_url}{endpoint}",
         json=case_input,
         headers={
             "Authorization": f"Bearer {token}",
@@ -319,18 +339,20 @@ def assert_markdown_contains_terms(markdown: dict, terms: list) -> list:
     _golden_cases,
     ids=[c["id"] for c in _golden_cases],
 )
-def test_golden_case(api_url, auth_token, firestore_client, save_reports_dir, case):
+def test_golden_case(api_url, auth_token, firestore_client, save_reports_dir, golden_workflow, case):
     """Run a single golden set case end-to-end and validate results."""
     case_id = case["id"]
     assertions = case["assertions"]
+    # Per-case workflow override, falling back to the CLI option
+    effective_workflow = case.get("workflow", golden_workflow)
     failures = []
 
     print(f"\n{'='*60}")
-    print(f"Running: {case_id} — {case.get('description', '')}")
+    print(f"Running: {case_id} — {case.get('description', '')} [workflow={effective_workflow}]")
     print(f"{'='*60}")
 
     # ----- Submit & wait -----
-    job_id = submit_investigation(api_url, auth_token, case["input"])
+    job_id = submit_investigation(api_url, auth_token, case["input"], workflow=effective_workflow)
     print(f"  Job submitted: {job_id}")
 
     job = poll_until_complete(api_url, auth_token, job_id)

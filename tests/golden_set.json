@@ -10,6 +10,7 @@
     "province": "(optional) Province/state code",
     "company_name": "(optional) Employer or affiliated company"
   },
+  "_workflow_note": "Each case can optionally include a top-level 'workflow' field ('skiptrace' or 'origination') to override the --golden-workflow CLI option (default: skiptrace).",
   "_assertion_schema": {
     "should_complete": "(bool) Job must reach 'complete' status",
     "expect_phone_found": "(bool) At least one phone in enrichment.contacts.phones",
@@ -62,6 +63,27 @@
         "expect_company_domain_resolved": true,
         "expect_social_profiles": ["linkedin", "instagram"],
         "report_should_contain": ["Jacob Kinross", "Toronto", "CanCap"]
+      }
+    },
+    {
+      "id": "muhammad_asad_hussain",
+      "description": "Elite Global Solutions employee in Calgary, LinkedIn profile discoverable",
+      "input": {
+        "email": "autobiography999@gmail.com",
+        "full_name": "Muhammad Asad Hussain",
+        "city": "Calgary",
+        "province": "AB",
+        "company_name": "Elite Global Solutions"
+      },
+      "assertions": {
+        "should_complete": true,
+        "expect_phone_found": false,
+        "expect_email_found": false,
+        "expect_address_found": false,
+        "expect_breaches_found": false,
+        "expect_company_domain_resolved": false,
+        "expect_social_profiles": ["linkedin"],
+        "report_should_contain": ["asad-hussain-63582524a"]
       }
     },
     {

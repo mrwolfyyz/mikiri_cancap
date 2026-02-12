@@ -73,3 +73,10 @@ def pytest_addoption(parser):
         default=False,
         help="Save markdown reports to tests/golden_reports/ for inspection",
     )
+    parser.addoption(
+        "--golden-workflow",
+        action="store",
+        default="skiptrace",
+        choices=["skiptrace", "origination"],
+        help="Workflow to test: 'skiptrace' or 'origination' (default: skiptrace)",
+    )
