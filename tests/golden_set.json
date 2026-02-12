@@ -1,6 +1,26 @@
 {
   "_description": "Golden test cases for end-to-end integration testing. Each case defines an input and fuzzy assertions about what the system should find. These tests run against a live deployment and validate result quality.",
-  "_usage": "python3 -m pytest tests/test_golden_set.py -v --golden-url=<API_GATEWAY_URL> --golden-token=<FIREBASE_TOKEN>",
+  "_usage": "python3.13 -m pytest tests/test_golden_set.py -v  (credentials auto-discovered from firebase-config.json)",
+  "_run_one": "python3.13 -m pytest tests/test_golden_set.py -v -k <case_id>",
+  "_save_reports": "python3.13 -m pytest tests/test_golden_set.py -v --golden-save-reports",
+  "_input_schema": {
+    "email": "(required) Subject's email address",
+    "full_name": "(required) Subject's full name",
+    "city": "(optional) City for location context",
+    "province": "(optional) Province/state code",
+    "company_name": "(optional) Employer or affiliated company"
+  },
+  "_assertion_schema": {
+    "should_complete": "(bool) Job must reach 'complete' status",
+    "expect_phone_found": "(bool) At least one phone in enrichment.contacts.phones",
+    "expect_email_found": "(bool) At least one discovered email in enrichment.contacts.emails",
+    "expect_address_found": "(bool) At least one address in enrichment.contacts.addresses",
+    "expect_breaches_found": "(bool) At least one breach in identity.breaches",
+    "expect_company_domain_resolved": "(bool) At least one domain with whois or mx data",
+    "expect_social_profiles": "(list[str]) Platform names expected in identity.scored.top_handles (e.g. linkedin, facebook, instagram)",
+    "report_should_contain": "(list[str]) Terms that must appear in the structured result JSON (case-insensitive)",
+    "markdown_should_contain": "(list[str]) Terms that must appear in the generated markdown report (case-insensitive)"
+  },
   "cases": [
     {
       "id": "sari_cornfield",

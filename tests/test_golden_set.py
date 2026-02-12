@@ -2,13 +2,29 @@
 Golden set integration tests.
 
 Runs real investigations against a live deployment and validates results
-against expected outcomes using structured Firestore data. These tests are
-slow (60-180s each) and require a running deployment with valid credentials.
+against expected outcomes using structured Firestore data and markdown
+reports. These tests are slow (60-180s each) and require a running
+deployment with GCP credentials (``gcloud auth application-default login``).
 
-Usage:
-    pytest tests/test_golden_set.py -v \
-        --golden-url=https://<region>-<project>.cloudfunctions.net/api_gateway \
-        --golden-token=<firebase-id-token>
+Credentials are auto-discovered from ``frontend/skiptrace/public/firebase-config.json``
+(API URL and key) and a Firebase anonymous auth token is generated automatically.
+CLI overrides are available if needed.
+
+Each golden case is parameterized as its own test, so you can run
+individual cases:
+
+    # Run all golden cases
+    python3.13 -m pytest tests/test_golden_set.py -v
+
+    # Run a single case
+    python3.13 -m pytest tests/test_golden_set.py -v -k sari_cornfield
+
+    # Run and save markdown reports to disk for inspection
+    python3.13 -m pytest tests/test_golden_set.py -v --golden-save-reports
+
+    # Override auto-discovered URL or token (optional)
+    python3.13 -m pytest tests/test_golden_set.py -v \
+        --golden-url=https://... --golden-token=...
 
 Skip in CI (unit tests only):
     pytest tests/ -v --ignore=tests/test_golden_set.py
@@ -16,11 +32,55 @@ Skip in CI (unit tests only):
 
 import json
 import time
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 import requests
 from google.cloud import firestore
+
+# ---------------------------------------------------------------------------
+# Auto-discovery helpers
+# ---------------------------------------------------------------------------
+
+_FIREBASE_CONFIG_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "frontend" / "skiptrace" / "public" / "firebase-config.json"
+)
+
+
+def _load_firebase_config() -> dict:
+    """Load firebase-config.json from the repo."""
+    if not _FIREBASE_CONFIG_PATH.exists():
+        pytest.fail(
+            f"firebase-config.json not found at {_FIREBASE_CONFIG_PATH}. "
+            f"Run 'terraform apply' to generate it, or pass --golden-url and --golden-token."
+        )
+    return json.loads(_FIREBASE_CONFIG_PATH.read_text())
+
+
+def _get_anonymous_token(api_key: str) -> str:
+    """Generate a Firebase anonymous auth ID token via the REST API."""
+    resp = requests.post(
+        f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={api_key}",
+        headers={"Content-Type": "application/json"},
+        json={"returnSecureToken": True},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    token = resp.json().get("idToken")
+    if not token:
+        pytest.fail(f"Firebase anonymous sign-up did not return idToken: {resp.json()}")
+    return token
+
+
+# ---------------------------------------------------------------------------
+# Load golden cases at module level for parameterization
+# ---------------------------------------------------------------------------
+
+_golden_cases = json.loads(
+    (Path(__file__).parent / "golden_set.json").read_text()
+)["cases"]
 
 
 # ---------------------------------------------------------------------------
@@ -29,17 +89,26 @@ from google.cloud import firestore
 
 @pytest.fixture(scope="session")
 def api_url(request):
+    """API Gateway URL — from CLI or auto-discovered from firebase-config.json."""
     url = request.config.getoption("--golden-url")
     if not url:
-        pytest.skip("--golden-url not provided")
+        config = _load_firebase_config()
+        url = config.get("apiUrl")
+        if not url:
+            pytest.fail("apiUrl not found in firebase-config.json")
     return url.rstrip("/")
 
 
 @pytest.fixture(scope="session")
 def auth_token(request):
+    """Firebase ID token — from CLI or auto-generated via anonymous auth."""
     token = request.config.getoption("--golden-token")
     if not token:
-        pytest.skip("--golden-token not provided")
+        config = _load_firebase_config()
+        api_key = config.get("apiKey")
+        if not api_key:
+            pytest.fail("apiKey not found in firebase-config.json")
+        token = _get_anonymous_token(api_key)
     return token
 
 
@@ -49,10 +118,17 @@ def firestore_client():
 
 
 @pytest.fixture(scope="session")
-def golden_cases():
-    path = Path(__file__).parent / "golden_set.json"
-    data = json.loads(path.read_text())
-    return data["cases"]
+def save_reports_dir(request):
+    """Return a directory path for saving markdown reports, or None."""
+    if not request.config.getoption("--golden-save-reports"):
+        return None
+    out_dir = (
+        Path(__file__).parent
+        / "golden_reports"
+        / datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return out_dir
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +190,20 @@ def get_firestore_result(client: firestore.Client, job_id: str) -> dict:
         return result_str
 
     pytest.fail(f"Unexpected result type for {job_id}: {type(result_str)}")
+
+
+def get_markdown_report(api_url: str, token: str, job_id: str) -> dict:
+    """Fetch the markdown reports for a completed job.
+
+    Returns a dict like ``{"identity": "# Identity Report\\n..."}``.
+    """
+    resp = requests.get(
+        f"{api_url}/get_markdown/{job_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return resp.json()
 
 
 # ---------------------------------------------------------------------------
@@ -192,95 +282,126 @@ def assert_report_terms(result: dict, terms: list) -> list:
 
 
 # ---------------------------------------------------------------------------
-# Tests
+# Assertion helpers — markdown report
 # ---------------------------------------------------------------------------
 
-class TestGoldenSet:
-    """Run each golden set case as a separate test."""
+def assert_markdown_report_exists(markdown: dict) -> list:
+    """Check that the identity markdown report was generated and is non-empty."""
+    failures = []
+    identity_md = markdown.get("identity", "")
+    if not identity_md:
+        failures.append("Markdown report missing: 'identity' key is empty or absent")
+    elif len(identity_md) < 100:
+        failures.append(
+            f"Markdown report suspiciously short ({len(identity_md)} chars)"
+        )
+    return failures
 
-    def test_golden_cases(self, api_url, auth_token, firestore_client, golden_cases):
-        """Run all golden set cases and collect results."""
-        results = []
 
-        for case in golden_cases:
-            case_id = case["id"]
-            assertions = case["assertions"]
-            failures = []
-
-            print(f"\n{'='*60}")
-            print(f"Running: {case_id} — {case.get('description', '')}")
-            print(f"{'='*60}")
-
-            # Submit investigation
-            job_id = submit_investigation(api_url, auth_token, case["input"])
-            print(f"  Job submitted: {job_id}")
-
-            # Wait for completion
-            job = poll_until_complete(api_url, auth_token, job_id)
-            print(f"  Job completed")
-
-            if assertions.get("should_complete"):
-                if job["status"] != "complete":
-                    failures.append("Job did not complete")
-
-            # Read structured result from Firestore
-            result = get_firestore_result(firestore_client, job_id)
-
-            # Phone assertions
-            if assertions.get("expect_phone_found"):
-                failures.extend(assert_phones_found(result))
-
-            # Email assertions
-            if assertions.get("expect_email_found"):
-                failures.extend(assert_emails_found(result))
-
-            # Address assertions
-            if assertions.get("expect_address_found"):
-                failures.extend(assert_addresses_found(result))
-
-            # Breach assertions
-            if assertions.get("expect_breaches_found"):
-                failures.extend(assert_breaches_found(result))
-
-            # Social profile assertions
-            if assertions.get("expect_social_profiles"):
-                failures.extend(
-                    assert_social_profiles(result, assertions["expect_social_profiles"])
-                )
-
-            # Company domain assertions
-            if assertions.get("expect_company_domain_resolved"):
-                failures.extend(assert_company_domain_resolved(result))
-
-            # Report term assertions (search the full result JSON)
-            if assertions.get("report_should_contain"):
-                failures.extend(
-                    assert_report_terms(result, assertions["report_should_contain"])
-                )
-
-            # Record result
-            status = "PASS" if not failures else "FAIL"
-            print(f"  Result: {status}")
-            if failures:
-                for f in failures:
-                    print(f"    - {f}")
-
-            results.append({
-                "case_id": case_id,
-                "job_id": job_id,
-                "passed": len(failures) == 0,
-                "failures": failures,
-            })
-
-        # Summary
-        print(f"\n{'='*60}")
-        print(f"Golden Set Summary: {sum(1 for r in results if r['passed'])}/{len(results)} passed")
-        print(f"{'='*60}")
-
-        failed = [r for r in results if not r["passed"]]
-        if failed:
-            msg = "\n".join(
-                f"  {r['case_id']} (job {r['job_id']}): {'; '.join(r['failures'])}"
-                for r in failed
+def assert_markdown_contains_terms(markdown: dict, terms: list) -> list:
+    """Check that expected terms appear in the identity markdown report."""
+    identity_md = markdown.get("identity", "").lower()
+    failures = []
+    for term in terms:
+        if term.lower() not in identity_md:
+            failures.append(
+                f"Expected term '{term}' not found in markdown report"
             )
-            pytest.fail(f"Golden set failures:\n{msg}")
+    return failures
+
+
+# ---------------------------------------------------------------------------
+# Parameterized test
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "case",
+    _golden_cases,
+    ids=[c["id"] for c in _golden_cases],
+)
+def test_golden_case(api_url, auth_token, firestore_client, save_reports_dir, case):
+    """Run a single golden set case end-to-end and validate results."""
+    case_id = case["id"]
+    assertions = case["assertions"]
+    failures = []
+
+    print(f"\n{'='*60}")
+    print(f"Running: {case_id} — {case.get('description', '')}")
+    print(f"{'='*60}")
+
+    # ----- Submit & wait -----
+    job_id = submit_investigation(api_url, auth_token, case["input"])
+    print(f"  Job submitted: {job_id}")
+
+    job = poll_until_complete(api_url, auth_token, job_id)
+    print(f"  Job completed")
+
+    if assertions.get("should_complete"):
+        if job["status"] != "complete":
+            failures.append("Job did not complete")
+
+    # ----- Structured result assertions -----
+    result = get_firestore_result(firestore_client, job_id)
+
+    if assertions.get("expect_phone_found"):
+        failures.extend(assert_phones_found(result))
+
+    if assertions.get("expect_email_found"):
+        failures.extend(assert_emails_found(result))
+
+    if assertions.get("expect_address_found"):
+        failures.extend(assert_addresses_found(result))
+
+    if assertions.get("expect_breaches_found"):
+        failures.extend(assert_breaches_found(result))
+
+    if assertions.get("expect_social_profiles"):
+        failures.extend(
+            assert_social_profiles(result, assertions["expect_social_profiles"])
+        )
+
+    if assertions.get("expect_company_domain_resolved"):
+        failures.extend(assert_company_domain_resolved(result))
+
+    if assertions.get("report_should_contain"):
+        failures.extend(
+            assert_report_terms(result, assertions["report_should_contain"])
+        )
+
+    # ----- Markdown report assertions -----
+    markdown = get_markdown_report(api_url, auth_token, job_id)
+    print(f"  Markdown retrieved ({len(markdown.get('identity', ''))} chars)")
+
+    failures.extend(assert_markdown_report_exists(markdown))
+
+    # Check report_should_contain terms also appear in the markdown
+    if assertions.get("report_should_contain"):
+        failures.extend(
+            assert_markdown_contains_terms(markdown, assertions["report_should_contain"])
+        )
+
+    # Check any markdown-specific terms
+    if assertions.get("markdown_should_contain"):
+        failures.extend(
+            assert_markdown_contains_terms(
+                markdown, assertions["markdown_should_contain"]
+            )
+        )
+
+    # ----- Optionally save markdown to disk -----
+    if save_reports_dir and markdown.get("identity"):
+        report_path = save_reports_dir / f"{case_id}.md"
+        report_path.write_text(markdown["identity"])
+        print(f"  Markdown saved: {report_path}")
+
+    # ----- Final result -----
+    if failures:
+        for f in failures:
+            print(f"    FAIL: {f}")
+        pytest.fail(
+            f"Golden case '{case_id}' (job {job_id}) — "
+            f"{len(failures)} failure(s):\n"
+            + "\n".join(f"  - {f}" for f in failures)
+        )
+
+    print(f"  Result: PASS")

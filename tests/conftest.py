@@ -67,3 +67,9 @@ def load_function_module(function_name: str, module_alias: str):
 def pytest_addoption(parser):
     parser.addoption("--golden-url", action="store", default=None, help="API Gateway base URL")
     parser.addoption("--golden-token", action="store", default=None, help="Firebase ID token")
+    parser.addoption(
+        "--golden-save-reports",
+        action="store_true",
+        default=False,
+        help="Save markdown reports to tests/golden_reports/ for inspection",
+    )
