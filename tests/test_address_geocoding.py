@@ -205,6 +205,67 @@ class TestExtractAddressesFromQueriesLlm:
 
         assert result == []
 
+    def test_malformed_json_response_returns_empty(self):
+        """Non-JSON LLM response returns empty list instead of crashing."""
+        mock_model_instance = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = "this is not valid json at all"
+        mock_model_instance.generate_content.return_value = mock_response
+
+        with patch.object(ag_main, "GCP_PROJECT", "test-project"), \
+             patch.object(ag_main, "vertexai"), \
+             patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance), \
+             patch("retry_utils.time.sleep"):
+            result = extract_addresses_from_queries_llm(
+                [{"hits": [{"title": "t", "snippet": "s", "url": "https://a.com"}]}]
+            )
+
+        assert result == []
+
+    def test_address_with_accented_characters(self):
+        """Addresses with accented characters are preserved correctly."""
+        llm_response = {
+            "addresses": [
+                {
+                    "address_raw": "123 Rue Sainte-Hélène, Montréal, QC",
+                    "confidence": "high",
+                    "source_url": "https://example.com",
+                    "snippet": "Located at 123 Rue Sainte-Hélène",
+                },
+            ]
+        }
+
+        mock_model_instance = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = json.dumps(llm_response, ensure_ascii=False)
+        mock_model_instance.generate_content.return_value = mock_response
+
+        with patch.object(ag_main, "GCP_PROJECT", "test-project"), \
+             patch.object(ag_main, "vertexai"), \
+             patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance), \
+             patch("retry_utils.time.sleep"):
+            result = extract_addresses_from_queries_llm(
+                [{"hits": [{"title": "t", "snippet": "Montréal", "url": "https://example.com"}]}]
+            )
+
+        assert len(result) == 1
+        assert "Montréal" in result[0]["address_raw"]
+
+    def test_vertexai_init_error_returns_empty(self):
+        """If vertexai.init() raises, the function returns empty list."""
+        with patch.object(ag_main, "GCP_PROJECT", "test-project"), \
+             patch.object(ag_main, "vertexai") as mock_vai:
+            mock_vai.init.side_effect = RuntimeError("auth error")
+            # GenerativeModel is called after init — make it also fail
+            with patch.object(ag_main, "GenerativeModel",
+                              side_effect=RuntimeError("model init failed")), \
+                 patch("retry_utils.time.sleep"):
+                result = extract_addresses_from_queries_llm(
+                    [{"hits": [{"title": "t", "snippet": "s", "url": "https://a.com"}]}]
+                )
+
+        assert result == []
+
 
 # ===========================================================================
 # main HTTP handler
@@ -298,3 +359,50 @@ class TestMainHandler:
         addr_result = result["addresses"]["999 Unknown Rd"]
         assert addr_result["lat"] is None
         assert "geocoding failed" in addr_result["error"].lower()
+
+    def test_geocoding_timeout_captured(self):
+        """URLError during geocoding is captured per-address, not a function crash."""
+        body = {
+            "identity": {
+                "queries": [{"hits": [{"title": "test"}]}],
+            }
+        }
+
+        extracted = [{"address_raw": "123 Slow Rd, Toronto, ON", "source_url": "https://a.com", "snippet": ""}]
+        from urllib.error import URLError
+
+        with patch.object(ag_main, "extract_addresses_from_queries_llm", return_value=extracted), \
+             patch.object(ag_main, "retry_with_backoff",
+                          side_effect=URLError("timed out")), \
+             patch("address_geocoding_main.time") as mock_time:
+            mock_time.sleep = MagicMock()
+            result, status = main_handler(_make_request(body))
+
+        assert status == 200
+        addr_result = result["addresses"]["123 Slow Rd, Toronto, ON"]
+        assert addr_result["lat"] is None
+        assert addr_result["error"] is not None
+
+    def test_multiple_addresses_rate_limited(self):
+        """Sleep is called between geocoding requests for rate limiting."""
+        body = {
+            "identity": {
+                "queries": [{"hits": [{"title": "test"}]}],
+            }
+        }
+
+        extracted = [
+            {"address_raw": "123 First St", "source_url": "https://a.com", "snippet": ""},
+            {"address_raw": "456 Second Ave", "source_url": "https://b.com", "snippet": ""},
+        ]
+
+        with patch.object(ag_main, "extract_addresses_from_queries_llm", return_value=extracted), \
+             patch.object(ag_main, "retry_with_backoff", return_value=(43.0, -79.0)), \
+             patch("address_geocoding_main.time") as mock_time:
+            mock_time.sleep = MagicMock()
+            result, status = main_handler(_make_request(body))
+
+        assert status == 200
+        assert len(result["addresses"]) == 2
+        # time.sleep should be called at least once for rate limiting between requests
+        assert mock_time.sleep.call_count >= 1

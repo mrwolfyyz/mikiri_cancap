@@ -241,6 +241,40 @@ class TestExtractGroundingMetadata:
         assert result["search_queries"] == []
         assert result["grounding_sources"] == []
 
+    def test_html_fallback_when_rendered_content_missing(self):
+        """Falls back to entry_point.html when rendered_content is absent."""
+        grounding = MagicMock()
+        grounding.web_search_queries = []
+        grounding.grounding_chunks = []
+
+        entry_point = MagicMock(spec=[])  # no rendered_content attr
+        entry_point.html = "<div>fallback</div>"
+        grounding.search_entry_point = entry_point
+
+        candidate = MagicMock()
+        candidate.grounding_metadata = grounding
+
+        resp = MagicMock()
+        resp.candidates = [candidate]
+
+        result = extract_grounding_metadata(resp)
+        assert result["search_entry_point"] == "<div>fallback</div>"
+
+    def test_exception_returns_empty_metadata(self):
+        """An exception during metadata extraction returns the default empty dict."""
+        resp = MagicMock()
+        # Make candidates[0] raise when accessing grounding_metadata
+        bad_candidate = MagicMock()
+        type(bad_candidate).grounding_metadata = property(
+            lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
+        )
+        resp.candidates = [bad_candidate]
+
+        result = extract_grounding_metadata(resp)
+        assert result["grounding_sources"] == []
+        assert result["search_queries"] == []
+        assert result["search_entry_point"] == ""
+
 
 # ===========================================================================
 # vertex_ai_score
@@ -317,6 +351,97 @@ class TestVertexAiScore:
             result = vertex_ai_score({"full_name": "John Doe"}, [])
 
         assert result["top_handles"][0]["confidence"] == "medium"
+
+    def test_no_candidates_block_reason(self):
+        """Empty candidates list with block_reason triggers EmptyLLMResponseError and retries."""
+        mock_response = MagicMock()
+        mock_response.candidates = []
+        mock_response.prompt_feedback.block_reason = "SAFETY"
+        # response is truthy but has no candidates
+
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
+             patch.object(p1_main, "genai") as mock_genai_mod, \
+             patch("retry_utils.time.sleep"):
+            mock_genai_mod.Client.return_value = mock_client
+            result = vertex_ai_score({"full_name": "John Doe"}, [])
+
+        assert "error" in result
+
+    def test_response_text_raises_value_error(self):
+        """ValueError from response.text (safety filter) is treated as empty response."""
+        mock_response = MagicMock()
+        mock_response.candidates = [MagicMock()]  # Non-empty
+        type(mock_response).text = property(
+            lambda self: (_ for _ in ()).throw(ValueError("blocked by safety filters"))
+        )
+
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
+             patch.object(p1_main, "genai") as mock_genai_mod, \
+             patch("retry_utils.time.sleep"):
+            mock_genai_mod.Client.return_value = mock_client
+            result = vertex_ai_score({"full_name": "John Doe"}, [])
+
+        assert "error" in result
+
+    def test_markdown_code_block_stripped(self):
+        """Markdown-wrapped JSON is properly unwrapped."""
+        scored = _mock_scored_result()
+        wrapped = "```json\n" + json.dumps(scored) + "\n```"
+        mock_response = MagicMock()
+        mock_response.text = wrapped
+        mock_response.candidates = [MagicMock()]
+
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
+             patch.object(p1_main, "genai") as mock_genai_mod, \
+             patch("retry_utils.time.sleep"):
+            mock_genai_mod.Client.return_value = mock_client
+            result = vertex_ai_score({"full_name": "John Doe"}, [])
+
+        assert "top_handles" in result
+        assert result["top_handles"][0]["platform"] == "linkedin"
+
+    def test_json_decode_error_retries_then_errors(self):
+        """Malformed JSON triggers EmptyLLMResponseError and retries exhaust."""
+        mock_response = MagicMock()
+        mock_response.text = "this is not valid json at all"
+        mock_response.candidates = [MagicMock()]
+
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
+             patch.object(p1_main, "genai") as mock_genai_mod, \
+             patch("retry_utils.time.sleep"):
+            mock_genai_mod.Client.return_value = mock_client
+            result = vertex_ai_score({"full_name": "John Doe"}, [])
+
+        assert "error" in result
+
+    def test_rate_limit_error_propagates(self):
+        """resource_exhausted in outer exception handler raises RateLimitExhaustedError."""
+        from retry_utils import RateLimitExhaustedError
+        import pytest
+
+        mock_client = MagicMock()
+        mock_client.models.generate_content.side_effect = RuntimeError(
+            "429 resource_exhausted: too many requests"
+        )
+
+        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
+             patch.object(p1_main, "genai") as mock_genai_mod, \
+             patch("retry_utils.time.sleep"):
+            mock_genai_mod.Client.return_value = mock_client
+            with pytest.raises(RateLimitExhaustedError):
+                vertex_ai_score({"full_name": "John Doe"}, [])
 
 
 # ===========================================================================
@@ -514,3 +639,214 @@ class TestMainHandler:
 
         assert status == 429
         assert "retryable" in result
+
+
+# ===========================================================================
+# Vertex AI Search (core search function)
+# ===========================================================================
+class TestVertexAiSearch:
+    """Tests for the _vertex_ai_search wrapper and search functions."""
+
+    def test_search_exception_returns_empty_list(self):
+        """Exceptions in Vertex AI Search are caught and return empty list."""
+        mock_client = MagicMock()
+        mock_client.search.side_effect = RuntimeError("gRPC error")
+
+        with patch.object(p1_main, "_search_client", mock_client), \
+             patch.object(p1_main, "_get_search_client", return_value=mock_client), \
+             patch.object(p1_main, "GCP_PROJECT", "test-project"):
+            result = vertex_ai_search_precision("John Doe Toronto", 5)
+
+        assert result == []
+
+    def test_search_returns_parsed_results(self):
+        """Successful search returns list of dicts with url, title, snippet."""
+        # Build mock search response
+        mock_doc1 = MagicMock()
+        mock_doc1.document.derived_struct_data = {
+            "link": "https://linkedin.com/in/jdoe",
+            "title": "John Doe",
+            "snippets": [{"snippet": "Software Engineer in Toronto"}],
+        }
+        mock_doc2 = MagicMock()
+        mock_doc2.document.derived_struct_data = {
+            "link": "https://twitter.com/jdoe",
+            "title": "jdoe",
+            "snippets": [],
+        }
+
+        mock_response = MagicMock()
+        mock_response.results = [mock_doc1, mock_doc2]
+
+        mock_client = MagicMock()
+        mock_client.search.return_value = mock_response
+
+        with patch.object(p1_main, "_search_client", mock_client), \
+             patch.object(p1_main, "_get_search_client", return_value=mock_client), \
+             patch.object(p1_main, "GCP_PROJECT", "test-project"):
+            result = vertex_ai_search_precision("John Doe", 5)
+
+        assert len(result) == 2
+        assert result[0]["url"] == "https://linkedin.com/in/jdoe"
+        assert result[0]["snippet"] == "Software Engineer in Toronto"
+        assert result[1]["snippet"] == ""  # no snippets → empty string
+
+
+# ===========================================================================
+# Identity resolution orchestration (_run_identity_resolution via main)
+# ===========================================================================
+class TestRunIdentityResolution:
+    """Tests for complex orchestration logic inside _run_identity_resolution."""
+
+    def _base_body(self, **overrides):
+        body = {
+            "job_id": "job-orch",
+            "email": "john@acmecorp.com",
+            "full_name": "John Doe",
+            "city": "Toronto",
+            "province": "ON",
+        }
+        body.update(overrides)
+        return body
+
+    def _make_scored(self, city="Toronto", confidence="high", **overrides):
+        scored = _mock_scored_result()
+        scored["location"] = {"city": city, "confidence": confidence}
+        scored.update(overrides)
+        return scored
+
+    def _run_main(self, body, scored, precision_results=None, linkedin_results=None):
+        """Run main_handler with standard mocks, returning (result, status)."""
+        mock_response = MagicMock()
+        mock_response.text = json.dumps(scored)
+        mock_response.candidates = [MagicMock()]
+
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        mock_hibp_resp = MagicMock()
+        mock_hibp_resp.status_code = 404
+        mock_hibp_resp.raise_for_status = MagicMock()
+
+        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
+             patch.object(p1_main, "HIBP_API_KEY", "test-key"), \
+             patch.object(p1_main, "_get_search_client", return_value=MagicMock()), \
+             patch.object(p1_main, "vertex_ai_search_precision",
+                          return_value=precision_results or []) as mock_precision, \
+             patch.object(p1_main, "vertex_ai_search_recall", return_value=[]), \
+             patch.object(p1_main, "vertex_ai_search_linkedin",
+                          return_value=linkedin_results or []) as mock_linkedin, \
+             patch.object(p1_main, "genai") as mock_genai_mod, \
+             patch("phase1_identity_main.requests.get", return_value=mock_hibp_resp), \
+             patch("retry_utils.time.sleep"):
+            mock_genai_mod.Client.return_value = mock_client
+            result, status = main_handler(_make_request(body))
+
+        return result, status, mock_precision, mock_linkedin
+
+    def test_location_rerun_triggered_when_city_differs(self):
+        """When LLM resolves a different city with high confidence, a rerun precision search fires."""
+        scored = self._make_scored(city="Vancouver", confidence="high")
+        result, status, mock_precision, _ = self._run_main(
+            self._base_body(), scored
+        )
+
+        assert status == 200
+        # Precision should be called at least twice: initial + rerun
+        assert mock_precision.call_count >= 2
+        # Second call should include "Vancouver" in the query
+        rerun_call_args = mock_precision.call_args_list[-1]
+        assert "Vancouver" in rerun_call_args[0][0]
+        # queries payload should have precision_rerun entry
+        assert any(q["id"] == "precision_rerun" for q in result["queries"])
+
+    def test_location_rerun_not_triggered_same_city(self):
+        """When LLM resolves the same city, no rerun search happens."""
+        scored = self._make_scored(city="Toronto", confidence="high")
+        result, status, mock_precision, _ = self._run_main(
+            self._base_body(), scored
+        )
+
+        assert status == 200
+        # No precision_rerun entry in queries (rerun did not fire)
+        assert not any(q["id"] == "precision_rerun" for q in result["queries"])
+        # No call should contain "precision_rerun"-style city-differing query
+        for call_args in mock_precision.call_args_list:
+            # None of the calls should be the rerun (which would have a different city)
+            assert "Vancouver" not in call_args[0][0]
+
+    def test_city_linkedin_fallback(self):
+        """When company LinkedIn search returns 0 results and city is provided,
+        a city-based LinkedIn search fires as fallback."""
+        body = self._base_body(company_name="Acme Corp")
+        scored = self._make_scored()
+        result, status, _, mock_linkedin = self._run_main(
+            body, scored, linkedin_results=[]
+        )
+
+        assert status == 200
+        # LinkedIn called for company query (returns []), then city fallback
+        assert mock_linkedin.call_count >= 2
+
+    def test_identity_clues_normalized_from_combined_hits(self):
+        """Identity clues get snippet/source_query_id enriched from combined_hits."""
+        precision_results = [
+            {"url": "https://news.com/article", "title": "John Doe in News",
+             "snippet": "John Doe was featured...", "relevance_score": 0.0}
+        ]
+        scored = self._make_scored()
+        scored["identity_clues"] = [
+            {"url": "https://news.com/article", "title": ""}
+        ]
+        scored["top_handles"] = []  # no handles to filter out
+
+        result, status, _, _ = self._run_main(
+            self._base_body(), scored, precision_results=precision_results
+        )
+
+        assert status == 200
+        clues = result.get("identity_clues", [])
+        assert len(clues) >= 1
+        # Clue should have snippet enriched from the precision hit
+        matched = [c for c in clues if c.get("url") == "https://news.com/article"]
+        assert len(matched) == 1
+        assert matched[0]["snippet"] == "John Doe was featured..."
+
+    def test_parallel_search_timeout_graceful(self):
+        """A timeout in one search future doesn't crash the whole function."""
+        scored = self._make_scored()
+        mock_response = MagicMock()
+        mock_response.text = json.dumps(scored)
+        mock_response.candidates = [MagicMock()]
+
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        mock_hibp_resp = MagicMock()
+        mock_hibp_resp.status_code = 404
+        mock_hibp_resp.raise_for_status = MagicMock()
+
+        call_count = {"precision": 0}
+
+        def precision_side_effect(query, num=5):
+            call_count["precision"] += 1
+            if call_count["precision"] == 1:
+                raise TimeoutError("search timed out")
+            return []
+
+        with patch.object(p1_main, "GCP_PROJECT", "test-project"), \
+             patch.object(p1_main, "HIBP_API_KEY", "test-key"), \
+             patch.object(p1_main, "_get_search_client", return_value=MagicMock()), \
+             patch.object(p1_main, "vertex_ai_search_precision",
+                          side_effect=precision_side_effect), \
+             patch.object(p1_main, "vertex_ai_search_recall", return_value=[]), \
+             patch.object(p1_main, "vertex_ai_search_linkedin", return_value=[]), \
+             patch.object(p1_main, "genai") as mock_genai_mod, \
+             patch("phase1_identity_main.requests.get", return_value=mock_hibp_resp), \
+             patch("retry_utils.time.sleep"):
+            mock_genai_mod.Client.return_value = mock_client
+            result, status = main_handler(_make_request(self._base_body()))
+
+        # Should still return 200 with partial results
+        assert status == 200
+        assert "seed" in result

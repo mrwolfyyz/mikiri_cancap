@@ -347,6 +347,107 @@ class TestRetryLookup:
         assert result["success"] is False
         assert call_count == 1  # Only initial attempt (time exceeded before retry)
 
+    def test_all_retries_exhausted_transient(self):
+        """All retry attempts exhausted with transient errors returns last result."""
+        call_count = 0
+
+        def lookup(domain):
+            nonlocal call_count
+            call_count += 1
+            return {"success": False, "error": "Connection timeout"}
+
+        with patch.object(de_main, "time") as mock_time:
+            mock_time.time.return_value = 0.0
+            mock_time.sleep = MagicMock()
+            result = _retry_lookup(lookup, "example.com", "Test", 0.0)
+
+        assert result["success"] is False
+        assert "timeout" in result["error"].lower()
+        # Should have been called initial + _MAX_RETRY_ATTEMPTS times
+        assert call_count == de_main._MAX_RETRY_ATTEMPTS + 1
+
+    def test_time_budget_during_retry(self):
+        """Time budget exceeded between first and second retry breaks early."""
+        call_count = 0
+        time_values = iter([0.0, 50.0])  # First call ok, second exceeds budget
+
+        def lookup(domain):
+            nonlocal call_count
+            call_count += 1
+            return {"success": False, "error": "Connection timeout"}
+
+        with patch.object(de_main, "time") as mock_time:
+            mock_time.time.side_effect = lambda: next(time_values, 100.0)
+            mock_time.sleep = MagicMock()
+            result = _retry_lookup(lookup, "example.com", "Test", 0.0)
+
+        assert result["success"] is False
+        # Only initial attempt + possibly 1 retry before budget check
+        assert call_count <= 2
+
+
+# ===========================================================================
+# enrich_single_domain
+# ===========================================================================
+class TestEnrichSingleDomain:
+    """Tests for the per-domain parallel WHOIS + MX orchestrator."""
+
+    def test_both_lookups_succeed(self):
+        whois_result = {"success": True, "registration_date": "2020-01-01", "error": None}
+        mx_result = {"success": True, "status": "Legitimate", "risk_level": "LOW",
+                     "provider_detected": "Google", "mx_records": [], "domain": "example.com", "error": None}
+
+        with patch.object(de_main, "_retry_lookup", side_effect=[whois_result, mx_result]):
+            result = enrich_single_domain("example.com", time.time())
+
+        assert result["domain"] == "example.com"
+        assert result["whois"] == whois_result
+        assert result["mx"] == mx_result
+        assert result["error"] is None
+
+    def test_whois_exception_mx_succeeds(self):
+        """WHOIS future raises but MX succeeds."""
+        mx_result = {"success": True, "status": "Legitimate", "risk_level": "LOW",
+                     "provider_detected": "Google", "mx_records": [], "domain": "example.com", "error": None}
+
+        def mock_retry(fn, domain, name, start_time):
+            if name == "WHOIS":
+                raise RuntimeError("WHOIS timeout")
+            return mx_result
+
+        with patch.object(de_main, "_retry_lookup", side_effect=mock_retry):
+            result = enrich_single_domain("example.com", time.time())
+
+        assert "WHOIS" in result["error"]
+        assert result["mx"] == mx_result
+
+    def test_mx_exception_whois_succeeds(self):
+        """MX future raises but WHOIS succeeds."""
+        whois_result = {"success": True, "registration_date": "2020-01-01", "error": None}
+
+        def mock_retry(fn, domain, name, start_time):
+            if name == "MX":
+                raise RuntimeError("DNS resolver failed")
+            return whois_result
+
+        with patch.object(de_main, "_retry_lookup", side_effect=mock_retry):
+            result = enrich_single_domain("example.com", time.time())
+
+        assert result["whois"] == whois_result
+        assert "MX" in result["error"]
+
+    def test_both_lookups_fail(self):
+        """Both WHOIS and MX futures raise, error contains both messages."""
+        def mock_retry(fn, domain, name, start_time):
+            raise RuntimeError(f"{name} failed")
+
+        with patch.object(de_main, "_retry_lookup", side_effect=mock_retry):
+            result = enrich_single_domain("example.com", time.time())
+
+        assert "WHOIS" in result["error"]
+        assert "MX" in result["error"]
+        assert ";" in result["error"]  # Messages concatenated
+
 
 # ===========================================================================
 # main HTTP handler
@@ -416,3 +517,34 @@ class TestMainHandler:
         assert call_count == 2
         assert "acmecorp.com" in result["domains"]
         assert "otherco.com" in result["domains"]
+
+    def test_threadpool_exception_per_domain(self):
+        """Exception in enrich_single_domain is captured per-domain in the result."""
+        body = {"email": "john@acmecorp.com"}
+
+        def mock_enrich(domain, start_time):
+            raise RuntimeError("enrichment boom")
+
+        with patch.object(de_main, "enrich_single_domain", side_effect=mock_enrich):
+            result, status = main_handler(_make_request(body))
+
+        assert status == 200
+        domain_result = result["domains"]["acmecorp.com"]
+        assert "Enrichment failed" in domain_result["error"]
+        assert domain_result["whois"] is None
+        assert domain_result["mx"] is None
+
+    def test_company_domain_adds_second_enrichment(self):
+        """Different company_domain results in two enriched domains."""
+        body = {"email": "john@acmecorp.com", "company_domain": "different.com"}
+
+        def mock_enrich(domain, start_time):
+            return {"domain": domain, "whois": {"success": True}, "mx": {"success": True}, "error": None}
+
+        with patch.object(de_main, "enrich_single_domain", side_effect=mock_enrich):
+            result, status = main_handler(_make_request(body))
+
+        assert status == 200
+        assert len(result["domains"]) == 2
+        assert "acmecorp.com" in result["domains"]
+        assert "different.com" in result["domains"]
