@@ -17,13 +17,19 @@ _mock_ff = MagicMock()
 _mock_ff.http = lambda f: f
 sys.modules.setdefault("functions_framework", _mock_ff)
 
-# Mock Vertex AI
-_mock_vertexai = MagicMock()
-_mock_gen_models = MagicMock()
-sys.modules.setdefault("vertexai", _mock_vertexai)
-sys.modules.setdefault("vertexai.generative_models", _mock_gen_models)
-_mock_gen_models.GenerativeModel = MagicMock()
-_mock_gen_models.GenerationConfig = MagicMock()
+# Mock Google Gen AI SDK (google.genai, google.genai.types)
+_mock_genai = MagicMock()
+_mock_genai_types = MagicMock()
+
+if "google" not in sys.modules:
+    _mock_google = MagicMock()
+    sys.modules["google"] = _mock_google
+else:
+    _mock_google = sys.modules["google"]
+_mock_google.genai = _mock_genai
+
+sys.modules["google.genai"] = _mock_genai
+sys.modules["google.genai.types"] = _mock_genai_types
 
 # ---------------------------------------------------------------------------
 # Load address_geocoding/main.py
@@ -128,17 +134,17 @@ class TestExtractAddressesFromQueriesLlm:
             ]
         }
 
-        mock_model_instance = MagicMock()
+        mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.text = json.dumps(llm_response)
-        mock_model_instance.generate_content.return_value = mock_response
+        mock_client.models.generate_content.return_value = mock_response
 
         with (
             patch.object(ag_main, "GCP_PROJECT", "test-project"),
-            patch.object(ag_main, "vertexai"),
-            patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance),
+            patch.object(ag_main, "genai") as mock_genai_mod,
             patch("retry_utils.time.sleep"),
         ):
+            mock_genai_mod.Client.return_value = mock_client
             result = extract_addresses_from_queries_llm(
                 [{"hits": [{"title": "test", "snippet": "123 Main St", "url": "https://example.com"}]}]
             )
@@ -155,17 +161,17 @@ class TestExtractAddressesFromQueriesLlm:
             ]
         }
 
-        mock_model_instance = MagicMock()
+        mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.text = json.dumps(llm_response)
-        mock_model_instance.generate_content.return_value = mock_response
+        mock_client.models.generate_content.return_value = mock_response
 
         with (
             patch.object(ag_main, "GCP_PROJECT", "test-project"),
-            patch.object(ag_main, "vertexai"),
-            patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance),
+            patch.object(ag_main, "genai") as mock_genai_mod,
             patch("retry_utils.time.sleep"),
         ):
+            mock_genai_mod.Client.return_value = mock_client
             result = extract_addresses_from_queries_llm(
                 [{"hits": [{"title": "t", "snippet": "s", "url": "https://a.com"}]}]
             )
@@ -178,17 +184,17 @@ class TestExtractAddressesFromQueriesLlm:
         )
         response_text = f"```json\n{inner}\n```"
 
-        mock_model_instance = MagicMock()
+        mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.text = response_text
-        mock_model_instance.generate_content.return_value = mock_response
+        mock_client.models.generate_content.return_value = mock_response
 
         with (
             patch.object(ag_main, "GCP_PROJECT", "test-project"),
-            patch.object(ag_main, "vertexai"),
-            patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance),
+            patch.object(ag_main, "genai") as mock_genai_mod,
             patch("retry_utils.time.sleep"),
         ):
+            mock_genai_mod.Client.return_value = mock_client
             result = extract_addresses_from_queries_llm(
                 [{"hits": [{"title": "t", "snippet": "s", "url": "https://c.com"}]}]
             )
@@ -196,17 +202,17 @@ class TestExtractAddressesFromQueriesLlm:
         assert len(result) == 1
 
     def test_empty_llm_response_returns_empty(self):
-        mock_model_instance = MagicMock()
+        mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.text = ""
-        mock_model_instance.generate_content.return_value = mock_response
+        mock_client.models.generate_content.return_value = mock_response
 
         with (
             patch.object(ag_main, "GCP_PROJECT", "test-project"),
-            patch.object(ag_main, "vertexai"),
-            patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance),
+            patch.object(ag_main, "genai") as mock_genai_mod,
             patch("retry_utils.time.sleep"),
         ):
+            mock_genai_mod.Client.return_value = mock_client
             result = extract_addresses_from_queries_llm(
                 [{"hits": [{"title": "t", "snippet": "s", "url": "https://a.com"}]}]
             )
@@ -215,17 +221,17 @@ class TestExtractAddressesFromQueriesLlm:
 
     def test_malformed_json_response_returns_empty(self):
         """Non-JSON LLM response returns empty list instead of crashing."""
-        mock_model_instance = MagicMock()
+        mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.text = "this is not valid json at all"
-        mock_model_instance.generate_content.return_value = mock_response
+        mock_client.models.generate_content.return_value = mock_response
 
         with (
             patch.object(ag_main, "GCP_PROJECT", "test-project"),
-            patch.object(ag_main, "vertexai"),
-            patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance),
+            patch.object(ag_main, "genai") as mock_genai_mod,
             patch("retry_utils.time.sleep"),
         ):
+            mock_genai_mod.Client.return_value = mock_client
             result = extract_addresses_from_queries_llm(
                 [{"hits": [{"title": "t", "snippet": "s", "url": "https://a.com"}]}]
             )
@@ -245,17 +251,17 @@ class TestExtractAddressesFromQueriesLlm:
             ]
         }
 
-        mock_model_instance = MagicMock()
+        mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.text = json.dumps(llm_response, ensure_ascii=False)
-        mock_model_instance.generate_content.return_value = mock_response
+        mock_client.models.generate_content.return_value = mock_response
 
         with (
             patch.object(ag_main, "GCP_PROJECT", "test-project"),
-            patch.object(ag_main, "vertexai"),
-            patch.object(ag_main, "GenerativeModel", return_value=mock_model_instance),
+            patch.object(ag_main, "genai") as mock_genai_mod,
             patch("retry_utils.time.sleep"),
         ):
+            mock_genai_mod.Client.return_value = mock_client
             result = extract_addresses_from_queries_llm(
                 [{"hits": [{"title": "t", "snippet": "Montréal", "url": "https://example.com"}]}]
             )
@@ -263,18 +269,17 @@ class TestExtractAddressesFromQueriesLlm:
         assert len(result) == 1
         assert "Montréal" in result[0]["address_raw"]
 
-    def test_vertexai_init_error_returns_empty(self):
-        """If vertexai.init() raises, the function returns empty list."""
-        with patch.object(ag_main, "GCP_PROJECT", "test-project"), patch.object(ag_main, "vertexai") as mock_vai:
-            mock_vai.init.side_effect = RuntimeError("auth error")
-            # GenerativeModel is called after init — make it also fail
-            with (
-                patch.object(ag_main, "GenerativeModel", side_effect=RuntimeError("model init failed")),
-                patch("retry_utils.time.sleep"),
-            ):
-                result = extract_addresses_from_queries_llm(
-                    [{"hits": [{"title": "t", "snippet": "s", "url": "https://a.com"}]}]
-                )
+    def test_genai_client_error_returns_empty(self):
+        """If genai.Client() raises, the function returns empty list."""
+        with (
+            patch.object(ag_main, "GCP_PROJECT", "test-project"),
+            patch.object(ag_main, "genai") as mock_genai_mod,
+            patch("retry_utils.time.sleep"),
+        ):
+            mock_genai_mod.Client.side_effect = RuntimeError("auth error")
+            result = extract_addresses_from_queries_llm(
+                [{"hits": [{"title": "t", "snippet": "s", "url": "https://a.com"}]}]
+            )
 
         assert result == []
 
