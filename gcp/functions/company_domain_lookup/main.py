@@ -125,7 +125,7 @@ Return JSON only."""
                 raise EmptyLLMResponseError(f"JSON decode error: {e}") from e
 
             # Validate and provide defaults for required fields
-            if "domain" not in result:
+            if not result.get("domain"):
                 result["domain"] = ""
             if "confidence" not in result:
                 result["confidence"] = "low"
@@ -211,7 +211,7 @@ def main(request):
             print(f"[CompanyDomainLookup] LLM error: {llm_result['error']}")
             return jsonify({"status": "error", "error": llm_result["error"]}), 200, headers
 
-        domain = llm_result["domain"].strip()
+        domain = (llm_result.get("domain") or "").strip()
         confidence = llm_result["confidence"]
         rationale = llm_result["rationale"]
 
