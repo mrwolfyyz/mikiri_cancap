@@ -46,11 +46,11 @@ def sanitize_for_json(obj: Any) -> Any:
         try:
             if hasattr(obj, "decode") and callable(obj.decode):
                 return obj.decode("utf-8", errors="replace")
-        except Exception:
+        except Exception:  # nosec B110 — best-effort bytes decoding
             pass
         try:
             return str(obj)
-        except Exception:
+        except Exception:  # nosec B110 — best-effort string conversion
             return None
 
 
