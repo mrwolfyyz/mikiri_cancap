@@ -16,7 +16,7 @@ from typing import Any
 from flask import Request, jsonify
 
 # Google Gen AI SDK imports
-from google import genai
+from google import genai  # type: ignore[attr-defined]
 from google.genai.types import GenerateContentConfig, GoogleSearch, Tool
 
 # Retry utilities (copied to function dir by prepare-functions.sh)
@@ -98,7 +98,7 @@ def format_conversation_history(history: list[dict[str, str]]) -> str:
 
 def extract_grounding_metadata(response, log_prefix: str = "[ChatHandler]") -> dict[str, Any]:
     """Extract grounding metadata from Google Gen AI SDK response."""
-    metadata = {"search_entry_point": "", "web_search_queries": [], "grounding_chunks": []}
+    metadata: dict[str, Any] = {"search_entry_point": "", "web_search_queries": [], "grounding_chunks": []}
 
     try:
         if hasattr(response, "candidates") and response.candidates:
