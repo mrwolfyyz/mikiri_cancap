@@ -851,8 +851,9 @@ def generate_identity_report(
         confidence = handle.get("confidence", "medium")
 
         content += f"- **{platform}**  \n"
-        whatsmyname_url = f"https://whatsmyname.app/?q={quote_plus(handle_name)}"
-        content += f"  - Handle: [`{handle_name}`]({whatsmyname_url})  \n"
+        if handle_name:
+            whatsmyname_url = f"https://whatsmyname.app/?q={quote_plus(handle_name)}"
+            content += f"  - Handle: [`{handle_name}`]({whatsmyname_url})  \n"
         content += f"  - Confidence: **{confidence}**  \n"
         content += f"  - URL: <{url}>  \n"
 
