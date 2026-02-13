@@ -1,0 +1,34 @@
+---
+description: Backend deployment workflow for GCP Cloud Functions via Terraform
+alwaysApply: true
+---
+
+# Backend Deployment (Cloud Functions)
+
+When deploying backend changes to Cloud Functions, follow these steps in order.
+See docs/DEPLOYMENT.md for full details.
+
+## Pre-deploy
+
+1. Run `./scripts/prepare-functions.sh` from the repo root to copy shared Python
+   modules from `gcp/shared/` into each function directory.
+
+## Deploy
+
+2. `cd terraform/environments/prod`
+3. `terraform init`
+4. `terraform plan` -- review the plan; only the changed functions should update.
+5. `terraform apply` -- type 'yes' when prompted.
+
+## Validate
+
+6. `./scripts/validate-deployment.sh mikiri-demo-test northamerica-northeast1`
+7. Spot-check updated functions:
+   `gcloud functions describe FUNCTION_NAME --project=mikiri-demo-test --region=northamerica-northeast1 --gen2 --format="value(updateTime)"`
+
+## Key details
+
+- Project: `mikiri-demo-test`, Region: `northamerica-northeast1`
+- Terraform detects function changes via MD5 hash of source archives.
+- All functions are defined in `terraform/modules/core/functions.tf`.
+- If terraform apply fails on Eventarc/Workflows service agents, wait 5-10 min and retry.

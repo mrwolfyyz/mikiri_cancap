@@ -1,0 +1,28 @@
+---
+description: Python version and testing conventions for GCP Cloud Functions
+alwaysApply: true
+---
+
+# Python Version and Testing
+
+- The system default `python3` is 3.9.6 which is too old for this project.
+- CI runs Python 3.12. Use `python3.13` (available at `/usr/local/bin/python3.13`) to run tests locally.
+- Always run tests with: `python3.13 -m pytest tests/ -v`
+- Never use bare `python3` or `pytest` directly -- they resolve to 3.9.
+
+# Running Tests
+
+```bash
+# Run all tests
+python3.13 -m pytest tests/ -v --ignore=tests/test_golden_set.py
+
+# Run specific test file
+python3.13 -m pytest tests/test_contact_extraction_utils.py -v
+
+# Install test deps (first time)
+python3.13 -m pip install -r requirements-test.txt
+```
+
+# Shared Modules
+
+Shared code lives in `gcp/shared/` and is copied to function directories by `scripts/prepare-functions.sh`. After editing any shared module, run `bash scripts/prepare-functions.sh` before running tests.
