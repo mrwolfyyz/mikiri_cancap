@@ -1,6 +1,6 @@
 """Tests for contact_extraction_utils.py.
 
-The module has heavy Vertex AI dependencies at the module level.
+The module has heavy Google Gen AI SDK dependencies at the module level.
 We mock these in sys.modules before import so the module loads in
 the test environment without GCP credentials.
 
@@ -14,15 +14,23 @@ import sys
 from unittest.mock import MagicMock, patch
 
 # ---------------------------------------------------------------------------
-# Mock Vertex AI modules BEFORE importing contact_extraction_utils.
+# Mock Google Gen AI SDK BEFORE importing contact_extraction_utils.
 # The module does:
-#   import vertexai
-#   from vertexai.generative_models import GenerativeModel, GenerationConfig
+#   from google import genai
+#   from google.genai.types import GenerateContentConfig, HttpOptions
 # ---------------------------------------------------------------------------
-_mock_vertexai = MagicMock()
-_mock_gen_models = MagicMock()
-sys.modules.setdefault("vertexai", _mock_vertexai)
-sys.modules.setdefault("vertexai.generative_models", _mock_gen_models)
+_mock_genai = MagicMock()
+_mock_genai_types = MagicMock()
+
+if "google" not in sys.modules:
+    _mock_google = MagicMock()
+    sys.modules["google"] = _mock_google
+else:
+    _mock_google = sys.modules["google"]
+_mock_google.genai = _mock_genai
+
+sys.modules["google.genai"] = _mock_genai
+sys.modules["google.genai.types"] = _mock_genai_types
 
 # Now safe to import
 import contact_extraction_utils
@@ -31,8 +39,6 @@ from contact_extraction_utils import EXTRACTION_SCHEMA, extract_contact_info_llm
 
 # ---------------------------------------------------------------------------
 # Helper to set up a mocked LLM response for extract_contact_info_llm.
-# Returns (MockGenerativeModel, mock_model_instance) so tests can inspect
-# calls and configure the response.
 # ---------------------------------------------------------------------------
 def _run_extraction(llm_response_data, seed=None, exclude_email=None, queries=None):
     """Run extract_contact_info_llm with a mocked LLM response."""
@@ -42,14 +48,14 @@ def _run_extraction(llm_response_data, seed=None, exclude_email=None, queries=No
     mock_response = MagicMock()
     mock_response.text = json.dumps(llm_response_data)
 
+    mock_client = MagicMock()
+    mock_client.models.generate_content.return_value = mock_response
+
     with (
         patch.object(contact_extraction_utils, "GCP_PROJECT", "test-project"),
-        patch.object(contact_extraction_utils, "vertexai"),
-        patch.object(contact_extraction_utils, "GenerativeModel") as MockGenModel,
+        patch.object(contact_extraction_utils, "genai") as mock_genai_mod,
     ):
-        mock_model = MagicMock()
-        mock_model.generate_content.return_value = mock_response
-        MockGenModel.return_value = mock_model
+        mock_genai_mod.Client.return_value = mock_client
 
         return extract_contact_info_llm(queries, seed, exclude_email)
 
@@ -98,10 +104,7 @@ class TestEarlyReturns:
         assert result == {"phones": [], "emails": [], "addresses": []}
 
     def test_returns_empty_when_no_hits(self):
-        with (
-            patch.object(contact_extraction_utils, "GCP_PROJECT", "test-project"),
-            patch.object(contact_extraction_utils, "vertexai"),
-        ):
+        with patch.object(contact_extraction_utils, "GCP_PROJECT", "test-project"):
             result = extract_contact_info_llm(
                 queries=[{"hits": []}],
                 seed={"full_name": "John Smith", "email": "john@example.com"},
@@ -109,22 +112,19 @@ class TestEarlyReturns:
         assert result == {"phones": [], "emails": [], "addresses": []}
 
     def test_returns_empty_when_queries_have_no_hits_key(self):
-        with (
-            patch.object(contact_extraction_utils, "GCP_PROJECT", "test-project"),
-            patch.object(contact_extraction_utils, "vertexai"),
-        ):
+        with patch.object(contact_extraction_utils, "GCP_PROJECT", "test-project"):
             result = extract_contact_info_llm(
                 queries=[{}],
                 seed={"full_name": "John Smith", "email": "john@example.com"},
             )
         assert result == {"phones": [], "emails": [], "addresses": []}
 
-    def test_returns_empty_when_vertex_ai_init_fails(self):
-        mock_vertexai = MagicMock()
-        mock_vertexai.init.side_effect = Exception("Auth failed")
+    def test_returns_empty_when_genai_client_init_fails(self):
+        mock_genai_mod = MagicMock()
+        mock_genai_mod.Client.side_effect = Exception("Auth failed")
         with (
             patch.object(contact_extraction_utils, "GCP_PROJECT", "test-project"),
-            patch.object(contact_extraction_utils, "vertexai", mock_vertexai),
+            patch.object(contact_extraction_utils, "genai", mock_genai_mod),
         ):
             result = extract_contact_info_llm(
                 queries=[{"hits": [{"title": "test"}]}],
@@ -593,14 +593,14 @@ class TestLlmResponseHandling:
         mock_response = MagicMock()
         mock_response.text = markdown_text
 
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
         with (
             patch.object(contact_extraction_utils, "GCP_PROJECT", "test-project"),
-            patch.object(contact_extraction_utils, "vertexai"),
-            patch.object(contact_extraction_utils, "GenerativeModel") as MockGenModel,
+            patch.object(contact_extraction_utils, "genai") as mock_genai_mod,
         ):
-            mock_model = MagicMock()
-            mock_model.generate_content.return_value = mock_response
-            MockGenModel.return_value = mock_model
+            mock_genai_mod.Client.return_value = mock_client
 
             result = extract_contact_info_llm(
                 [{"hits": [{"title": "test"}]}],
@@ -615,14 +615,14 @@ class TestLlmResponseHandling:
         mock_response = MagicMock()
         mock_response.text = ""
 
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
         with (
             patch.object(contact_extraction_utils, "GCP_PROJECT", "test-project"),
-            patch.object(contact_extraction_utils, "vertexai"),
-            patch.object(contact_extraction_utils, "GenerativeModel") as MockGenModel,
+            patch.object(contact_extraction_utils, "genai") as mock_genai_mod,
         ):
-            mock_model = MagicMock()
-            mock_model.generate_content.return_value = mock_response
-            MockGenModel.return_value = mock_model
+            mock_genai_mod.Client.return_value = mock_client
 
             result = extract_contact_info_llm(
                 [{"hits": [{"title": "test"}]}],
@@ -637,14 +637,14 @@ class TestLlmResponseHandling:
         mock_response = MagicMock()
         mock_response.text = "not valid json {"
 
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
         with (
             patch.object(contact_extraction_utils, "GCP_PROJECT", "test-project"),
-            patch.object(contact_extraction_utils, "vertexai"),
-            patch.object(contact_extraction_utils, "GenerativeModel") as MockGenModel,
+            patch.object(contact_extraction_utils, "genai") as mock_genai_mod,
         ):
-            mock_model = MagicMock()
-            mock_model.generate_content.return_value = mock_response
-            MockGenModel.return_value = mock_model
+            mock_genai_mod.Client.return_value = mock_client
 
             result = extract_contact_info_llm(
                 [{"hits": [{"title": "test"}]}],
@@ -656,14 +656,14 @@ class TestLlmResponseHandling:
     @patch("retry_utils.time.sleep")
     def test_null_response_object_returns_empty_after_retries(self, mock_sleep):
         """Falsy response object exhausts retries and returns empty results."""
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = None
+
         with (
             patch.object(contact_extraction_utils, "GCP_PROJECT", "test-project"),
-            patch.object(contact_extraction_utils, "vertexai"),
-            patch.object(contact_extraction_utils, "GenerativeModel") as MockGenModel,
+            patch.object(contact_extraction_utils, "genai") as mock_genai_mod,
         ):
-            mock_model = MagicMock()
-            mock_model.generate_content.return_value = None
-            MockGenModel.return_value = mock_model
+            mock_genai_mod.Client.return_value = mock_client
 
             result = extract_contact_info_llm(
                 [{"hits": [{"title": "test"}]}],

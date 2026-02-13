@@ -8,7 +8,7 @@ used by multiple Cloud Functions:
 - report_generator_skiptrace
 
 Dependencies:
-- google-cloud-aiplatform (vertexai)
+- google-genai (Google Gen AI SDK)
 - retry_utils (shared)
 - address_utils (shared)
 """
@@ -18,11 +18,14 @@ import os
 import re
 from typing import Any
 
-# Vertex AI imports
-import vertexai
 from address_utils import clean_address_for_geocoding
+
+# Google Gen AI SDK imports (for Gemini with timeout support)
+from google import genai
+from google.genai.types import GenerateContentConfig, HttpOptions
+
+# Import retry utilities (local copy for consistency with other phase2 functions)
 from retry_utils import EmptyLLMResponseError, RetryConfig, retry_with_backoff
-from vertexai.generative_models import GenerationConfig, GenerativeModel
 
 # -------------------------
 # Vertex AI Config
@@ -105,13 +108,6 @@ def extract_contact_info_llm(
         print("[LLM Extraction] GCP_PROJECT not set, returning empty results")
         return {"phones": [], "emails": [], "addresses": []}
 
-    # Initialize Vertex AI
-    try:
-        vertexai.init(project=GCP_PROJECT, location=GCP_LOCATION)
-    except Exception as e:
-        print(f"[LLM Extraction] Vertex AI init error: {e}")
-        return {"phones": [], "emails": [], "addresses": []}
-
     # Count total hits for prompt
     total_hits = sum(len(q.get("hits", [])) for q in queries)
 
@@ -159,15 +155,30 @@ Search Results ({len(queries)} queries, {total_hits} total hits):
 
 Return valid JSON with phones, emails, and addresses arrays. Each item should have confidence, source_url, and snippet fields."""
 
+    # Initialize Google Gen AI client once, outside retry closure.
+    # This avoids re-creating the client (and its gRPC channel) on every retry attempt.
+    # Timeout of 60s ensures slow/degraded Gemini responses fail fast so retry logic
+    # can try again, rather than burning the entire function timeout on one hung call.
+    try:
+        gemini_client = genai.Client(
+            vertexai=True,
+            project=GCP_PROJECT,
+            location=GCP_LOCATION,
+            http_options=HttpOptions(timeout=60 * 1000),  # 60 seconds in milliseconds
+        )
+    except Exception as e:
+        print(f"[LLM Extraction] Gen AI client init error: {e}")
+        return {"phones": [], "emails": [], "addresses": []}
+
     def _call_vertex_ai():
         try:
-            model = GenerativeModel(model_name="gemini-2.5-flash")
             print(f"[LLM Extraction] Calling Gemini 2.5 Flash for {total_hits} hits...")
 
             full_prompt = f"{system_prompt}\n\n{user_prompt}"
-            response = model.generate_content(
-                full_prompt,
-                generation_config=GenerationConfig(
+            response = gemini_client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=full_prompt,
+                config=GenerateContentConfig(
                     temperature=0.1,
                     response_mime_type="application/json",
                     response_schema=EXTRACTION_SCHEMA,
