@@ -223,11 +223,11 @@ def generate_identity_report_skiptrace(
     content += f"> - **Location (scored):** {location} ({location_confidence} confidence)  \n"
 
     if primary_handle:
-        ph_name = primary_handle['handle'] or '(no handle)'
+        ph_name = primary_handle["handle"] or "(no handle)"
         content += f"> - **Primary handle:** {primary_handle['platform']} — `{ph_name}` ({primary_handle.get('confidence', 'medium')} confidence)  \n"
 
     if secondary_handle:
-        sh_name = secondary_handle['handle'] or '(no handle)'
+        sh_name = secondary_handle["handle"] or "(no handle)"
         content += f"> - **Secondary handle:** {secondary_handle['platform']} — `{sh_name}` ({secondary_handle.get('confidence', 'medium')} confidence)\n"
 
     content += "\n\n"
