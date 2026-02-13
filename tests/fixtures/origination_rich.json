@@ -1,0 +1,354 @@
+{
+  "input": {
+    "company_domain_confidence": "high",
+    "drive_folder_id": "",
+    "city": "Calgary",
+    "email": "testuser3@gmail.com",
+    "company_name": "Elite Global Solutions",
+    "province": "AB",
+    "full_name": "MUHAMMAD ASAD HUSSAIN",
+    "company_domain": "egsfoodservice.com"
+  },
+  "identity": {
+    "breaches": [],
+    "contactability": {
+      "breach_bucket": "NO",
+      "footprint_bucket": "MED",
+      "num_breaches": 0,
+      "num_social": 2,
+      "reason": "This email has a moderate online footprint with no known breaches, consistent with steady but relatively low-volume use.",
+      "score": "Medium/Good"
+    },
+    "golden_location": "Calgary",
+    "golden_name": "MUHAMMAD ASAD HUSSAIN",
+    "grounding_metadata": {
+      "grounding_sources": [
+        {
+          "snippet": "",
+          "title": "realtor.ca",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHm-vliCzJN7PWr-pmC2ETV99IrKxks3PY0Ufz0n7RAcuMeS0S4x3x7WTMXlG7zHikMd6POWvuEKrAD4JVZAxFhhaCzp54nwbc4nYubrhHLin_Mk8_0S7GtXU5M6DD48y2gDuJwCKlaEXWO22hxfmlLSEat7zclb1-SOUMZJpH2eux3VBxmuu2Pp0O0kiWXQKBs9-PH"
+        },
+        {
+          "snippet": "",
+          "title": "realtor.ca",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG9szMapcv02s8Rdnd0gguZYZVt4H4oVN6JnsqGfiOF9MivIgPdv1flIkUd3pPGmNLsRSDYapm7WkI10zdqFIC7Nu5Yz3PzYy_90FGSMSNETGnPvJ_9Pt180qxTW9BunkyJCZg8Z_avyemZT4f4V0iX5uvWg7N2CRounDicTdQXj6jcWlReUb1uwzY1g6w_wJtX2mDP8DLpyWeMiOY76_4JPsc="
+        },
+        {
+          "snippet": "",
+          "title": "globalrecognitionawards.org",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGTuaUDeIvUJTjdYw9j-LeJR2DuA9zOt55Udi0fDQvAtpPKoPA_VTmDwCIgXPpsDD3OSErljKtO2-c_EwR0YfxumtgvVhzDBNhF-Dx55qdpKYJU42ZCXkYF6o4dRlkZc5aKcMakajsr85Gzwj9xf7LWgB98iEyEsuF8myLOsp9mqfSjP0k7HwAD3uHVztD3eijVEHP5m3lvWsmcLbDpQBmMjpLV3PSzLWnx4Iyk3vDlEZ-z"
+        },
+        {
+          "snippet": "",
+          "title": "sessionize.com",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHp1yrBAEhelf18ooZUR2ZupgdYa1ug259ZnwywhhGPtJvLBU7VZNSP1m9_zrIwDWOZWYUIROrTMUDYD2ddJPt-ASiZDi8y2UJb31jsTlu0Iz7IhrggKB5ordOqcq0_rFMZkADBqA0t9w=="
+        }
+      ],
+      "search_entry_point": "<stripped>",
+      "search_queries": [
+        "MUHAMMAD ASAD HUSSAIN Calgary"
+      ]
+    },
+    "identity_clues": [
+      {
+        "snippet": "Detailed REALTOR\u00ae profile for Asad Hussain, real estate agent at LPT Realty in Calgary, Alberta.",
+        "source_query_id": null,
+        "title": "Asad Hussain - REALTOR.ca",
+        "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHm-vliCzJN7PWr-pmC2ETV99IrKxks3PY0Ufz0n7RAcuMeS0S4x3x7WTMXlG7zHikMd6POWvuEKrAD4JVZAxFhhaCzp54nwbc4nYubrhHLin_Mk8_0S7GtXU5M6DD48y2gDuJwCKlaEXWO22hxfmlLSEat7zclb1-SOUMZJpH2eux3VBxmuu2Pp0O0kiWXQKBs9-PH"
+      },
+      {
+        "snippet": "Jan 7, 2026 ... ... Asad Hussain, Raju Ahmed Raju Ahmed, Huma Farrukh, Dolissa Smith ... Calgary is excited to invite you to our Eid Gala 2026. Please note\u00a0...",
+        "source": "facebook.com",
+        "source_query_id": "precision",
+        "title": "Let's welcome our new members! Jafar Jaja - Facebook",
+        "url": "https://www.facebook.com/groups/friendscafecanada/posts/2292202731263825/"
+      },
+      {
+        "snippet": "Jun 8, 2022 ... Asad Hussain. Everyone should message the page asking the same thing ... Anonymous participant \u25bb Pakistani Community: Calgary, Canada.",
+        "source": "facebook.com",
+        "source_query_id": "precision",
+        "title": "Update: looks like it won't be halal. if anything changes they'll let us ...",
+        "url": "https://www.facebook.com/youhadmeathalal/posts/update-looks-like-it-wont-be-halal-if-anything-changes-theyll-let-us-knowlooks-l/564311535082809/"
+      },
+      {
+        "snippet": "Jan 28, 2024 ... Calgary Food - FoodYYC! A ... - at Grill'n'Bake. No photo description available. Asad Hussain and 51 others.",
+        "source": "facebook.com",
+        "source_query_id": "precision",
+        "title": "Review of Leafy Grill dinner special in Calgary - Facebook",
+        "url": "https://www.facebook.com/groups/FoodYYC/posts/3754512394780739/"
+      },
+      {
+        "snippet": "Dec 4, 2025 ... Sara Kh and Asad Hussain. 2 reactions \u00b7. 3 comments. Anonymous ... Calgary. Is this a good school for children and do they teach good\u00a0...",
+        "source": "facebook.com",
+        "source_query_id": "precision",
+        "title": "Salam, I'm planning to enroll my son, who is in Grade 4, at Al Amal ...",
+        "url": "https://www.facebook.com/groups/838834939570972/posts/25190258167335310/"
+      }
+    ],
+    "location_confidence": "high",
+    "queries": [
+      {
+        "hits": [
+          {
+            "query_id": "precision",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Jan 7, 2026 ... ... Asad Hussain, Raju Ahmed Raju Ahmed, Huma Farrukh, Dolissa Smith ... Calgary is excited to invite you to our Eid Gala 2026. Please note\u00a0...",
+            "source": "vertex_ai_precision",
+            "title": "Let's welcome our new members! Jafar Jaja - Facebook",
+            "url": "https://www.facebook.com/groups/friendscafecanada/posts/2292202731263825/"
+          },
+          {
+            "query_id": "precision",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Mar 12, 2024 ... No photo description available. 2 yrs. Asad Hussain. Glenny Kebabs. 2 yrs \u00b7 1 ... calgary few months ago, any fine dining restaurants with full\u00a0...",
+            "source": "vertex_ai_precision",
+            "title": "Any recommendations for kabab/ steak/ grill nearby Glen Waverley",
+            "url": "https://www.facebook.com/groups/1531629976977744/posts/2898546636952731/"
+          }
+        ],
+        "id": "precision",
+        "query": "\"MUHAMMAD ASAD HUSSAIN\" OR \"ASAD HUSSAIN\" Calgary",
+        "type": "high_precision"
+      },
+      {
+        "hits": [
+          {
+            "query_id": "recall",
+            "query_type": "high_recall",
+            "relevance_score": 0,
+            "snippet": "Oct 9, 2025 ... Well said Muhammad Asad Hussain ACCA this is such a real and grounded take on the current market. The finance landscape in Saudi Arabia is\u00a0...",
+            "source": "vertex_ai_recall",
+            "title": "Navigating the Finance Job Market in Saudi Arabia - LinkedIn",
+            "url": "https://www.linkedin.com/posts/muhammad-asad-hussain-acca-4a8724169_the-real-situation-of-the-finance-job-market-activity-7382020023214739456-mXMN"
+          },
+          {
+            "query_id": "recall",
+            "query_type": "high_recall",
+            "relevance_score": 0,
+            "snippet": "Jan 19, 2026 ... Muhammad Asad Hussain ACCA's Post. View profile for Muhammad Asad Hussain ACCA. Muhammad Asad Hussain ACCA. 6+ Years Experienced Finance\u00a0...",
+            "source": "vertex_ai_recall",
+            "title": "Muhammad Asad Hussain ACCA's Post - LinkedIn",
+            "url": "https://www.linkedin.com/posts/muhammad-asad-hussain-acca-4a8724169_acca-accountingprofessionals-ksajobs-activity-7419002770780954624-3dN2"
+          }
+        ],
+        "id": "recall",
+        "query": "\"MUHAMMAD ASAD HUSSAIN\"",
+        "type": "high_recall"
+      },
+      {
+        "hits": [
+          {
+            "query_id": "recall_2",
+            "query_type": "high_recall",
+            "relevance_score": 0,
+            "snippet": "... Muhammad Asad Hussain's profile on LinkedIn, a professional community of 1 billion members ... Muhammad Asad Hussain. With Intelligence City University of\u00a0...",
+            "source": "vertex_ai_precision",
+            "title": "Muhammad Asad Hussain - With Intelligence - LinkedIn",
+            "url": "https://www.linkedin.com/in/muhammadasadhussain"
+          },
+          {
+            "query_id": "recall_2",
+            "query_type": "high_recall",
+            "relevance_score": 0,
+            "snippet": "Jun 5, 2023 ... Photo by Muhammad Asad Hussain on December 22, 2025. May be an image of.",
+            "source": "vertex_ai_precision",
+            "title": "Muhammad Asad Hussain | Graduation Batch 2019-2023 Day 1",
+            "url": "https://www.instagram.com/p/CtHVyXAsyRJ/"
+          }
+        ],
+        "id": "recall_2",
+        "query": "autobiography999 OR \"MUHAMMAD ASAD HUSSAIN\"",
+        "type": "high_recall"
+      },
+      {
+        "hits": [],
+        "id": "company_name_linkedin",
+        "query": "\"MUHAMMAD ASAD HUSSAIN\" Elite Global Solutions",
+        "type": "high_precision"
+      },
+      {
+        "hits": [
+          {
+            "query_id": "provincial_linkedin",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Pipeline Integrity Student at Inter Pipeline | 3rd Year Mechanical Engineering student at The University of Alberta ... View Muhammad Hussain's profile on",
+            "source": "vertex_ai_linkedin",
+            "title": "Muhammad Hussain - Inter Pipeline University of Alberta - LinkedIn",
+            "url": "https://ca.linkedin.com/in/mhussainmalik"
+          },
+          {
+            "query_id": "provincial_linkedin",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "... Muhammad Hussain , M.Eng., P.Eng.'s profile on LinkedIn, a professional ... Alberta, Canada. -. Kitimat British Columbia Canada. -. Canada,. -. wapda\u00a0...",
+            "source": "vertex_ai_linkedin",
+            "title": "Muhammad Hussain , M.Eng., P.Eng. - Aecon Group Inc. - LinkedIn",
+            "url": "https://ca.linkedin.com/in/muhammad-hussain-m-eng-p-eng-12777213"
+          }
+        ],
+        "id": "provincial_linkedin",
+        "query": "\"MUHAMMAD ASAD HUSSAIN\" OR \"Muhammad Hussain\" OR \"Asad Hussain\" Alberta",
+        "type": "high_precision"
+      },
+      {
+        "hits": [
+          {
+            "query_id": "precision_llm",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Aug 13, 2023 ... Confederation Park, Calgary, Alberta Photography by Syed Adeel Hussain. ... No photo description available. Muhammad Hussain and 17 others \u00b7 \udb80\udf78. 18.",
+            "source": "vertex_ai_precision",
+            "title": "Confederation Park, Calgary, Alberta Photography by Syed Adeel ...",
+            "url": "https://www.facebook.com/groups/CanadianLandscapes/posts/6505015162923658/"
+          },
+          {
+            "query_id": "precision_llm",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Dec 25, 2025 ... Confederation Park, Calgary, Alberta Photography by Syed Adeel Hussain \u00b7 No photo description available. Muhammad Hussain and 17 others. 18\u00a0...",
+            "source": "vertex_ai_precision",
+            "title": "Confederation Park, Calgary, Alberta on a warm summer afternoon",
+            "url": "https://www.facebook.com/groups/CanadianLandscapes/posts/25434532576211965/"
+          }
+        ],
+        "id": "precision_llm",
+        "query": "\"MUHAMMAD ASAD HUSSAIN\" OR \"Muhammad Hussain\" OR \"Asad Hussain\" \"Calgary, Alberta\"",
+        "type": "high_precision"
+      }
+    ],
+    "rationale": "The Instagram handle '@autobiography999' is a high-confidence match as it directly corresponds to the provided email prefix 'autobiography999'. The LinkedIn profile for 'Asad Hussain' in Calgary, Alberta, working at 'SQS Global Solutions' is considered a medium-confidence match. While the full name 'MUHAMMAD ASAD HUSSAIN' is not an exact match, 'Asad Hussain' is a common variation, and the location aligns with the seed information. The company name 'SQS Global Solutions' shares a similar component ('Global Solutions') with the seed's company 'Elite Global Solutions', suggesting a potential connection or a different company with a similar name. Multiple Facebook group posts also place an 'Asad Hussain' in Calgary, further corroborating the location. A REALTOR.ca profile for 'Asad Hussain' in Calgary, Alberta, provides strong evidence for the individual's presence and professional activity in the specified city and province. Other search results for 'Mohammad Asad Hussain' describe a technology leader not associated with Calgary or the seed's company, indicating these are likely different individuals.",
+    "scored": {
+      "identity_clues": [
+        {
+          "snippet": "Detailed REALTOR\u00ae profile for Asad Hussain, real estate agent at LPT Realty in Calgary, Alberta.",
+          "source_query_id": null,
+          "title": "Asad Hussain - REALTOR.ca",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHm-vliCzJN7PWr-pmC2ETV99IrKxks3PY0Ufz0n7RAcuMeS0S4x3x7WTMXlG7zHikMd6POWvuEKrAD4JVZAxFhhaCzp54nwbc4nYubrhHLin_Mk8_0S7GtXU5M6DD48y2gDuJwCKlaEXWO22hxfmlLSEat7zclb1-SOUMZJpH2eux3VBxmuu2Pp0O0kiWXQKBs9-PH"
+        },
+        {
+          "snippet": "Jan 7, 2026 ... ... Asad Hussain, Raju Ahmed Raju Ahmed, Huma Farrukh, Dolissa Smith ... Calgary is excited to invite you to our Eid Gala 2026. Please note\u00a0...",
+          "source": "facebook.com",
+          "source_query_id": "precision",
+          "title": "Let's welcome our new members! Jafar Jaja - Facebook",
+          "url": "https://www.facebook.com/groups/friendscafecanada/posts/2292202731263825/"
+        },
+        {
+          "snippet": "Jun 8, 2022 ... Asad Hussain. Everyone should message the page asking the same thing ... Anonymous participant \u25bb Pakistani Community: Calgary, Canada.",
+          "source": "facebook.com",
+          "source_query_id": "precision",
+          "title": "Update: looks like it won't be halal. if anything changes they'll let us ...",
+          "url": "https://www.facebook.com/youhadmeathalal/posts/update-looks-like-it-wont-be-halal-if-anything-changes-theyll-let-us-knowlooks-l/564311535082809/"
+        },
+        {
+          "snippet": "Jan 28, 2024 ... Calgary Food - FoodYYC! A ... - at Grill'n'Bake. No photo description available. Asad Hussain and 51 others.",
+          "source": "facebook.com",
+          "source_query_id": "precision",
+          "title": "Review of Leafy Grill dinner special in Calgary - Facebook",
+          "url": "https://www.facebook.com/groups/FoodYYC/posts/3754512394780739/"
+        },
+        {
+          "snippet": "Dec 4, 2025 ... Sara Kh and Asad Hussain. 2 reactions \u00b7. 3 comments. Anonymous ... Calgary. Is this a good school for children and do they teach good\u00a0...",
+          "source": "facebook.com",
+          "source_query_id": "precision",
+          "title": "Salam, I'm planning to enroll my son, who is in Grade 4, at Al Amal ...",
+          "url": "https://www.facebook.com/groups/838834939570972/posts/25190258167335310/"
+        }
+      ],
+      "location": {
+        "city": "Calgary",
+        "confidence": "high"
+      },
+      "rationale": "The Instagram handle '@autobiography999' is a high-confidence match as it directly corresponds to the provided email prefix 'autobiography999'. The LinkedIn profile for 'Asad Hussain' in Calgary, Alberta, working at 'SQS Global Solutions' is considered a medium-confidence match. While the full name 'MUHAMMAD ASAD HUSSAIN' is not an exact match, 'Asad Hussain' is a common variation, and the location aligns with the seed information. The company name 'SQS Global Solutions' shares a similar component ('Global Solutions') with the seed's company 'Elite Global Solutions', suggesting a potential connection or a different company with a similar name. Multiple Facebook group posts also place an 'Asad Hussain' in Calgary, further corroborating the location. A REALTOR.ca profile for 'Asad Hussain' in Calgary, Alberta, provides strong evidence for the individual's presence and professional activity in the specified city and province. Other search results for 'Mohammad Asad Hussain' describe a technology leader not associated with Calgary or the seed's company, indicating these are likely different individuals.",
+      "top_handles": [
+        {
+          "city": null,
+          "confidence": "high",
+          "handle": "autobiography999",
+          "platform": "Instagram",
+          "url": "https://www.instagram.com/autobiography999/"
+        },
+        {
+          "city": "Calgary",
+          "confidence": "medium",
+          "handle": "asad-hussain-63582524a",
+          "platform": "LinkedIn",
+          "url": "https://ca.linkedin.com/in/asad-hussain-63582524a"
+        }
+      ]
+    },
+    "scored_error": null,
+    "seed": {
+      "company_name": "Elite Global Solutions",
+      "email": "testuser3@gmail.com",
+      "email_prefix": "testuser3",
+      "full_name": "MUHAMMAD ASAD HUSSAIN",
+      "last_known_city": "Calgary",
+      "province": "Alberta"
+    },
+    "top_handles": [
+      {
+        "city": null,
+        "confidence": "high",
+        "handle": "autobiography999",
+        "platform": "Instagram",
+        "url": "https://www.instagram.com/autobiography999/"
+      },
+      {
+        "city": "Calgary",
+        "confidence": "medium",
+        "handle": "asad-hussain-63582524a",
+        "platform": "LinkedIn",
+        "url": "https://ca.linkedin.com/in/asad-hussain-63582524a"
+      }
+    ]
+  },
+  "enrichment": {
+    "addresses": {},
+    "contacts": {
+      "addresses": [
+        {
+          "address_raw": "560 7171 80th ave N.E Calgary, Alberta",
+          "confidence": "low",
+          "snippet": "Come visit us at 560 7171 80th ave N.E Calgary, Alberta # ... Muhammad Hussain and 4 others",
+          "source_url": "https://www.facebook.com/photo.php?fbid=1224644034323340&id=596502300470853&set=a.1224644027656674"
+        }
+      ],
+      "emails": [],
+      "phones": [
+        {
+          "confidence": "medium",
+          "number_digits": "8126102355",
+          "number_raw": "8126102355",
+          "snippet": "Muhammad Asad Hussain. 109 likes \u00b7 7 talking about this. Live Orchestra Planning, Solo Performances & Customized Music Events ! 8126102355 | Book me now.",
+          "source_url": "https://www.facebook.com/553289694544110/"
+        }
+      ]
+    },
+    "domains": {
+      "egsfoodservice.com": {
+        "domain": "egsfoodservice.com",
+        "error": null,
+        "mx": {
+          "domain": "egsfoodservice.com",
+          "error": null,
+          "mx_records": [
+            "us-smtp-inbound-1.mimecast.com",
+            "us-smtp-inbound-2.mimecast.com"
+          ],
+          "provider_detected": "Mimecast (Enterprise Security - High Trust)",
+          "risk_level": "LOW",
+          "status": "Legitimate Business Email",
+          "success": true
+        },
+        "whois": {
+          "error": null,
+          "registration_date": "2003-11-24",
+          "success": true
+        }
+      }
+    }
+  }
+}

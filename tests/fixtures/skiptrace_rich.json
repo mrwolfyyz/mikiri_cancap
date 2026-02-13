@@ -1,0 +1,496 @@
+{
+  "input": {
+    "company_domain_confidence": "high",
+    "drive_folder_id": "",
+    "city": "Toronto",
+    "email": "testuser1@gmail.com",
+    "company_name": "Haddington Developments",
+    "province": "ON",
+    "full_name": "Sari Cornfield",
+    "company_domain": "haddington.com"
+  },
+  "identity": {
+    "breaches": [
+      {
+        "date": "2018-05-31",
+        "name": "Ticketfly"
+      },
+      {
+        "date": "2019-01-07",
+        "name": "Collection #1"
+      },
+      {
+        "date": "2018-02-01",
+        "name": "MyFitnessPal"
+      },
+      {
+        "date": "2018-05-23",
+        "name": "Houzz"
+      },
+      {
+        "date": "2013-08-11",
+        "name": "Evite"
+      },
+      {
+        "date": "2019-05-24",
+        "name": "Canva"
+      },
+      {
+        "date": "2019-09-01",
+        "name": "Zynga"
+      },
+      {
+        "date": "2020-11-04",
+        "name": "Cit0day"
+      },
+      {
+        "date": "2019-08-14",
+        "name": "Audi"
+      },
+      {
+        "date": "2020-10-03",
+        "name": "Gravatar"
+      },
+      {
+        "date": "2024-04-14",
+        "name": "Neiman Marcus"
+      },
+      {
+        "date": "2024-08-03",
+        "name": "Not SOCRadar"
+      },
+      {
+        "date": "2025-04-11",
+        "name": "Synthient Credential Stuffing Threat Data"
+      },
+      {
+        "date": "2025-12-15",
+        "name": "SoundCloud"
+      }
+    ],
+    "contactability": {
+      "breach_bucket": "MANY",
+      "footprint_bucket": "HIGH",
+      "num_breaches": 14,
+      "num_social": 4,
+      "reason": "This email has a large footprint and many breaches, indicating a long-term primary address used extensively across many services.",
+      "score": "Extremely high"
+    },
+    "golden_location": "Toronto, Ontario",
+    "golden_name": "Sari Cornfield",
+    "grounding_metadata": {
+      "grounding_sources": [
+        {
+          "snippet": "",
+          "title": "directory.gov.au",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEroOAI3PRrxsIKFcK34lobqbRwhGnSEYIwh7EFTtgbYsXoA-Czssbz6s67SmdVpaBhnPLdziUjW4gwZK9qO525T94EI4K4SKeK8XNeoRcxgISYzAnD0LWssE4yng9sZ1OgGmpPgE25RCxJyd0CLcKo2Q7zK2yvMqREtL-NW91Oxv9zC3oqOi6u0bxQbjr2MaxlD70mYbgryEzl4mx2sdicgFEfpHCA9GPpYrPpjpUYNJUnra4PNDKEwsShGInjwzEkQbKkoOMUhfhzCNjh5HGhtoJWchgKCpYB"
+        },
+        {
+          "snippet": "",
+          "title": "dcmf.ca",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG9tZK68lpiHZrMjk-Y_EjHeJaawWN_v7Ri922QyB_xL2WlUGis9EcmkNUa7n5U6L3HuMb4qtpncvqIh2KXafRmifebrhldDlU-NeG5RyR-hHE1U490t2KfDRM_92ZF9D4jmyk="
+        },
+        {
+          "snippet": "",
+          "title": "visitsaudi.com",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHeUG4ghRZ4-Ulg7xi-VuQZm7RbKMzNtlJT96-5ENW_hak5uDNpEpgc3IQv1TZgxbGnnkSo6TyekvsZl0RuwpUHkSDtKWtGI3YP-ibgeP7IWWdoO3FmRPux4Gx7tKhN8QEXIbVMpQ=="
+        },
+        {
+          "snippet": "",
+          "title": "Current time information in Toronto, CA.",
+          "url": "https://www.google.com/search?q=time+in+Toronto,+CA"
+        },
+        {
+          "snippet": "",
+          "title": "Current time information in Lexington County, US.",
+          "url": "https://www.google.com/search?q=time+in+Lexington+County,+US"
+        },
+        {
+          "snippet": "",
+          "title": "dcmf.ca",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFM5P5VMsgC-kKpsISNfRszmqGBGEPBLpnniMIGH4BEoV8a0Ud2Rj9bLo7CJM4kdWUuHJW6oe7iy4DiF8zX0LXGI1Ef_-D6E5RyxjL9A7rDXNloOlh07ShlQqkTJRgOz_W4YASLJRI105MxuogK8YjxIb1_ddOdG0CDElOXCshU9cMBCA=="
+        },
+        {
+          "snippet": "",
+          "title": "dcmf.ca",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEeLkvzR9BtgOJHr7P-mmfl_9Ihlx5LpsNrOj0ur0D90z_DZrIhmU-tmyuIlpJRUhXjnme6o2N9txt0Xh84E3VVyoTrz_iUja8-CH81pQvgWpn5Aa3TxZ97BaDKv9mZ4e8xTT4="
+        },
+        {
+          "snippet": "",
+          "title": "bestoftoronto.net",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG8Ajwe5DvytJEbn0UplyOfUGaoGINQU7s3_G8vngKPgIkJQu04mYXqOSAbiRlBfDHA0jcoK8BcOXX2PS5VPrt7TWrWkKSU20jRczjzMKyrDRE2-f5LCDOoH3X5qlbPcKd2-szX1NGCCINS3gG9Fbggu83cUZoQnb0wkidLn99ndBVCD519hcpbo7hwn0Fs"
+        },
+        {
+          "snippet": "",
+          "title": "dcmf.ca",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGF-qX_pzcAj8erDzRD6X0LKbfCrjadCGvfdHjaXQLrFdKTJlcwRfShoVKWw1f6_S-4YztDfmcm-GwlxciMhSpdpdr8OBvGO7vt4AWqrCD4W-2e82foJa1-OAu9mK4nzWnjsIDkQGI9UDe1JZmBPXo="
+        },
+        {
+          "snippet": "",
+          "title": "dcmf.ca",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGt8TO6bVVcQtplJEtSmVPUmO05Oy7o0zkRsdC0GIL5Uce0_2i0jbUbV6RmuRTsEHaDT65AYprY6yQD975vmvQGFLEUQpZVWxqOrA=="
+        },
+        {
+          "snippet": "",
+          "title": "directory.gov.au",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHHFnSNZmifizdE5EN6q0n1LyYhjYvvjGW3orRi8X5Uxuf08HXe4Ck0n3FSIYfZednHjn9oeVnDVPuW3V_ONIp93LzWdYuVxn7Z0m6dp1r1-nxBb06I37Y2yQgeQojGduoyKeX9YEYRUMO3IAc1vXT3RdoXEcfA9iIty44ZsMSJJGzculN18UpxlAh3T2we0Yf7K_DyehcU5JrUHJpSXM7xO-DOzy01b6UiHjrOfuJv_E23NY2FrE2cbhEuyfD8bgSqbnpzDcp00yMV3OA5"
+        },
+        {
+          "snippet": "",
+          "title": "dcmf.ca",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEk_RN8vZFeL3422DRAFRUiIoN5npBvw1KDl569aJpDW5S-95JTfxqbI4b1JUpDYMnudcbIjkz2GqCDY7gH0AcRUCllxa6c5Z41Anq3sg=="
+        },
+        {
+          "snippet": "",
+          "title": "nfrc.org",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFo09Fy3Ul83Ul4E09l_Dwj716tYJPr6IDvOxwdaz67rpyTkJvGVwC5GtFI9g8FBpeQKEPxa7bYqxPJ2V3s5YXtHSrrSooU5y3XwUY="
+        }
+      ],
+      "search_entry_point": "<stripped>",
+      "search_queries": [
+        "Sari Cornfield Toronto",
+        "Sari Cornfield Haddington Developments",
+        "Sari Cornfield David Cornfield Melanoma Fund",
+        "Sari Cornfield SC HOME",
+        "Sari Cornfield York University",
+        "Sari Cornfield National Management Group"
+      ]
+    },
+    "identity_clues": [
+      {
+        "snippet": "Oct 27, 2022 ... ThrowbackThursday: DCMF board members Sari Goldstein, Mark Jamrozinski, Sari Cornfield ... Toronto in David Cornfield's memory. Jointly funded by\u00a0...",
+        "source": "facebook.com",
+        "source_query_id": "precision",
+        "title": "Board Member/Involvement with David Cornfield Melanoma Fund",
+        "url": "https://www.facebook.com/DCmelanomafund/photos/throwbackthursday-dcmf-board-members-sari-goldstein-mark-jamrozinski-sari-cornfi/6105420229482863/"
+      },
+      {
+        "snippet": "Contact. Sari Cornfield. Phone Number. (647) 284-6049. Address. Toronto, Ontario Canada. Category. Interior Designers & Decorators \u00b7 Find me on my blog or other\u00a0...",
+        "source": "houzz.com",
+        "source_query_id": "recall",
+        "title": "Interior Designer / SC HOME",
+        "url": "https://www.houzz.com/professionals/interior-designers-and-decorators/sc-home-pfvwus-pf~1417773197"
+      },
+      {
+        "snippet": "SARI CORNFIELD. 212 Adelaide St W 200. Toronto ON M5H 1W7 Canada. KIMBERLY DAVIS. 212 Adelaide St W 200. Toronto ON M5H 1W7 Canada. Elyse Sunshine. 212 Adelaide\u00a0...",
+        "source": "canadacompanyregistry.com",
+        "source_query_id": "recall",
+        "title": "Company Director for The David Cornfield Melanoma Fund",
+        "url": "https://www.canadacompanyregistry.com/companies/the-david-cornfield-melanoma-fund/"
+      },
+      {
+        "snippet": "Sari Cornfield. Consultant at National Management Group. National Management Group. Toronto, Ontario, Canada. 2 followers 2 connections.",
+        "source": "ca.linkedin.com",
+        "source_query_id": "provincial_linkedin",
+        "title": "Consultant at National Management Group (previous role)",
+        "url": "https://ca.linkedin.com/in/sari-cornfield-145287b"
+      }
+    ],
+    "location_confidence": "high",
+    "queries": [
+      {
+        "hits": [
+          {
+            "query_id": "precision",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "... Sari Cornfield and Danielle Paterson. We also want to acknowledge the immense generosity of all our corporate sponsors, in particular our title sponsor\u00a0...",
+            "source": "vertex_ai_precision",
+            "title": "David Cornfield Melanoma Fund | Toronto ON - Facebook",
+            "url": "https://www.facebook.com/media/set/?vanity=DCmelanomafund&set=a.2621611807863740"
+          },
+          {
+            "query_id": "precision",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Oct 27, 2022 ... ThrowbackThursday: DCMF board members Sari Goldstein, Mark Jamrozinski, Sari Cornfield ... Toronto in David Cornfield's memory. Jointly funded by\u00a0...",
+            "source": "vertex_ai_precision",
+            "title": "David Cornfield Melanoma Fund - #ThrowbackThursday: DCMF ...",
+            "url": "https://www.facebook.com/DCmelanomafund/photos/throwbackthursday-dcmf-board-members-sari-goldstein-mark-jamrozinski-sari-cornfi/6105420229482863/"
+          }
+        ],
+        "id": "precision",
+        "query": "\"Sari Cornfield\" Toronto",
+        "type": "high_precision"
+      },
+      {
+        "hits": [
+          {
+            "query_id": "recall",
+            "query_type": "high_recall",
+            "relevance_score": 0,
+            "snippet": "May 9, 2023 ... Sari Cornfield's Post. Sari Cornfield reposted this. Report this post; Close menu. View organization page for STACKT \u00b7 STACKT. 5,067 followers.",
+            "source": "vertex_ai_recall",
+            "title": "Sari Cornfield posted on LinkedIn",
+            "url": "https://www.linkedin.com/posts/sari-cornfield-aa526b140_art-canada-artinstallation-activity-7061841468843311104-WFqp"
+          },
+          {
+            "query_id": "recall",
+            "query_type": "high_recall",
+            "relevance_score": 0,
+            "snippet": "Jan 3, 2022 ... Sari Cornfield's Post. View profile for Sari Cornfield. Sari Cornfield. Project Manager at Haddington Developments. 3y. Report this post; Close\u00a0...",
+            "source": "vertex_ai_recall",
+            "title": "Sari Cornfield posted on LinkedIn",
+            "url": "https://www.linkedin.com/posts/sari-cornfield-aa526b140_melanoma-skincancer-checkyourskin-activity-6883826108580589569-glRJ"
+          }
+        ],
+        "id": "recall",
+        "query": "\"Sari Cornfield\"",
+        "type": "high_recall"
+      },
+      {
+        "hits": [
+          {
+            "query_id": "recall_2",
+            "query_type": "high_recall",
+            "relevance_score": 0,
+            "snippet": "May 5, 2022 ... ThrowbackThursday: \"DCMF board members Sari Marks Cornfield, Elyse Sunshine, Sari Cornfield Goldstein, Kimberly Davis, Dan Markham,\u00a0...",
+            "source": "vertex_ai_precision",
+            "title": "David Cornfield Melanoma Fund - Facebook",
+            "url": "https://www.facebook.com/DCmelanomafund/posts/throwbackthursday-dcmf-board-members-sari-marks-cornfield-elyse-sunshine-sari-co/5591470580877833/"
+          },
+          {
+            "query_id": "recall_2",
+            "query_type": "high_recall",
+            "relevance_score": 0,
+            "snippet": "Sari Cornfield (@saricornfield) \u2022 Instagram photos and videos. Instagram. Log in \u00b7 Open app \u00b7 saricornfield's profile picture. saricornfield. Sari Cornfield\u00a0...",
+            "source": "vertex_ai_precision",
+            "title": "Sari Cornfield (@saricornfield) \u2022 Instagram photos and videos",
+            "url": "https://www.instagram.com/saricornfield/"
+          }
+        ],
+        "id": "recall_2",
+        "query": "saricornfield OR \"Sari Cornfield\"",
+        "type": "high_recall"
+      },
+      {
+        "hits": [
+          {
+            "query_id": "company_name_linkedin",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Sari Cornfield. Project Manager at Haddington Developments. HADDINGTON DEVELOPMENTS LIMITED Carleton University. Greater Toronto Area, Canada.",
+            "source": "vertex_ai_linkedin",
+            "title": "Sari Cornfield - Project Manager at Haddington Developments",
+            "url": "https://ca.linkedin.com/in/sari-cornfield-aa526b140"
+          }
+        ],
+        "id": "company_name_linkedin",
+        "query": "\"Sari Cornfield\" Haddington Developments",
+        "type": "high_precision"
+      },
+      {
+        "hits": [
+          {
+            "query_id": "provincial_linkedin",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Sari Cornfield. Consultant at National Management Group. National Management Group. Toronto, Ontario, Canada. 2 followers 2 connections.",
+            "source": "vertex_ai_linkedin",
+            "title": "Sari Cornfield - Consultant at National Management Group - LinkedIn",
+            "url": "https://ca.linkedin.com/in/sari-cornfield-145287b"
+          }
+        ],
+        "id": "provincial_linkedin",
+        "query": "\"Sari Cornfield\" OR \"Sarah Cornfield\" OR \"Sadie Cornfield\" Ontario",
+        "type": "high_precision"
+      },
+      {
+        "hits": [
+          {
+            "query_id": "precision_llm",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Sari Cornfield Goldstein ; \udb85\udf27. Studied at York University Students ; \udb85\udf27. Went to Newtonbrook Secondary School ; \udb85\udf0f. Lives in Toronto, Ontario ; \udb85\ude1b. From Toronto,\u00a0...",
+            "source": "vertex_ai_precision",
+            "title": "Sari Cornfield Goldstein - Facebook",
+            "url": "https://www.facebook.com/sari.cornfieldgoldstein/"
+          },
+          {
+            "query_id": "precision_llm",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Dec 22, 2025 ... Sarah Cornfield \u25bb Dr. Draw Fan Club. 18y \u00b7 Public \u00b7 OMG....My friend ... Don Valley Parkway & Gardiner Expressway at night, Toronto, Ontario.",
+            "source": "vertex_ai_precision",
+            "title": "Toronto Garfelle Dr #OMG - Facebook",
+            "url": "https://www.facebook.com/groups/229208808046630/posts/1380722899561876/"
+          }
+        ],
+        "id": "precision_llm",
+        "query": "\"Sari Cornfield\" OR \"Sarah Cornfield\" OR \"Sadie Cornfield\" \"Toronto, Ontario\"",
+        "type": "high_precision"
+      }
+    ],
+    "rationale": "Sari Cornfield's identity has been established with high confidence based on multiple corroborating sources. The LinkedIn profile for 'Sari Cornfield, Project Manager at Haddington Developments' directly matches the seed's full name, company, and general location, making it a high-confidence handle. The Instagram handle '@saricornfield' and Pinterest handle '@saricornfield' match the email prefix 'saricornfield' and full name, further increasing confidence. A Facebook profile for 'Sari Cornfield Goldstein' lists her as living in Toronto, Ontario, and having studied at York University, which aligns with other information. This Facebook profile, along with other Facebook and Instagram posts, consistently links Sari Cornfield to the 'David Cornfield Melanoma Fund' in Toronto, indicating a strong connection and confirming her presence in the city. The city of Toronto, Ontario, is consistently mentioned across various high-precision and high-recall results, including her Facebook profile, LinkedIn profiles, and involvement with the David Cornfield Melanoma Fund, leading to a high confidence in the aggregated location.\n\nAdditional identity clues include her role as a board member for the David Cornfield Melanoma Fund, her profession as an Interior Designer and owner of 'SC HOME' in Toronto, her education at York University, her listing as a Company Director for The David Cornfield Melanoma Fund, and a previous role as a Consultant at National Management Group in Toronto.",
+    "scored": {
+      "identity_clues": [
+        {
+          "snippet": "Oct 27, 2022 ... ThrowbackThursday: DCMF board members Sari Goldstein, Mark Jamrozinski, Sari Cornfield ... Toronto in David Cornfield's memory. Jointly funded by\u00a0...",
+          "source": "facebook.com",
+          "source_query_id": "precision",
+          "title": "Board Member/Involvement with David Cornfield Melanoma Fund",
+          "url": "https://www.facebook.com/DCmelanomafund/photos/throwbackthursday-dcmf-board-members-sari-goldstein-mark-jamrozinski-sari-cornfi/6105420229482863/"
+        },
+        {
+          "snippet": "Contact. Sari Cornfield. Phone Number. (647) 284-6049. Address. Toronto, Ontario Canada. Category. Interior Designers & Decorators \u00b7 Find me on my blog or other\u00a0...",
+          "source": "houzz.com",
+          "source_query_id": "recall",
+          "title": "Interior Designer / SC HOME",
+          "url": "https://www.houzz.com/professionals/interior-designers-and-decorators/sc-home-pfvwus-pf~1417773197"
+        },
+        {
+          "snippet": "Sari Cornfield Goldstein ; \udb85\udf27. Studied at York University Students ; \udb85\udf27. Went to Newtonbrook Secondary School ; \udb85\udf0f. Lives in Toronto, Ontario ; \udb85\ude1b. From Toronto,...",
+          "source_query_id": "precision",
+          "title": "Studied at York University",
+          "url": "https://www.facebook.com/sari.cornfieldgoldstein/"
+        },
+        {
+          "snippet": "SARI CORNFIELD. 212 Adelaide St W 200. Toronto ON M5H 1W7 Canada. KIMBERLY DAVIS. 212 Adelaide St W 200. Toronto ON M5H 1W7 Canada. Elyse Sunshine. 212 Adelaide\u00a0...",
+          "source": "canadacompanyregistry.com",
+          "source_query_id": "recall",
+          "title": "Company Director for The David Cornfield Melanoma Fund",
+          "url": "https://www.canadacompanyregistry.com/companies/the-david-cornfield-melanoma-fund/"
+        },
+        {
+          "snippet": "Sari Cornfield. Consultant at National Management Group. National Management Group. Toronto, Ontario, Canada. 2 followers 2 connections.",
+          "source": "ca.linkedin.com",
+          "source_query_id": "provincial_linkedin",
+          "title": "Consultant at National Management Group (previous role)",
+          "url": "https://ca.linkedin.com/in/sari-cornfield-145287b"
+        }
+      ],
+      "location": {
+        "city": "Toronto, Ontario",
+        "confidence": "high"
+      },
+      "rationale": "Sari Cornfield's identity has been established with high confidence based on multiple corroborating sources. The LinkedIn profile for 'Sari Cornfield, Project Manager at Haddington Developments' directly matches the seed's full name, company, and general location, making it a high-confidence handle. The Instagram handle '@saricornfield' and Pinterest handle '@saricornfield' match the email prefix 'saricornfield' and full name, further increasing confidence. A Facebook profile for 'Sari Cornfield Goldstein' lists her as living in Toronto, Ontario, and having studied at York University, which aligns with other information. This Facebook profile, along with other Facebook and Instagram posts, consistently links Sari Cornfield to the 'David Cornfield Melanoma Fund' in Toronto, indicating a strong connection and confirming her presence in the city. The city of Toronto, Ontario, is consistently mentioned across various high-precision and high-recall results, including her Facebook profile, LinkedIn profiles, and involvement with the David Cornfield Melanoma Fund, leading to a high confidence in the aggregated location.\n\nAdditional identity clues include her role as a board member for the David Cornfield Melanoma Fund, her profession as an Interior Designer and owner of 'SC HOME' in Toronto, her education at York University, her listing as a Company Director for The David Cornfield Melanoma Fund, and a previous role as a Consultant at National Management Group in Toronto.",
+      "top_handles": [
+        {
+          "city": "Greater Toronto Area, Canada",
+          "confidence": "high",
+          "handle": "sari-cornfield-aa526b140",
+          "platform": "LinkedIn",
+          "url": "https://ca.linkedin.com/in/sari-cornfield-aa526b140"
+        },
+        {
+          "city": null,
+          "confidence": "high",
+          "handle": "saricornfield",
+          "platform": "Instagram",
+          "url": "https://www.instagram.com/saricornfield/"
+        },
+        {
+          "city": null,
+          "confidence": "high",
+          "handle": "saricornfield",
+          "platform": "Pinterest",
+          "url": "https://ca.pinterest.com/saricornfield/"
+        },
+        {
+          "city": "Toronto, Ontario",
+          "confidence": "high",
+          "handle": "sari.cornfieldgoldstein",
+          "platform": "Facebook",
+          "url": "https://www.facebook.com/sari.cornfieldgoldstein/"
+        }
+      ]
+    },
+    "scored_error": null,
+    "seed": {
+      "company_name": "Haddington Developments",
+      "email": "testuser1@gmail.com",
+      "email_prefix": "testuser1",
+      "full_name": "Sari Cornfield",
+      "last_known_city": "Toronto",
+      "province": "Ontario"
+    },
+    "top_handles": [
+      {
+        "city": "Greater Toronto Area, Canada",
+        "confidence": "high",
+        "handle": "sari-cornfield-aa526b140",
+        "platform": "LinkedIn",
+        "url": "https://ca.linkedin.com/in/sari-cornfield-aa526b140"
+      },
+      {
+        "city": null,
+        "confidence": "high",
+        "handle": "saricornfield",
+        "platform": "Instagram",
+        "url": "https://www.instagram.com/saricornfield/"
+      },
+      {
+        "city": null,
+        "confidence": "high",
+        "handle": "saricornfield",
+        "platform": "Pinterest",
+        "url": "https://ca.pinterest.com/saricornfield/"
+      },
+      {
+        "city": "Toronto, Ontario",
+        "confidence": "high",
+        "handle": "sari.cornfieldgoldstein",
+        "platform": "Facebook",
+        "url": "https://www.facebook.com/sari.cornfieldgoldstein/"
+      }
+    ]
+  },
+  "enrichment": {
+    "addresses": {
+      "1733 Bathurst, Toronto, Ontario": {
+        "cleaned": "1733 Bathurst, Toronto, Ontario",
+        "error": null,
+        "lat": 43.6988055,
+        "lon": -79.4243361
+      },
+      "212 Adelaide St W 200, Toronto ON M5H 1W7, Canada": {
+        "cleaned": "212 Adelaide St W 200, Toronto ON M5H 1W7, Canada",
+        "error": null,
+        "lat": null,
+        "lon": null
+      }
+    },
+    "contacts": {
+      "addresses": [
+        {
+          "address_raw": "212 Adelaide St W 200. Toronto ON M5H 1W7 Canada",
+          "confidence": "high",
+          "snippet": "SARI CORNFIELD. 212 Adelaide St W 200. Toronto ON M5H 1W7 Canada. KIMBERLY DAVIS. 212 Adelaide St W 200. Toronto ON M5H 1W7 Canada. Elyse Sunshine. 212 Adelaide\u00a0...",
+          "source_url": "https://www.canadacompanyregistry.com/companies/the-david-cornfield-melanoma-fund/"
+        }
+      ],
+      "emails": [],
+      "phones": [
+        {
+          "confidence": "high",
+          "number_digits": "6472846049",
+          "number_raw": "(647) 284-6049",
+          "snippet": "Contact. Sari Cornfield. Phone Number. (647) 284-6049. Address. Toronto, Ontario Canada. Category. Interior Designers & Decorators \u00b7 Find me on my blog or other\u00a0...",
+          "source_url": "https://www.houzz.com/professionals/interior-designers-and-decorators/sc-home-pfvwus-pf~1417773197"
+        }
+      ]
+    },
+    "domains": {
+      "haddington.com": {
+        "domain": "haddington.com",
+        "error": null,
+        "mx": {
+          "domain": "haddington.com",
+          "error": null,
+          "mx_records": [
+            "haddington-com.mail.protection.outlook.com"
+          ],
+          "provider_detected": "Microsoft 365 (High Trust)",
+          "risk_level": "LOW",
+          "status": "Legitimate Business Email",
+          "success": true
+        },
+        "whois": {
+          "error": null,
+          "registration_date": "1996-12-04",
+          "success": true
+        }
+      }
+    }
+  }
+}

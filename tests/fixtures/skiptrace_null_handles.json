@@ -1,0 +1,290 @@
+{
+  "input": {
+    "full_name": "JOSEPH IVAN CHARLES RICE",
+    "drive_folder_id": "",
+    "city": "ladysmith",
+    "email": "testuser2@gmail.com",
+    "company_name": "A&W",
+    "province": "BC",
+    "company_domain_confidence": "high",
+    "company_domain": "awrestaurants.com"
+  },
+  "identity": {
+    "breaches": [],
+    "contactability": {
+      "breach_bucket": "NO",
+      "footprint_bucket": "MED",
+      "num_breaches": 0,
+      "num_social": 3,
+      "reason": "This email has a moderate online footprint with no known breaches, consistent with steady but relatively low-volume use.",
+      "score": "Medium/Good"
+    },
+    "golden_location": "Ladysmith, British Columbia",
+    "golden_name": "JOSEPH IVAN CHARLES RICE",
+    "grounding_metadata": {
+      "grounding_sources": [
+        {
+          "snippet": "",
+          "title": "Current time information in Cowichan Valley, CA.",
+          "url": "https://www.google.com/search?q=time+in+Cowichan+Valley,+CA"
+        },
+        {
+          "snippet": "",
+          "title": "ubc.ca",
+          "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHmMN_4LjeiZBijLS_S3m3M8_QDuXU22hqG8zmd_cX3h5gdPz0KAOkbkLgw1NZ255y0Z0FHqTWanVe1rSBrLtw3vvvXLNDysVMS_td5LWfCNFJDF6F7YbzPKWrfoSgbsXkUdqQH1eAVXSr6vtO86aJfOhTB3uc_UGY="
+        }
+      ],
+      "search_entry_point": "<stripped>",
+      "search_queries": [
+        "\"JOSEPH IVAN CHARLES RICE\" Ladysmith",
+        "\"JOSEPH IVAN CHARLES RICE\" A&W Ladysmith",
+        "\"JOSEPH IVAN CHARLES RICE\" Ladysmith British Columbia",
+        "\"Joe Rice\" Ladysmith British Columbia",
+        "\"Charles Rice Carpenter\" Ladysmith British Columbia",
+        "\"JOSEPH IVAN CHARLES RICE\" A&W"
+      ]
+    },
+    "identity_clues": [
+      {
+        "snippet": "Feb 22, 2025 ... Photo by Herb Rice Artist in Ladysmith, British Columbia. May be an ... Joe Rice's brother. Gary logged then carved in the Kwakwaka\u00a0...",
+        "source": "instagram.com",
+        "source_query_id": "precision_llm",
+        "title": "Instagram post mentioning Joe Rice's brother",
+        "url": "https://www.instagram.com/p/DGZi4pqtkt-/"
+      },
+      {
+        "snippet": "Oct 16, 2025 ... Photo by Herb Rice Artist in Ladysmith, British Columbia. May be an image of. 16 likes \u00b7 herbstruth ... Joe Rice's brother. Gary logged then\u00a0...",
+        "source": "instagram.com",
+        "source_query_id": "precision_llm",
+        "title": "Instagram post mentioning Joe Rice's brother",
+        "url": "https://www.instagram.com/p/DP5VjNbDuxn/"
+      },
+      {
+        "snippet": "... Joe Rice ( Johnny Rice ) hope you have an amazing day and get everything you deserve from my little family to you we all love you oh so much\u00a0...",
+        "source": "facebook.com",
+        "source_query_id": "precision_llm",
+        "title": "Facebook post mentioning Joe Rice",
+        "url": "https://www.facebook.com/636705002869472/"
+      }
+    ],
+    "location_confidence": "high",
+    "queries": [
+      {
+        "hits": [
+          {
+            "query_id": "precision",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Charles Rice Carpenter. Woooo. 53 years as a carpenter not just building but everything inside and outside the house. \udb85\udf02 Ladysmith Secondary School\u00a0...",
+            "source": "vertex_ai_precision",
+            "title": "Charles Rice Carpenter (@swatham) - Facebook",
+            "url": "https://www.facebook.com/swatham/"
+          },
+          {
+            "query_id": "precision",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Jan 20, 2017 ... Trying to figure out where the Tribble farm was located, which was 2 miles west of Platte City? Charles Rice and Mildred Shepherd are my gggg\u00a0...",
+            "source": "vertex_ai_precision",
+            "title": "Rice farming near Lake Charles, CA in 1911 - Facebook",
+            "url": "https://www.facebook.com/groups/113831381978159/posts/1491760150851935/"
+          }
+        ],
+        "id": "precision",
+        "query": "\"JOSEPH IVAN CHARLES RICE\" OR \"CHARLES RICE\" ladysmith",
+        "type": "high_precision"
+      },
+      {
+        "hits": [],
+        "id": "recall",
+        "query": "\"JOSEPH IVAN CHARLES RICE\"",
+        "type": "high_recall"
+      },
+      {
+        "hits": [],
+        "id": "recall_2",
+        "query": "JRICE2806 OR \"JOSEPH IVAN CHARLES RICE\"",
+        "type": "high_recall"
+      },
+      {
+        "hits": [],
+        "id": "company_name_linkedin",
+        "query": "\"JOSEPH IVAN CHARLES RICE\" A&W",
+        "type": "high_precision"
+      },
+      {
+        "hits": [
+          {
+            "query_id": "provincial_linkedin",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Website: https://www.jenniferlmoorewriter.com/ Book Order Link:\u2026 \u00b7 Experience: B.C. Wildlife Federation \u00b7 Education: University of Southern Mississippi\u00a0...",
+            "source": "vertex_ai_linkedin",
+            "title": "Jennifer Moore - B.C. Wildlife Federation | LinkedIn",
+            "url": "https://ca.linkedin.com/in/gdsjenny"
+          },
+          {
+            "query_id": "provincial_linkedin",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Theresa Dennison. Association of Vancouver Island & Coastal Communities Brock University. Victoria, British Columbia, Canada ... Victoria, British Columbia. -.",
+            "source": "vertex_ai_linkedin",
+            "title": "Theresa Dennison - Association of Vancouver Island & Coastal ...",
+            "url": "https://ca.linkedin.com/in/theresadennison"
+          }
+        ],
+        "id": "provincial_linkedin",
+        "query": "\"JOSEPH IVAN CHARLES RICE\" OR \"Joe Rice\" OR \"Joseph Rice\" OR \"J. Rice\" British Columbia",
+        "type": "high_precision"
+      },
+      {
+        "hits": [
+          {
+            "query_id": "precision_llm",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Jan 25, 2020 ... Photo by Pacific Nations Auto Sales in Ladysmith, British Columbia.",
+            "source": "vertex_ai_precision",
+            "title": "Congrats Joe Rice and Elizabeth Tom Thank you you guys for ...",
+            "url": "https://www.instagram.com/p/B7w2CtzD4ga/"
+          },
+          {
+            "query_id": "precision_llm",
+            "query_type": "high_precision",
+            "relevance_score": 0,
+            "snippet": "Feb 22, 2025 ... Photo by Herb Rice Artist in Ladysmith, British Columbia. May be an ... Joe Rice's brother. Gary logged then carved in the Kwakwaka\u00a0...",
+            "source": "vertex_ai_precision",
+            "title": "Yummy dinner tonight, Susan prepared local Pacific Northwest ...",
+            "url": "https://www.instagram.com/p/DGZi4pqtkt-/"
+          }
+        ],
+        "id": "precision_llm",
+        "query": "\"JOSEPH IVAN CHARLES RICE\" OR \"Joe Rice\" OR \"Joseph Rice\" OR \"J. Rice\" \"ladysmith, British Columbia\"",
+        "type": "high_precision"
+      }
+    ],
+    "rationale": "The seed's full name is JOSEPH IVAN CHARLES RICE, with a last known city of Ladysmith, British Columbia. Multiple search results strongly indicate the presence of a 'Joe Rice' or 'Joseph Rice' in Ladysmith, British Columbia, which is a common diminutive of the seed's first name. Instagram posts explicitly mention 'Joe Rice' in Ladysmith, British Columbia. A Facebook group post also directly mentions 'Joseph Rice' in Ladysmith, British Columbia. These are considered high-confidence matches. \n\nThe Facebook profile 'Charles Rice Carpenter' (@swatham) is a medium-confidence match. The name 'Charles Rice' is part of the seed's full name, and the profile is located in Ladysmith, mentioning 'Ladysmith Secondary School'. The 'Carpenter' could be a professional descriptor. While plausible, without further corroboration linking 'Charles Rice Carpenter' directly to 'Joseph Ivan Charles Rice' or 'Joe Rice', it remains a medium confidence match. \n\nNo direct social media profiles or strong identity clues were found that explicitly mention the company 'A&W' in conjunction with the seed's name. \n\nThe aggregated location of 'Ladysmith, British Columbia' is high confidence due to its consistent appearance in the most relevant search results. Identity clues include Instagram posts mentioning 'Joe Rice's brother' and 'Herb Rice Artist' in Ladysmith, British Columbia, providing additional familial context.",
+    "scored": {
+      "identity_clues": [
+        {
+          "snippet": "Feb 22, 2025 ... Photo by Herb Rice Artist in Ladysmith, British Columbia. May be an ... Joe Rice's brother. Gary logged then carved in the Kwakwaka\u00a0...",
+          "source": "instagram.com",
+          "source_query_id": "precision_llm",
+          "title": "Instagram post mentioning Joe Rice's brother",
+          "url": "https://www.instagram.com/p/DGZi4pqtkt-/"
+        },
+        {
+          "snippet": "Oct 16, 2025 ... Photo by Herb Rice Artist in Ladysmith, British Columbia. May be an image of. 16 likes \u00b7 herbstruth ... Joe Rice's brother. Gary logged then\u00a0...",
+          "source": "instagram.com",
+          "source_query_id": "precision_llm",
+          "title": "Instagram post mentioning Joe Rice's brother",
+          "url": "https://www.instagram.com/p/DP5VjNbDuxn/"
+        },
+        {
+          "snippet": "... Joe Rice ( Johnny Rice ) hope you have an amazing day and get everything you deserve from my little family to you we all love you oh so much\u00a0...",
+          "source": "facebook.com",
+          "source_query_id": "precision_llm",
+          "title": "Facebook post mentioning Joe Rice",
+          "url": "https://www.facebook.com/636705002869472/"
+        }
+      ],
+      "location": {
+        "city": "Ladysmith, British Columbia",
+        "confidence": "high"
+      },
+      "rationale": "The seed's full name is JOSEPH IVAN CHARLES RICE, with a last known city of Ladysmith, British Columbia. Multiple search results strongly indicate the presence of a 'Joe Rice' or 'Joseph Rice' in Ladysmith, British Columbia, which is a common diminutive of the seed's first name. Instagram posts explicitly mention 'Joe Rice' in Ladysmith, British Columbia. A Facebook group post also directly mentions 'Joseph Rice' in Ladysmith, British Columbia. These are considered high-confidence matches. \n\nThe Facebook profile 'Charles Rice Carpenter' (@swatham) is a medium-confidence match. The name 'Charles Rice' is part of the seed's full name, and the profile is located in Ladysmith, mentioning 'Ladysmith Secondary School'. The 'Carpenter' could be a professional descriptor. While plausible, without further corroboration linking 'Charles Rice Carpenter' directly to 'Joseph Ivan Charles Rice' or 'Joe Rice', it remains a medium confidence match. \n\nNo direct social media profiles or strong identity clues were found that explicitly mention the company 'A&W' in conjunction with the seed's name. \n\nThe aggregated location of 'Ladysmith, British Columbia' is high confidence due to its consistent appearance in the most relevant search results. Identity clues include Instagram posts mentioning 'Joe Rice's brother' and 'Herb Rice Artist' in Ladysmith, British Columbia, providing additional familial context.",
+      "top_handles": [
+        {
+          "city": "Ladysmith",
+          "confidence": "medium",
+          "handle": "swatham",
+          "platform": "facebook",
+          "url": "https://www.facebook.com/swatham/"
+        },
+        {
+          "city": "Ladysmith, British Columbia",
+          "confidence": "high",
+          "handle": null,
+          "platform": "instagram",
+          "url": "https://www.instagram.com/p/B7w2CtzD4ga/"
+        },
+        {
+          "city": "Ladysmith, British Columbia",
+          "confidence": "high",
+          "handle": null,
+          "platform": "facebook",
+          "url": "https://www.facebook.com/groups/1193165721926893/posts/1220259159217549/"
+        }
+      ]
+    },
+    "scored_error": null,
+    "seed": {
+      "company_name": "A&W",
+      "email": "testuser2@gmail.com",
+      "email_prefix": "testuser2",
+      "full_name": "JOSEPH IVAN CHARLES RICE",
+      "last_known_city": "ladysmith",
+      "province": "British Columbia"
+    },
+    "top_handles": [
+      {
+        "city": "Ladysmith",
+        "confidence": "medium",
+        "handle": "swatham",
+        "platform": "facebook",
+        "url": "https://www.facebook.com/swatham/"
+      },
+      {
+        "city": "Ladysmith, British Columbia",
+        "confidence": "high",
+        "handle": null,
+        "platform": "instagram",
+        "url": "https://www.instagram.com/p/B7w2CtzD4ga/"
+      },
+      {
+        "city": "Ladysmith, British Columbia",
+        "confidence": "high",
+        "handle": null,
+        "platform": "facebook",
+        "url": "https://www.facebook.com/groups/1193165721926893/posts/1220259159217549/"
+      }
+    ]
+  },
+  "enrichment": {
+    "addresses": {
+      "Ladysmith, British Columbia": {
+        "cleaned": "Ladysmith, British Columbia",
+        "error": null,
+        "lat": 48.9936579,
+        "lon": -123.8157964
+      }
+    },
+    "contacts": {
+      "addresses": [],
+      "emails": [],
+      "phones": []
+    },
+    "domains": {
+      "awrestaurants.com": {
+        "domain": "awrestaurants.com",
+        "error": null,
+        "mx": {
+          "domain": "awrestaurants.com",
+          "error": null,
+          "mx_records": [
+            "awrestaurants-com.mail.protection.outlook.com"
+          ],
+          "provider_detected": "Microsoft 365 (High Trust)",
+          "risk_level": "LOW",
+          "status": "Legitimate Business Email",
+          "success": true
+        },
+        "whois": {
+          "error": null,
+          "registration_date": "1998-10-26",
+          "success": true
+        }
+      }
+    }
+  }
+}
