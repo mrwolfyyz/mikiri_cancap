@@ -9,6 +9,8 @@ import json
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Mock heavy dependencies BEFORE loading the module
 # ---------------------------------------------------------------------------
@@ -21,6 +23,7 @@ if _ff is None:
     _ff = MagicMock()
     sys.modules["functions_framework"] = _ff
 _ff.cloud_event = lambda f: f  # no-op decorator for @cloud_event
+_ff.http = lambda f: f  # no-op decorator for @functions_framework.http (prevents poisoning other test files)
 
 # cloudevents
 _mock_cloudevents = MagicMock()
@@ -62,6 +65,12 @@ sys.modules.setdefault("googleapiclient.discovery", _mock_googleapiclient_discov
 sys.modules.setdefault("googleapiclient.http", _mock_googleapiclient_http)
 sys.modules.setdefault("googleapiclient.errors", _mock_googleapiclient_errors)
 
+# Mock google.events.cloud.firestore (for CloudEvent payload parsing)
+_mock_firestore_events = MagicMock()
+sys.modules.setdefault("google.events", MagicMock())
+sys.modules.setdefault("google.events.cloud", MagicMock())
+sys.modules.setdefault("google.events.cloud.firestore", _mock_firestore_events)
+
 # Mock the local markdown generator module
 _mock_md_gen = MagicMock()
 sys.modules["generate_markdown_reports_skiptrace"] = _mock_md_gen
@@ -80,11 +89,33 @@ on_job_updated = rgs_main.on_job_updated
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-def _make_cloud_event(document_path="projects/p/databases/d/documents/jobs/job123"):
+def _make_cloud_event(document_path="projects/p/databases/d/documents/jobs/job123", data=None):
     """Build a mock CloudEvent with Firestore document path."""
     event = MagicMock()
     event.get_attributes.return_value = {"document": document_path}
+    event.data = data
     return event
+
+
+def _setup_payload_mock(status=None, workflow_type=None, parse_error=False):
+    """Configure the firestore_events mock for CloudEvent payload parsing."""
+    mock_payload = MagicMock()
+    if parse_error:
+        mock_payload._pb.ParseFromString.side_effect = Exception("bad protobuf")
+    else:
+        fields = {}
+        if status is not None:
+            status_field = MagicMock()
+            status_field.string_value = status
+            fields["status"] = status_field
+        if workflow_type is not None:
+            wf_field = MagicMock()
+            wf_field.string_value = workflow_type
+            fields["workflow_type"] = wf_field
+        mock_payload.value.fields = fields
+
+    rgs_main.firestore_events.DocumentEventData.return_value = mock_payload
+    return mock_payload
 
 
 def _mock_firestore_doc(data, exists=True):
@@ -166,6 +197,14 @@ class TestTransformFirestoreToReportFormat:
 # ===========================================================================
 class TestOnJobUpdated:
     """Tests for the Firestore event handler."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_payload_mock(self):
+        """Reset DocumentEventData mock before each test to prevent state leakage."""
+        rgs_main.firestore_events.DocumentEventData.reset_mock()
+        rgs_main.firestore_events.DocumentEventData.return_value = MagicMock(
+            _pb=MagicMock(ParseFromString=MagicMock(side_effect=Exception("no payload configured")))
+        )
 
     def test_missing_document_attribute(self):
         """Event without 'document' attribute should return early."""
@@ -408,3 +447,74 @@ class TestOnJobUpdated:
 
         # Verify document lookup used "abc123"
         mock_client.collection.return_value.document.assert_called_with("abc123")
+
+    # --- Early exit via CloudEvent payload tests ---
+
+    def test_early_exit_wrong_workflow_from_payload(self):
+        """Payload with wrong workflow_type exits before Firestore read."""
+        _setup_payload_mock(workflow_type="origination", status="post_processing")
+        mock_client = MagicMock()
+
+        with patch.object(rgs_main, "firestore_client", mock_client):
+            on_job_updated(_make_cloud_event(data=b"fake-protobuf"))
+
+        mock_client.collection.assert_not_called()
+
+    def test_early_exit_wrong_status_from_payload(self):
+        """Payload with wrong status exits before Firestore read."""
+        _setup_payload_mock(workflow_type="skiptrace", status="running")
+        mock_client = MagicMock()
+
+        with patch.object(rgs_main, "firestore_client", mock_client):
+            on_job_updated(_make_cloud_event(data=b"fake-protobuf"))
+
+        mock_client.collection.assert_not_called()
+
+    def test_payload_parse_failure_falls_through(self):
+        """When payload parsing fails, function falls through to Firestore read."""
+        _setup_payload_mock(parse_error=True)
+        data = _sample_job_data()
+
+        mock_doc = _mock_firestore_doc(data)
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_doc
+
+        mock_client = MagicMock()
+        mock_client.collection.return_value.document.return_value = mock_ref
+
+        def fake_generate(report_data, borrower_name, output_dir, **kwargs):
+            md_file = output_dir / f"Identity___{borrower_name.replace(' ', '_')}.md"
+            md_file.write_text("# Report")
+
+        with patch.object(rgs_main, "firestore_client", mock_client), patch.object(rgs_main, "md_gen") as mock_md:
+            mock_md.generate_identity_report_skiptrace = fake_generate
+            on_job_updated(_make_cloud_event(data=b"garbage"))
+
+        # Should have proceeded to Firestore read and completed
+        mock_client.collection.assert_called()
+        update_data = mock_ref.set.call_args[0][0]
+        assert update_data["status"] == "complete"
+
+    def test_payload_matches_proceeds_to_firestore(self):
+        """When payload fields match, function proceeds to Firestore read."""
+        _setup_payload_mock(workflow_type="skiptrace", status="post_processing")
+        data = _sample_job_data()
+
+        mock_doc = _mock_firestore_doc(data)
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_doc
+
+        mock_client = MagicMock()
+        mock_client.collection.return_value.document.return_value = mock_ref
+
+        def fake_generate(report_data, borrower_name, output_dir, **kwargs):
+            md_file = output_dir / f"Identity___{borrower_name.replace(' ', '_')}.md"
+            md_file.write_text("# Report")
+
+        with patch.object(rgs_main, "firestore_client", mock_client), patch.object(rgs_main, "md_gen") as mock_md:
+            mock_md.generate_identity_report_skiptrace = fake_generate
+            on_job_updated(_make_cloud_event(data=b"fake-protobuf"))
+
+        mock_client.collection.assert_called()
+        update_data = mock_ref.set.call_args[0][0]
+        assert update_data["status"] == "complete"
