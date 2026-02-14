@@ -200,7 +200,9 @@ def get_domain_registration_date(domain: str) -> dict[str, Any]:
                 try:
                     creation_date = datetime.strptime(date_str, "%Y-%m-%d")
                     reg_date_str = creation_date.strftime("%Y-%m-%d")
-                    print(f"[DomainEnrichment] Extracted registration date from error message: {domain} registered {reg_date_str}")
+                    print(
+                        f"[DomainEnrichment] Extracted registration date from error message: {domain} registered {reg_date_str}"
+                    )
                     return {"success": True, "registration_date": reg_date_str, "error": None}
                 except ValueError:
                     continue
@@ -334,11 +336,15 @@ def _retry_lookup(lookup_fn, domain: str, lookup_name: str, start_time: float) -
         if attempt > 0:
             elapsed = time.time() - start_time
             if elapsed > _FUNCTION_TIME_BUDGET_SECONDS:
-                print(f"[DomainEnrichment] WARNING: {lookup_name} for {domain}: time budget exceeded ({elapsed:.1f}s), returning last result")
+                print(
+                    f"[DomainEnrichment] WARNING: {lookup_name} for {domain}: time budget exceeded ({elapsed:.1f}s), returning last result"
+                )
                 break
 
             delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
-            print(f"[DomainEnrichment] {lookup_name} for {domain}: attempt {attempt}/{_MAX_RETRY_ATTEMPTS + 1} failed with transient error, retrying in {delay:.1f}s")
+            print(
+                f"[DomainEnrichment] {lookup_name} for {domain}: attempt {attempt}/{_MAX_RETRY_ATTEMPTS + 1} failed with transient error, retrying in {delay:.1f}s"
+            )
             time.sleep(delay)
 
         result = lookup_fn(domain)
@@ -462,6 +468,8 @@ def main(request) -> tuple[dict, int]:
                 }
 
     elapsed = time.time() - start_time
-    print(f"[DomainEnrichment] Domain enrichment complete - enriched {len(domains_to_enrich)} domain(s) in {elapsed:.1f}s")
+    print(
+        f"[DomainEnrichment] Domain enrichment complete - enriched {len(domains_to_enrich)} domain(s) in {elapsed:.1f}s"
+    )
 
     return {"domains": enrichment_results}, 200
