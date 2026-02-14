@@ -16,6 +16,7 @@ from cloudevents.http import CloudEvent
 from firebase_admin import firestore, initialize_app
 from functions_framework import cloud_event
 from google.auth import default
+from google.events.cloud import firestore as firestore_events
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
@@ -209,6 +210,25 @@ def on_job_updated(event: CloudEvent) -> None:
             return
 
         print(f"[SkipTraceReportGenerator] Processing job: {job_id}")
+
+        # Early exit: check fields from CloudEvent payload to avoid Firestore read
+        try:
+            payload = firestore_events.DocumentEventData()
+            payload._pb.ParseFromString(event.data)
+            fields = payload.value.fields
+
+            payload_workflow = fields["workflow_type"].string_value if "workflow_type" in fields else None
+            payload_status = fields["status"].string_value if "status" in fields else None
+
+            if payload_workflow and payload_workflow != "skiptrace":
+                print(f"[SkipTraceReportGenerator] Early exit: workflow_type is '{payload_workflow}' (from event payload)")
+                return
+
+            if payload_status and payload_status != "post_processing":
+                print(f"[SkipTraceReportGenerator] Early exit: status is '{payload_status}' (from event payload)")
+                return
+        except Exception:
+            pass  # Fall through to Firestore read if payload parsing fails
 
         # Fetch document directly from Firestore
         doc_ref = firestore_client.collection("jobs").document(job_id)

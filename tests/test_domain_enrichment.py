@@ -191,6 +191,15 @@ class TestGetDomainRegistrationDate:
         assert result["success"] is False
         assert "Connection refused" in result["error"]
 
+    def test_whois_failure_prints_warning(self, capsys):
+        """WHOIS exception produces a structured [DomainEnrichment] WARNING print."""
+        with patch.object(de_main, "whois") as mock_whois_mod:
+            mock_whois_mod.whois.side_effect = OSError("socket timeout")
+            get_domain_registration_date("test.com")
+
+        captured = capsys.readouterr()
+        assert "[DomainEnrichment] WARNING: WHOIS lookup failed for test.com: OSError: socket timeout" in captured.out
+
 
 # ===========================================================================
 # check_domain_mx_records
@@ -383,6 +392,39 @@ class TestRetryLookup:
         assert result["success"] is False
         # Only initial attempt + possibly 1 retry before budget check
         assert call_count <= 2
+
+    def test_retry_prints_retry_message(self, capsys):
+        """Transient failure prints a structured retry message to stdout."""
+        call_count = 0
+
+        def lookup(domain):
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                return {"success": False, "error": "Connection timeout"}
+            return {"success": True, "data": "ok"}
+
+        with patch.object(de_main, "time") as mock_time:
+            mock_time.time.return_value = 0.0
+            mock_time.sleep = MagicMock()
+            _retry_lookup(lookup, "example.com", "WHOIS", 0.0)
+
+        captured = capsys.readouterr()
+        assert "attempt 1/3 failed with transient error, retrying in" in captured.out
+
+    def test_retry_prints_exhaustion_message(self, capsys):
+        """All retries exhausted prints a structured warning to stdout."""
+
+        def lookup(domain):
+            return {"success": False, "error": "Connection timeout"}
+
+        with patch.object(de_main, "time") as mock_time:
+            mock_time.time.return_value = 0.0
+            mock_time.sleep = MagicMock()
+            _retry_lookup(lookup, "example.com", "WHOIS", 0.0)
+
+        captured = capsys.readouterr()
+        assert "all 3 attempts exhausted" in captured.out
 
 
 # ===========================================================================
