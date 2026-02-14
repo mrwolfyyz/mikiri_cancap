@@ -1,5 +1,6 @@
 functions-framework
 cloudevents
+google-events
 firebase-admin
 google-cloud-firestore==2.*
 google-api-python-client==2.*

@@ -7,7 +7,6 @@ Called from workflow as part of phase2 parallel execution.
 Returns enrichment data that gets passed to aggregator.
 """
 
-import logging
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,12 +18,9 @@ import functions_framework
 import whois
 from dateutil import parser as dateutil_parser
 
-logger = logging.getLogger(__name__)
-
 # -------------------------
 # Constants
 # -------------------------
-
 # Import shared domain utilities (copied by prepare-functions.sh from gcp/shared/)
 from domain_utils import extract_email_domain, is_personal_email_domain
 
@@ -179,15 +175,15 @@ def get_domain_registration_date(domain: str) -> dict[str, Any]:
             # Format as YYYY-MM-DD
             if isinstance(creation_date, datetime):
                 reg_date_str = creation_date.strftime("%Y-%m-%d")
-                logger.info("WHOIS lookup successful: %s registered %s", domain, reg_date_str)
+                print(f"[DomainEnrichment] WHOIS lookup successful: {domain} registered {reg_date_str}")
                 return {"success": True, "registration_date": reg_date_str, "error": None}
 
-        logger.warning("No registration date found for %s", domain)
+        print(f"[DomainEnrichment] WARNING: No registration date found for {domain}")
         return {"success": False, "registration_date": None, "error": "No registration date in whois data"}
 
     except Exception as e:
         error_msg = str(e)
-        logger.warning("WHOIS lookup failed for %s: %s: %s", domain, e.__class__.__name__, error_msg)
+        print(f"[DomainEnrichment] WARNING: WHOIS lookup failed for {domain}: {e.__class__.__name__}: {error_msg}")
 
         # Try to parse creation date from error message (some whois libraries return data in error)
         date_patterns = [
@@ -204,9 +200,7 @@ def get_domain_registration_date(domain: str) -> dict[str, Any]:
                 try:
                     creation_date = datetime.strptime(date_str, "%Y-%m-%d")
                     reg_date_str = creation_date.strftime("%Y-%m-%d")
-                    logger.info(
-                        "Extracted registration date from error message: %s registered %s", domain, reg_date_str
-                    )
+                    print(f"[DomainEnrichment] Extracted registration date from error message: {domain} registered {reg_date_str}")
                     return {"success": True, "registration_date": reg_date_str, "error": None}
                 except ValueError:
                     continue
@@ -262,7 +256,7 @@ def check_domain_mx_records(domain: str) -> dict[str, Any]:
                 results["status"] = "Legitimate Business Email"
                 results["provider_detected"] = name
                 results["risk_level"] = "LOW"
-                logger.info("MX lookup: %s uses %s", domain, name)
+                print(f"[DomainEnrichment] MX lookup: {domain} uses {name}")
                 return results
 
         # Check Standard Trust
@@ -272,7 +266,7 @@ def check_domain_mx_records(domain: str) -> dict[str, Any]:
                 results["status"] = "Standard Business Email"
                 results["provider_detected"] = name
                 results["risk_level"] = "LOW/MEDIUM"
-                logger.info("MX lookup: %s uses %s", domain, name)
+                print(f"[DomainEnrichment] MX lookup: {domain} uses {name}")
                 return results
 
         # Check Low Trust / Parking
@@ -282,7 +276,7 @@ def check_domain_mx_records(domain: str) -> dict[str, Any]:
                 results["status"] = "Registrar Default / Parked"
                 results["provider_detected"] = name
                 results["risk_level"] = "HIGH"
-                logger.warning("MX lookup: %s uses %s", domain, name)
+                print(f"[DomainEnrichment] WARNING: MX lookup: {domain} uses {name}")
                 return results
 
         # If it points to the domain itself (e.g., mail.custom-domain.com)
@@ -291,7 +285,7 @@ def check_domain_mx_records(domain: str) -> dict[str, Any]:
             results["status"] = "Self-Hosted / Local Hosting"
             results["provider_detected"] = "Private Server (e.g., cPanel/Exchange)"
             results["risk_level"] = "MEDIUM"
-            logger.info("MX lookup: %s uses self-hosted email", domain)
+            print(f"[DomainEnrichment] MX lookup: {domain} uses self-hosted email")
             return results
 
         # Unknown/Unrecognized MX record
@@ -299,23 +293,23 @@ def check_domain_mx_records(domain: str) -> dict[str, Any]:
         results["status"] = "Unknown Email Provider"
         results["provider_detected"] = f"Unrecognized provider: {primary_mx}"
         results["risk_level"] = "MEDIUM"
-        logger.warning("MX lookup: %s uses unrecognized provider: %s", domain, primary_mx)
+        print(f"[DomainEnrichment] WARNING: MX lookup: {domain} uses unrecognized provider: {primary_mx}")
         return results
 
     except dns.resolver.NoAnswer:
         results["status"] = "No Email Configured"
         results["risk_level"] = "CRITICAL"
         results["error"] = "Domain has no MX records"
-        logger.warning("MX lookup: %s has no MX records", domain)
+        print(f"[DomainEnrichment] WARNING: MX lookup: {domain} has no MX records")
         return results
     except dns.resolver.NXDOMAIN:
         results["status"] = "Domain Not Found"
         results["risk_level"] = "CRITICAL"
         results["error"] = "Domain does not exist"
-        logger.warning("MX lookup failed: %s does not exist", domain)
+        print(f"[DomainEnrichment] WARNING: MX lookup failed: {domain} does not exist")
         return results
     except Exception as e:
-        logger.warning("MX lookup failed for %s: %s: %s", domain, e.__class__.__name__, str(e))
+        print(f"[DomainEnrichment] WARNING: MX lookup failed for {domain}: {e.__class__.__name__}: {e}")
         results["error"] = str(e)
         return results
 
@@ -340,20 +334,11 @@ def _retry_lookup(lookup_fn, domain: str, lookup_name: str, start_time: float) -
         if attempt > 0:
             elapsed = time.time() - start_time
             if elapsed > _FUNCTION_TIME_BUDGET_SECONDS:
-                logger.warning(
-                    "%s for %s: time budget exceeded (%.1fs), returning last result", lookup_name, domain, elapsed
-                )
+                print(f"[DomainEnrichment] WARNING: {lookup_name} for {domain}: time budget exceeded ({elapsed:.1f}s), returning last result")
                 break
 
             delay = _RETRY_BASE_DELAY * (2 ** (attempt - 1))
-            logger.info(
-                "%s for %s: attempt %d/%d failed with transient error, retrying in %.1fs",
-                lookup_name,
-                domain,
-                attempt,
-                _MAX_RETRY_ATTEMPTS + 1,
-                delay,
-            )
+            print(f"[DomainEnrichment] {lookup_name} for {domain}: attempt {attempt}/{_MAX_RETRY_ATTEMPTS + 1} failed with transient error, retrying in {delay:.1f}s")
             time.sleep(delay)
 
         result = lookup_fn(domain)
@@ -368,7 +353,7 @@ def _retry_lookup(lookup_fn, domain: str, lookup_name: str, start_time: float) -
             return result
 
     # All retries exhausted
-    logger.warning("%s for %s: all %d attempts exhausted", lookup_name, domain, _MAX_RETRY_ATTEMPTS + 1)
+    print(f"[DomainEnrichment] WARNING: {lookup_name} for {domain}: all {_MAX_RETRY_ATTEMPTS + 1} attempts exhausted")
     return last_result
 
 
@@ -430,9 +415,9 @@ def main(request) -> tuple[dict, int]:
     if not email:
         return {"error": "email is required"}, 400
 
-    logger.info("Starting domain enrichment for email: %s", email)
+    print(f"[DomainEnrichment] Starting domain enrichment for email: {email}")
     if company_domain:
-        logger.info("Company domain provided: %s", company_domain)
+        print(f"[DomainEnrichment] Company domain provided: {company_domain}")
 
     # Extract domains to enrich (deduplicated)
     domains_to_enrich = []
@@ -442,17 +427,17 @@ def main(request) -> tuple[dict, int]:
     if email_domain and not is_personal_email_domain(email_domain):
         domains_to_enrich.append(email_domain)
         seen.add(email_domain.lower())
-        logger.info("Will enrich borrower email domain: %s", email_domain)
+        print(f"[DomainEnrichment] Will enrich borrower email domain: {email_domain}")
 
     if company_domain and company_domain.lower() not in seen:
         domains_to_enrich.append(company_domain)
         seen.add(company_domain.lower())
-        logger.info("Will enrich company domain: %s", company_domain)
+        print(f"[DomainEnrichment] Will enrich company domain: {company_domain}")
     elif company_domain:
-        logger.info("Company domain %s same as email domain, skipping duplicate", company_domain)
+        print(f"[DomainEnrichment] Company domain {company_domain} same as email domain, skipping duplicate")
 
     if not domains_to_enrich:
-        logger.info("No domains to enrich (all personal email domains)")
+        print("[DomainEnrichment] No domains to enrich (all personal email domains)")
         return {"domains": {}}, 200
 
     enrichment_results = {}
@@ -477,6 +462,6 @@ def main(request) -> tuple[dict, int]:
                 }
 
     elapsed = time.time() - start_time
-    logger.info("Domain enrichment complete - enriched %d domain(s) in %.1fs", len(domains_to_enrich), elapsed)
+    print(f"[DomainEnrichment] Domain enrichment complete - enriched {len(domains_to_enrich)} domain(s) in {elapsed:.1f}s")
 
     return {"domains": enrichment_results}, 200
