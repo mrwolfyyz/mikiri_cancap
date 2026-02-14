@@ -200,14 +200,16 @@ def on_job_updated(event: CloudEvent) -> None:
             payload_status = fields["status"].string_value if "status" in fields else None
 
             if payload_workflow and payload_workflow != "origination":
-                print(f"[OriginationReportGenerator] Early exit: workflow_type is '{payload_workflow}' (from event payload)")
+                print(
+                    f"[OriginationReportGenerator] Early exit: workflow_type is '{payload_workflow}' (from event payload)"
+                )
                 return
 
             if payload_status and payload_status != "post_processing":
                 print(f"[OriginationReportGenerator] Early exit: status is '{payload_status}' (from event payload)")
                 return
-        except Exception:
-            pass  # Fall through to Firestore read if payload parsing fails
+        except Exception:  # nosec B110 — best-effort payload parsing; fall through to Firestore read
+            pass
 
         # Fetch document directly from Firestore
         doc_ref = firestore_client.collection("jobs").document(job_id)
