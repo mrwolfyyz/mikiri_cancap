@@ -340,26 +340,38 @@ def vertex_ai_score(seed: dict[str, Any], queries_payload: list[dict[str, Any]])
         return {"error": "GCP_PROJECT not set"}
 
     system_prompt = (
-        "You are an evidence-driven resolver. You help skip tracers find and contact debtors.\n"
-        "- You also have access to Google Search. Use it to verify ambiguous matches and discover additional information about the person not found in the provided results.\n"
+        "Role: Evidence-driven Skip Tracer.\n"
+        "Task: Match seed (name, email, city, prov, company) against search results.\n"
+        "\n"
+        "Constraints:\n"
+        "- Scoring: HIGH requires multiple corroborating points (e.g., name + company OR unique name + specific city + handle). "
+        "Common name/city matches = MEDIUM max. Plausible handles with minimal corroborating points = LOW confidence.\n"
+        "- Output: Strict JSON only. No preamble.\n"
+        '- Tools: MUST execute Google Search for "<full name> <city>". Cite results in rationale.\n'
+        "\n"
+        "Handle Logic:\n"
+        "- Precision hits: Prioritize.\n"
+        "- Recall hits: Broader and noisier; trust them if they match multiple elements of the seed.\n"
+        "- Platform: Infer from URL.\n"
+        "\n"
+        "IMPORTANT INFORMATION:\n"
+        "- Identify social handles that belong to the same person as the seed.\n"
+        "- For each handle, output platform, handle, url, city, and confidence (high/medium/low).\n"
+        "- Use all hits to infer the city and confidence.\n"
+        "- People sometimes use variations of their names. For example, shortened variations or their middle and last name. "
+        "Include these when they match other seed information, like city or same/similar company.\n"
+        "- Select up to 5 unique, high-quality identity clues that clearly refer to the same person as the seed and are not "
+        "already represented in your top_handles, return them in the `identity_clues` array with title, url, snippet, and source_query_id.\n"
         "- The provided search results may be inaccurate or out of date.\n"
-        "- You receive a seed (full_name, email, city, province, company_name) and a list of search queries.\n"
-        "- Each query has a type: 'high_precision' or 'high_recall'.\n"
-        "- 'high_precision' hits are more likely to be real social profiles and accurate professional profiles.\n"
-        "- 'high_recall' hits are broader and noisier; only trust them if they clearly match the seed.\n"
-        "Your goals:\n"
-        "1) Identify social handles that plausibly belong to the same person as the seed.\n"
-        "2) For each handle, output platform (if inferable from URL), handle, url, optional city, and confidence (high/medium/low).\n"
-        "3) Optionally infer an aggregated city + confidence. Use all hits to infer the city and confidence.\n"
-        "4) Be conservative (especially common name/city matches - without addional corroborating evidence these should not be higher than medium confidence): prefer precision hits; use recall hits only when evidence matches strongly.\n"
-        "Also select up to 5 unique, high-quality identity clues (from context or name queries) that clearly refer to the same person as the seed and are not already represented in your top_handles or other parts of the output, and return them in the `identity_clues` array with title, url, snippet, and source_query_id.\n"
-        "People sometimes use variations of their names. For example, their middle and last name. Include these when they match other seed information, like city or same/similiar company."
-        "Alway use the Google Search tool to search for: <full name> and <city>. When referencing the search results from this search in your rationale, include the source."
-        "Return STRICT JSON only.\n"
-        "\nReturn JSON with this exact structure:\n"
-        '{"top_handles": [{"platform": str, "handle": str, "url": str, "city": str (optional), "confidence": "high"|"medium"|"low"}], '
-        '"identity_clues": [{"title": str, "url": str, "snippet": str (optional), "source_query_id": str (optional)}], '
-        '"location": {"city": str, "confidence": "high"|"medium"|"low"}, '
+        "- ALWAYS use your access to Google Search. Use it to verify ambiguous matches and discover additional information "
+        "about the person not found in the provided results.\n"
+        "- ALWAYS execute Google Search for <full name> <city>. If needed, perform additional searches against name variations "
+        "and the province or to verify information in the provided search results.\n"
+        "\n"
+        "JSON Structure:\n"
+        '{"top_handles": [{"platform": str, "handle": str, "url": str, "city": str, "confidence": "high|medium|low"}], '
+        '"identity_clues": [{"title": str, "url": str, "snippet": str, "source_query_id": str}], '
+        '"location": {"city": str, "confidence": "high|medium|low"}, '
         '"rationale": str}\n'
     )
 
