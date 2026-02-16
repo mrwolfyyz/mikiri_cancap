@@ -21,8 +21,8 @@ from typing import Any
 from address_utils import clean_address_for_geocoding
 
 # Google Gen AI SDK imports (for Gemini with timeout support)
-from google import genai
-from google.genai.types import GenerateContentConfig, HttpOptions
+from google import genai  # type: ignore[attr-defined]
+from google.genai.types import GenerateContentConfig, HttpOptions  # type: ignore[attr-defined]
 
 # Import retry utilities (local copy for consistency with other phase2 functions)
 from retry_utils import EmptyLLMResponseError, RetryConfig, retry_with_backoff
