@@ -217,7 +217,11 @@ def create_job(
         "error": None,
     }
 
-    db.collection("jobs").document(job_id).set(job_data)
+    retry_with_backoff(
+        lambda: db.collection("jobs").document(job_id).set(job_data),
+        RetryConfig(max_attempts=3, base_delay_seconds=0.5, max_delay_seconds=5.0),
+        operation_name="Firestore create job",
+    )
     return job_id
 
 
@@ -255,7 +259,11 @@ def trigger_workflow(
 
     execution = executions_v1.Execution(argument=json.dumps(workflow_input))
 
-    response = client.create_execution(parent=parent, execution=execution)
+    response = retry_with_backoff(
+        lambda: client.create_execution(parent=parent, execution=execution),
+        RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=10.0),
+        operation_name="Workflow trigger",
+    )
     return response.name
 
 
@@ -427,11 +435,18 @@ def handle_investigation(request: Request, headers: dict, workflow_name: str):
     # Trigger workflow (async), then mark job as pending
     try:
         trigger_workflow(job_id, email, full_name, city, province, company_name, workflow_name=workflow_name)
-        db.collection("jobs").document(job_id).update({"status": "pending"})
+        retry_with_backoff(
+            lambda: db.collection("jobs").document(job_id).update({"status": "pending"}),
+            RetryConfig(max_attempts=3, base_delay_seconds=0.5, max_delay_seconds=5.0),
+            operation_name="Firestore update job pending",
+        )
     except Exception as e:
-        # Update job as failed
-        db.collection("jobs").document(job_id).update(
-            {"status": "failed", "error": f"Failed to start workflow: {str(e)}"}
+        # Update job as failed — capture error string eagerly for lambda closure
+        error_msg = f"Failed to start workflow: {str(e)}"
+        retry_with_backoff(
+            lambda: db.collection("jobs").document(job_id).update({"status": "failed", "error": error_msg}),
+            RetryConfig(max_attempts=3, base_delay_seconds=0.5, max_delay_seconds=5.0),
+            operation_name="Firestore update job failed",
         )
         return jsonify({"error": f"Failed to start investigation: {str(e)}"}), 500, headers
 

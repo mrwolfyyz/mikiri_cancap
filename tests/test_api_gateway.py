@@ -905,3 +905,57 @@ class TestMainRouting:
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 500
         assert "db error" in data["error"]
+
+
+# ===========================================================================
+# Retry coverage tests
+# ===========================================================================
+class TestTriggerWorkflowRetry:
+    """Tests for retry logic in trigger_workflow."""
+
+    def test_transient_failure_retried(self):
+        """Workflow trigger retries on transient 503."""
+        mock_client_instance = MagicMock()
+        mock_execution = MagicMock()
+        mock_execution.name = "projects/p/locations/l/workflows/w/executions/abc"
+
+        mock_client_instance.create_execution.side_effect = [
+            Exception("503 Service Unavailable"),
+            mock_execution,
+        ]
+
+        with (
+            patch.object(gw, "PROJECT_ID", "test-project"),
+            patch.object(gw, "LOCATION", "us-central1"),
+            patch.object(gw.executions_v1, "ExecutionsClient", return_value=mock_client_instance),
+            patch.object(gw.executions_v1, "Execution", return_value=MagicMock()),
+            patch("retry_utils.time.sleep"),
+        ):
+            result = trigger_workflow("j1", "a@b.com", "John Smith", "Toronto", "ON")
+
+        assert result == mock_execution.name
+        assert mock_client_instance.create_execution.call_count == 2
+
+
+class TestCreateJobRetry:
+    """Tests for retry logic in create_job."""
+
+    def test_firestore_transient_failure_retried(self):
+        """create_job retries Firestore set on transient failure."""
+        call_count = [0]
+
+        def set_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise Exception("503 Service Unavailable")
+
+        gw.db.collection.return_value.document.return_value.set.side_effect = set_side_effect
+
+        with patch("retry_utils.time.sleep"):
+            job_id = create_job("a@b.com", "John Smith", "Toronto", "ON")
+
+        assert job_id is not None
+        assert call_count[0] == 2
+
+        # Restore
+        gw.db.collection.return_value.document.return_value.set.side_effect = None

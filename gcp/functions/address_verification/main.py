@@ -12,7 +12,6 @@ import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
-from urllib.error import HTTPError, URLError
 from urllib.parse import quote_plus
 from urllib.request import Request as URLRequest
 from urllib.request import urlopen
@@ -53,38 +52,52 @@ _last_nominatim_call = 0.0
 # -------------------------
 # Geocoding Functions
 # -------------------------
+def _nominatim_geocode_request(address: str) -> tuple:
+    """
+    Make a single Nominatim geocoding request.
+    Returns (lat, lon) on success, (None, None) if no results found.
+    Raises URLError/HTTPError on network/server errors so that
+    retry_with_backoff() can classify and retry transient failures.
+    """
+    url = f"https://nominatim.openstreetmap.org/search?q={quote_plus(address)}&format=json&limit=1"
+    req = URLRequest(url, headers={"User-Agent": "BorrowerIntelligence/1.0"})
+
+    with urlopen(req, timeout=30) as response:  # nosec B310 — hardcoded https URL
+        data = json.loads(response.read().decode())
+        if data and len(data) > 0:
+            lat = float(data[0]["lat"])
+            lon = float(data[0]["lon"])
+            print(f"[Geocoding] Geocoded successfully: {lat:.6f}, {lon:.6f}")
+            return (lat, lon)
+        else:
+            print("[Geocoding] No geocoding results found")
+            return (None, None)
+
+
 def geocode_address(address: str) -> tuple:
     """
-    Geocode an address using free Nominatim (OpenStreetMap) API.
+    Geocode an address using free Nominatim (OpenStreetMap) API with retry.
     Returns (lat, lon) tuple or (None, None) if geocoding fails.
     Uses timestamp-based rate limiting to respect Nominatim's 1 req/sec policy
     without unnecessary sleeping on the first call.
     """
     global _last_nominatim_call
+
+    # Respect Nominatim rate limit (1 req/sec) — only sleep if needed
+    elapsed = time.time() - _last_nominatim_call
+    if elapsed < 1.1:
+        time.sleep(1.1 - elapsed)
+    _last_nominatim_call = time.time()
+
     try:
-        # Nominatim requires a User-Agent
-        url = f"https://nominatim.openstreetmap.org/search?q={quote_plus(address)}&format=json&limit=1"
-        req = URLRequest(url, headers={"User-Agent": "BorrowerIntelligence/1.0"})
-
-        # Respect Nominatim rate limit (1 req/sec) - only sleep if needed
-        elapsed = time.time() - _last_nominatim_call
-        if elapsed < 1.1:
-            time.sleep(1.1 - elapsed)
-        _last_nominatim_call = time.time()
-
-        with urlopen(req, timeout=30) as response:  # nosec B310 — hardcoded https URL
-            data = json.loads(response.read().decode())
-            if data and len(data) > 0:
-                lat = float(data[0]["lat"])
-                lon = float(data[0]["lon"])
-                print(f"[Geocoding] ✓ Geocoded successfully: {lat:.6f}, {lon:.6f}")
-                return (lat, lon)
-            else:
-                print("[Geocoding] ⚠️  No geocoding results found")
-    except (URLError, HTTPError, KeyError, ValueError, json.JSONDecodeError) as e:
-        print(f"[Geocoding] ⚠️  Geocoding failed: {e.__class__.__name__}")
-
-    return (None, None)
+        return retry_with_backoff(
+            lambda: _nominatim_geocode_request(address),
+            RetryConfig(max_attempts=3, base_delay_seconds=2.0, max_delay_seconds=10.0),
+            operation_name=f"Geocoding: {address[:50]}",
+        )
+    except Exception as e:
+        print(f"[Geocoding] Geocoding failed after retries: {e.__class__.__name__}")
+        return (None, None)
 
 
 def generate_street_view_url(address: str, lat: float | None = None, lon: float | None = None) -> str:

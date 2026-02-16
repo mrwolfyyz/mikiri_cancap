@@ -20,20 +20,26 @@ main:
           - project_id: "${project_id}"
 
     - update_status_running:
-        call: googleapis.firestore.v1.projects.databases.documents.patch
-        args:
-          name: $${"projects/" + project_id + "/databases/(default)/documents/jobs/" + job_id}
-          updateMask:
-            fieldPaths: ["status", "started_at", "workflow_type"]
-          body:
-            fields:
-              status:
-                stringValue: "running"
-              started_at:
-                timestampValue: $${time.format(sys.now())}
-              workflow_type:
-                stringValue: "skiptrace"
-        result: update_result
+        try:
+          call: googleapis.firestore.v1.projects.databases.documents.patch
+          args:
+            name: $${"projects/" + project_id + "/databases/(default)/documents/jobs/" + job_id}
+            updateMask:
+              fieldPaths: ["status", "started_at", "workflow_type"]
+            body:
+              fields:
+                status:
+                  stringValue: "running"
+                started_at:
+                  timestampValue: $${time.format(sys.now())}
+                workflow_type:
+                  stringValue: "skiptrace"
+          result: update_result
+        retry:
+          max_attempts: 3
+          interval: 1s
+          max_interval: 10s
+          multiplier: 2.0
 
     # Company Domain Lookup (only if company_name provided)
     - check_company_name:
@@ -268,24 +274,30 @@ main:
           - errors_json: $${json.encode_to_string(aggregated_body.errors)}
 
     - update_status_post_processing:
-        call: googleapis.firestore.v1.projects.databases.documents.patch
-        args:
-          name: $${"projects/" + project_id + "/databases/(default)/documents/jobs/" + job_id}
-          updateMask:
-            fieldPaths: ["status", "result", "result_summary", "partial_failure", "errors"]
-          body:
-            fields:
-              status:
-                stringValue: "post_processing"
-              result:
-                stringValue: $${result_json}
-              result_summary:
-                stringValue: $${result_summary_json}
-              partial_failure:
-                booleanValue: $${aggregated_body.partial_failure}
-              errors:
-                stringValue: $${errors_json}
-        result: final_update
+        try:
+          call: googleapis.firestore.v1.projects.databases.documents.patch
+          args:
+            name: $${"projects/" + project_id + "/databases/(default)/documents/jobs/" + job_id}
+            updateMask:
+              fieldPaths: ["status", "result", "result_summary", "partial_failure", "errors"]
+            body:
+              fields:
+                status:
+                  stringValue: "post_processing"
+                result:
+                  stringValue: $${result_json}
+                result_summary:
+                  stringValue: $${result_summary_json}
+                partial_failure:
+                  booleanValue: $${aggregated_body.partial_failure}
+                errors:
+                  stringValue: $${errors_json}
+          result: final_update
+        retry:
+          max_attempts: 5
+          interval: 1s
+          max_interval: 30s
+          multiplier: 2.0
 
     - return_success:
         return:

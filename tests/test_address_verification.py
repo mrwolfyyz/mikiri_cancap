@@ -378,12 +378,14 @@ class TestGeocodeAddress:
         assert lon is None
 
     def test_network_error_returns_none(self):
+        """URLError on all attempts returns (None, None) after retries."""
         from urllib.error import URLError
 
         with (
             patch.object(av_main, "_last_nominatim_call", 0.0),
             patch("address_verification_main.urlopen", side_effect=URLError("timeout")),
             patch("address_verification_main.time") as mock_time,
+            patch("retry_utils.time.sleep"),
         ):
             mock_time.time.return_value = 100.0
             mock_time.sleep = MagicMock()
@@ -393,7 +395,7 @@ class TestGeocodeAddress:
         assert lon is None
 
     def test_http_error_returns_none(self):
-        """HTTPError (e.g. 500) is caught and returns (None, None)."""
+        """HTTPError (e.g. 500) is caught and returns (None, None) after retries."""
         from urllib.error import HTTPError
 
         with (
@@ -402,6 +404,7 @@ class TestGeocodeAddress:
                 "address_verification_main.urlopen", side_effect=HTTPError("http://...", 500, "Server Error", {}, None)
             ),
             patch("address_verification_main.time") as mock_time,
+            patch("retry_utils.time.sleep"),
         ):
             mock_time.time.return_value = 100.0
             mock_time.sleep = MagicMock()
@@ -409,6 +412,37 @@ class TestGeocodeAddress:
 
         assert lat is None
         assert lon is None
+
+    def test_transient_error_retried_then_succeeds(self):
+        """URLError on first call is retried, second call succeeds."""
+        from urllib.error import URLError
+
+        mock_resp_ok = MagicMock()
+        mock_resp_ok.read.return_value = json.dumps([{"lat": "43.65", "lon": "-79.38"}]).encode()
+        mock_resp_ok.__enter__ = MagicMock(return_value=mock_resp_ok)
+        mock_resp_ok.__exit__ = MagicMock(return_value=False)
+
+        call_count = [0]
+
+        def urlopen_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise URLError("Connection refused")
+            return mock_resp_ok
+
+        with (
+            patch.object(av_main, "_last_nominatim_call", 0.0),
+            patch("address_verification_main.urlopen", side_effect=urlopen_side_effect),
+            patch("address_verification_main.time") as mock_time,
+            patch("retry_utils.time.sleep"),
+        ):
+            mock_time.time.return_value = 100.0
+            mock_time.sleep = MagicMock()
+            lat, lon = geocode_address("123 Main St, Toronto")
+
+        assert lat == 43.65
+        assert lon == -79.38
+        assert call_count[0] == 2
 
     def test_json_decode_error_returns_none(self):
         """Invalid JSON response from Nominatim returns (None, None)."""
