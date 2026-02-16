@@ -1,7 +1,7 @@
-functions-framework
-cloudevents
-google-events
-firebase-admin
+functions-framework==3.*
+cloudevents==1.*
+google-events==0.*
+firebase-admin==6.*
 google-cloud-firestore==2.*
 google-api-python-client==2.*
 google-auth==2.*
@@ -9,5 +9,4 @@ google-auth-httplib2==0.2.*
 pyap==0.3.*
 python-whois==0.8.*
 dnspython==2.*
-google-genai>=1.1.0
-
+google-genai==1.*

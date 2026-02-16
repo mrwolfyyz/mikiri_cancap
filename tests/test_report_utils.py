@@ -345,6 +345,52 @@ class TestGetGravatarProfile:
         result = get_gravatar_profile("test@example.com")
         assert result["success"] is False
 
+    @patch("urllib.request.urlopen")
+    def test_response_no_entry_key(self, mock_urlopen):
+        """Lines 305-306: API returns data but no 'entry' key."""
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({"other_key": "value"}).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        result = get_gravatar_profile("noentry@example.com")
+        assert result["success"] is False
+        assert "No profile found" in result["error"]
+
+    @patch("urllib.request.urlopen")
+    def test_response_empty_entry_list(self, mock_urlopen):
+        """Lines 305-306: API returns data with empty entry list."""
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({"entry": []}).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        result = get_gravatar_profile("empty@example.com")
+        assert result["success"] is False
+        assert "No profile found" in result["error"]
+
+    @patch("urllib.request.urlopen")
+    def test_http_error_non_404(self, mock_urlopen):
+        """Lines 313-314: HTTPError with non-404 status code (e.g. 500)."""
+        from urllib.error import HTTPError
+
+        mock_urlopen.side_effect = HTTPError("url", 500, "Internal Server Error", {}, None)
+
+        result = get_gravatar_profile("servererror@example.com")
+        assert result["success"] is False
+        assert "HTTP 500" in result["error"]
+
+    @patch("urllib.request.urlopen")
+    def test_generic_exception(self, mock_urlopen):
+        """Lines 318-320: Generic exception handler."""
+        mock_urlopen.side_effect = RuntimeError("Unexpected error")
+
+        result = get_gravatar_profile("error@example.com")
+        assert result["success"] is False
+        assert "Unexpected error" in result["error"]
+
 
 # ===========================================================================
 # get_domain_registration_date (mocked whois)
@@ -424,6 +470,175 @@ class TestGetDomainRegistrationDate:
 
         assert result["success"] is True
         assert result["registration_date"] == "2020-03-15"
+
+    def test_dict_fallback_field(self):
+        """Lines 180-181: When getattr returns None/falsy for all standard fields,
+        fallback to __dict__ lookup finds the date.
+
+        This simulates whois libraries where a descriptor/property returns None
+        for the attribute but the raw __dict__ has the parsed value.
+        """
+        from datetime import datetime
+
+        # Use a class with properties that return None for field names,
+        # while __dict__ contains the actual truthy value.
+        class FakeWhoisResult:
+            # Properties shadow the instance __dict__ — getattr sees the property (None),
+            # but __dict__[key] sees the instance value.
+            creation_date = property(lambda self: None)
+            created = property(lambda self: None)
+            registered = property(lambda self: None)
+            registration_date = property(lambda self: None)
+            domain_date_created = property(lambda self: None)
+
+            def __init__(self):
+                self.text = ""
+
+        mock_whois_result = FakeWhoisResult()
+        # Insert directly into __dict__ without going through the property setter
+        mock_whois_result.__dict__["creation_date"] = datetime(2018, 5, 20)
+
+        mock_whois_module = MagicMock()
+        mock_whois_module.whois.return_value = mock_whois_result
+
+        with patch.dict(sys.modules, {"whois": mock_whois_module}):
+            result = get_domain_registration_date("dict-fallback.com")
+
+        assert result["success"] is True
+        assert result["registration_date"] == "2018-05-20"
+
+    def test_raw_text_regex_fallback_iso_date(self):
+        """Lines 185-207: Parse creation date from raw WHOIS text (YYYY-MM-DD)."""
+        mock_whois_result = MagicMock()
+        # Return None for all standard getattr field lookups
+        mock_whois_result.creation_date = None
+        mock_whois_result.created = None
+        mock_whois_result.registered = None
+        mock_whois_result.registration_date = None
+        mock_whois_result.domain_date_created = None
+        # Ensure __dict__ fallback also finds nothing (MagicMock __dict__ won't have
+        # the field names as truthy since we set them to None above, so this is fine)
+        mock_whois_result.text = "Domain: example.ai\nCreation Date: 2019-07-04\nExpiry: 2025-07-04"
+
+        mock_whois_module = MagicMock()
+        mock_whois_module.whois.return_value = mock_whois_result
+
+        with patch.dict(sys.modules, {"whois": mock_whois_module}):
+            result = get_domain_registration_date("example.ai")
+
+        assert result["success"] is True
+        assert result["registration_date"] == "2019-07-04"
+
+    def test_raw_text_regex_fallback_slash_date(self):
+        """Lines 185-207: Parse creation date from raw WHOIS text (MM/DD/YYYY)."""
+        mock_whois_result = MagicMock()
+        mock_whois_result.creation_date = None
+        mock_whois_result.created = None
+        mock_whois_result.registered = None
+        mock_whois_result.registration_date = None
+        mock_whois_result.domain_date_created = None
+        mock_whois_result.text = "Created: 03/15/2017\nUpdated: 01/10/2023"
+
+        mock_whois_module = MagicMock()
+        mock_whois_module.whois.return_value = mock_whois_result
+
+        with patch.dict(sys.modules, {"whois": mock_whois_module}):
+            result = get_domain_registration_date("slashdate.com")
+
+        assert result["success"] is True
+        assert result["registration_date"] == "2017-03-15"
+
+    def test_string_date_valueerror_then_dateutil_fallback(self):
+        """Lines 221-229: String date that matches no strptime format, falls back to dateutil."""
+        from datetime import datetime
+
+        mock_whois_result = MagicMock()
+        # Non-standard date string that strptime patterns won't match but dateutil will
+        mock_whois_result.creation_date = "January 5, 2021"
+        mock_whois_result.text = ""
+
+        mock_whois_module = MagicMock()
+        mock_whois_module.whois.return_value = mock_whois_result
+
+        # Mock dateutil.parser.parse to return a datetime
+        mock_dateutil_parser = MagicMock()
+        mock_dateutil_parser.parse.return_value = datetime(2021, 1, 5)
+        mock_dateutil = MagicMock()
+        mock_dateutil.parser = mock_dateutil_parser
+
+        with patch.dict(
+            sys.modules,
+            {"whois": mock_whois_module, "dateutil": mock_dateutil, "dateutil.parser": mock_dateutil_parser},
+        ):
+            result = get_domain_registration_date("dateutil-domain.com")
+
+        assert result["success"] is True
+        assert result["registration_date"] == "2021-01-05"
+
+    def test_string_date_all_parsers_fail(self):
+        """Lines 221-229: String date that no parser can handle."""
+        mock_whois_result = MagicMock()
+        mock_whois_result.creation_date = "not-a-date-at-all"
+        mock_whois_result.text = ""
+
+        mock_whois_module = MagicMock()
+        mock_whois_module.whois.return_value = mock_whois_result
+
+        with patch.dict(sys.modules, {"whois": mock_whois_module}):
+            result = get_domain_registration_date("unparseable.com")
+
+        # creation_date remains a string (not datetime), so it falls through
+        assert result["success"] is False
+        assert "No registration date" in result["error"]
+
+    def test_import_error_whois_not_installed(self):
+        """Lines 241-242: ImportError when python-whois is not available."""
+        mock_whois_module = MagicMock()
+        mock_whois_module.whois.side_effect = ImportError("No module named 'whois'")
+
+        # We need the import inside get_domain_registration_date to raise ImportError.
+        # The function does `import whois` inside the try block.
+        with patch.dict(sys.modules, {"whois": None}):
+            result = get_domain_registration_date("noimport.com")
+
+        assert result["success"] is False
+        assert "not installed" in result["error"]
+
+    def test_exception_with_date_in_error_message(self):
+        """Lines 260-267: Extract registration date from exception error message."""
+        mock_whois_module = MagicMock()
+        mock_whois_module.whois.side_effect = Exception(
+            "Failed to parse whois data. creation date: 2016-08-22T10:30:00Z"
+        )
+
+        with patch.dict(sys.modules, {"whois": mock_whois_module}):
+            result = get_domain_registration_date("error-date.ai")
+
+        assert result["success"] is True
+        assert result["registration_date"] == "2016-08-22"
+
+    def test_exception_with_no_date_in_error_message(self):
+        """Lines 260-267: Exception with error message that has no parseable date."""
+        mock_whois_module = MagicMock()
+        mock_whois_module.whois.side_effect = Exception("Connection timed out")
+
+        with patch.dict(sys.modules, {"whois": mock_whois_module}):
+            result = get_domain_registration_date("timeout.com")
+
+        assert result["success"] is False
+        assert "Connection timed out" in result["error"]
+
+    def test_exception_error_message_invalid_date_continues(self):
+        """Lines 266-267: Error message regex matches but date is invalid, continues to next pattern."""
+        mock_whois_module = MagicMock()
+        # The regex matches "creation date: 2016-13-45" but strptime fails (month 13 invalid)
+        mock_whois_module.whois.side_effect = Exception("Error: creation date: 2016-13-45 some other text")
+
+        with patch.dict(sys.modules, {"whois": mock_whois_module}):
+            result = get_domain_registration_date("bad-error-date.com")
+
+        assert result["success"] is False
+        assert "2016-13-45" in result["error"]
 
 
 # ===========================================================================
@@ -516,3 +731,86 @@ class TestCheckDomainMxRecords:
         assert result["success"] is True
         assert result["risk_level"] == "LOW"
         assert "Microsoft" in result["provider_detected"]
+
+    def test_standard_trust_zoho_detected(self):
+        """Lines 419-428: STANDARD_TRUST_PROVIDERS branch (Zoho)."""
+        mock_dns = MagicMock()
+        mock_dns.resolver.resolve.return_value = [
+            self._make_mx_record("mx.zoho.com.", 10),
+        ]
+
+        with patch.dict(sys.modules, {"dns": mock_dns, "dns.resolver": mock_dns.resolver}):
+            result = check_domain_mx_records("small-biz.com")
+
+        assert result["success"] is True
+        assert result["risk_level"] == "LOW/MEDIUM"
+        assert "Zoho" in result["provider_detected"]
+
+    def test_standard_trust_fastmail_detected(self):
+        """Lines 419-428: STANDARD_TRUST_PROVIDERS branch (Fastmail)."""
+        mock_dns = MagicMock()
+        mock_dns.resolver.resolve.return_value = [
+            self._make_mx_record("in1-smtp.messagingengine.fastmail.com.", 10),
+        ]
+
+        with patch.dict(sys.modules, {"dns": mock_dns, "dns.resolver": mock_dns.resolver}):
+            result = check_domain_mx_records("fastmail-user.com")
+
+        assert result["success"] is True
+        assert result["risk_level"] == "LOW/MEDIUM"
+        assert "Fastmail" in result["provider_detected"]
+
+    def test_unrecognized_provider(self):
+        """Lines 455-464: MX record that matches no known provider and is not self-hosted."""
+        mock_dns = MagicMock()
+        mock_dns.resolver.resolve.return_value = [
+            self._make_mx_record("mail.obscure-email-host.net.", 10),
+        ]
+
+        with patch.dict(sys.modules, {"dns": mock_dns, "dns.resolver": mock_dns.resolver}):
+            result = check_domain_mx_records("custom-domain.com")
+
+        assert result["success"] is True
+        assert result["risk_level"] == "MEDIUM"
+        assert result["status"] == "Unknown Email Provider"
+        assert "Unrecognized provider" in result["provider_detected"]
+
+    def test_empty_mx_records_after_resolve(self):
+        """Lines 397-400: dns.resolver.resolve returns records but none append (edge case)."""
+        mock_dns = MagicMock()
+        # Return an empty iterable (no records to iterate)
+        mock_dns.resolver.resolve.return_value = []
+
+        with patch.dict(sys.modules, {"dns": mock_dns, "dns.resolver": mock_dns.resolver}):
+            result = check_domain_mx_records("empty-mx.com")
+
+        assert result["success"] is False
+        assert result["risk_level"] == "CRITICAL"
+        assert result["status"] == "No MX Records Found"
+
+    def test_import_error_dnspython_not_installed(self):
+        """Lines 467-469: ImportError when dnspython is not available."""
+        mock_dns = MagicMock()
+        mock_dns.resolver.resolve.side_effect = ImportError("No module named 'dns'")
+        # Set NoAnswer and NXDOMAIN so the except chain doesn't match them
+        mock_dns.resolver.NoAnswer = type("NoAnswer", (Exception,), {})
+        mock_dns.resolver.NXDOMAIN = type("NXDOMAIN", (Exception,), {})
+
+        with patch.dict(sys.modules, {"dns": mock_dns, "dns.resolver": mock_dns.resolver}):
+            result = check_domain_mx_records("noimport.com")
+
+        assert result["success"] is False
+        assert "not installed" in result["error"]
+
+    def test_generic_exception(self):
+        """Lines 478-481: Generic exception handler in MX lookup."""
+        mock_dns = MagicMock()
+        mock_dns.resolver.NoAnswer = type("NoAnswer", (Exception,), {})
+        mock_dns.resolver.NXDOMAIN = type("NXDOMAIN", (Exception,), {})
+        mock_dns.resolver.resolve.side_effect = RuntimeError("DNS timeout")
+
+        with patch.dict(sys.modules, {"dns": mock_dns, "dns.resolver": mock_dns.resolver}):
+            result = check_domain_mx_records("timeout.com")
+
+        assert result["success"] is False
+        assert "DNS timeout" in result["error"]
