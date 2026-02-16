@@ -24,8 +24,8 @@ jobs:
       - name: Install test dependencies
         run: pip install -r requirements-test.txt
 
-      - name: Run unit tests
-        run: pytest tests/ -v --ignore=tests/test_golden_set.py
+      - name: Run unit tests with coverage
+        run: pytest tests/ -v --ignore=tests/test_golden_set.py --cov-fail-under=85
 
   lint:
     runs-on: ubuntu-latest
@@ -98,8 +98,8 @@ jobs:
       - name: Install mypy and type stubs
         run: pip install mypy types-requests types-python-dateutil
 
-      - name: Type check shared code
-        run: mypy gcp/shared/
+      - name: Type check shared code and functions
+        run: mypy gcp/shared/ gcp/functions/
 
   terraform-validate:
     runs-on: ubuntu-latest

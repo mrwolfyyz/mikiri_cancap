@@ -538,7 +538,10 @@ class TestExtractAddressesFromQueries:
         mock_addr.state = None
         mock_addr.zip_code = None
 
-        _mock_pyap.parse.return_value = [mock_addr]
+        # Use the actual pyap mock from sys.modules (may differ from local _mock_pyap
+        # when other test files run first and install their own mock via setdefault)
+        pyap_mock = sys.modules["pyap"]
+        pyap_mock.parse.return_value = [mock_addr]
 
         queries = [
             {
@@ -564,7 +567,8 @@ class TestExtractAddressesFromQueries:
         mock_addr.state = None
         mock_addr.zip_code = None
 
-        _mock_pyap.parse.return_value = [mock_addr]
+        pyap_mock = sys.modules["pyap"]
+        pyap_mock.parse.return_value = [mock_addr]
 
         queries = [{"hits": [{"title": "Page", "snippet": "Toronto, ON M5V 2K1", "url": "http://a.com"}]}]
         result = extract_addresses_from_queries(queries)

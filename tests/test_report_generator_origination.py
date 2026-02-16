@@ -7,6 +7,7 @@ Covers:
 
 import json
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -542,3 +543,393 @@ class TestOnJobUpdated:
         assert call_count[0] == 2
         update_data = mock_ref.set.call_args[0][0]
         assert update_data["status"] == "complete"
+
+
+# ===========================================================================
+# Drive helper functions & additional uncovered lines
+# ===========================================================================
+
+
+class TestDriveHelpers:
+    """Tests for get_drive_service, find_or_create_folder, upload_file_to_drive, upload_single_file."""
+
+    # --- get_drive_service (lines 83-84) ---
+
+    def test_get_drive_service_success(self):
+        """Successful build of Drive service returns service object."""
+        mock_creds = MagicMock()
+        mock_service = MagicMock()
+
+        with (
+            patch.object(rgo_main, "default", return_value=(mock_creds, "project-id")),
+            patch.object(rgo_main, "build", return_value=mock_service) as mock_build,
+        ):
+            result = rgo_main.get_drive_service()
+
+        assert result is mock_service
+        mock_build.assert_called_once_with("drive", "v3", credentials=mock_creds)
+
+    # --- find_or_create_folder (lines 96-117) ---
+
+    def test_find_or_create_folder_existing(self):
+        """When folder already exists, return its ID without creating."""
+        mock_service = MagicMock()
+        mock_service.files.return_value.list.return_value.execute.return_value = {
+            "files": [{"id": "existing-folder-id", "name": "MyFolder"}]
+        }
+
+        result = rgo_main.find_or_create_folder(mock_service, "parent-id", "MyFolder")
+
+        assert result == "existing-folder-id"
+        # Should NOT call create
+        mock_service.files.return_value.create.assert_not_called()
+
+    def test_find_or_create_folder_create_new(self):
+        """When folder does not exist, create it and return the new ID."""
+        mock_service = MagicMock()
+        # list returns empty results
+        mock_service.files.return_value.list.return_value.execute.return_value = {"files": []}
+        # create returns new folder
+        mock_service.files.return_value.create.return_value.execute.return_value = {"id": "new-folder-id"}
+
+        result = rgo_main.find_or_create_folder(mock_service, "parent-id", "NewFolder")
+
+        assert result == "new-folder-id"
+        mock_service.files.return_value.create.assert_called_once()
+        call_kwargs = mock_service.files.return_value.create.call_args[1]
+        assert call_kwargs["body"]["name"] == "NewFolder"
+        assert call_kwargs["body"]["parents"] == ["parent-id"]
+        assert call_kwargs["supportsAllDrives"] is True
+
+    def test_find_or_create_folder_parent_404(self):
+        """HttpError 404 on list propagates to caller."""
+        mock_service = MagicMock()
+        mock_resp = MagicMock(status=404)
+        mock_service.files.return_value.list.return_value.execute.side_effect = _HttpError(
+            resp=mock_resp, content=b"Not Found"
+        )
+
+        with pytest.raises(_HttpError):
+            rgo_main.find_or_create_folder(mock_service, "bad-parent-id", "Folder")
+
+    # --- upload_file_to_drive (lines 127-142) ---
+
+    def test_upload_file_to_drive_success(self):
+        """Successful file upload returns file metadata."""
+        mock_service = MagicMock()
+        expected_meta = {"id": "file-123", "name": "report.md", "webViewLink": "https://drive.google.com/file-123"}
+        mock_service.files.return_value.create.return_value.execute.return_value = expected_meta
+
+        mock_media = MagicMock()
+        with patch.object(rgo_main, "MediaFileUpload", return_value=mock_media) as mock_media_cls:
+            result = rgo_main.upload_file_to_drive(mock_service, Path("/tmp/report.md"), "report.md", "parent-id")
+
+        assert result == expected_meta
+        mock_media_cls.assert_called_once_with(str(Path("/tmp/report.md")), mimetype="text/markdown", resumable=True)
+        create_kwargs = mock_service.files.return_value.create.call_args[1]
+        assert create_kwargs["body"]["name"] == "report.md"
+        assert create_kwargs["body"]["parents"] == ["parent-id"]
+        assert create_kwargs["media_body"] is mock_media
+        assert create_kwargs["supportsAllDrives"] is True
+
+    # --- upload_single_file (lines 152-158) ---
+
+    def test_upload_single_file_success(self):
+        """upload_single_file creates its own Drive service and returns (name, meta) tuple."""
+        mock_service = MagicMock()
+        expected_meta = {"id": "f1", "webViewLink": "https://drive.google.com/f1"}
+
+        with (
+            patch.object(rgo_main, "get_drive_service", return_value=mock_service) as mock_get_svc,
+            patch.object(rgo_main, "upload_file_to_drive", return_value=expected_meta),
+            patch("retry_utils.time.sleep"),
+        ):
+            name, meta = rgo_main.upload_single_file(Path("/tmp/report.md"), "report.md", "folder-id")
+
+        assert name == "report.md"
+        assert meta == expected_meta
+        mock_get_svc.assert_called_once()
+
+
+# ===========================================================================
+# Additional on_job_updated uncovered lines
+# ===========================================================================
+
+
+class TestOnJobUpdatedAdditionalCoverage:
+    """Tests covering remaining uncovered lines in on_job_updated."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_payload_mock(self):
+        """Reset DocumentEventData mock before each test."""
+        rgo_main.firestore_events.DocumentEventData.reset_mock()
+        rgo_main.firestore_events.DocumentEventData.return_value = MagicMock(
+            _pb=MagicMock(ParseFromString=MagicMock(side_effect=Exception("no payload configured")))
+        )
+
+    # --- Line 191: document path starting with "jobs/" ---
+
+    def test_document_path_jobs_prefix(self):
+        """Document path 'jobs/jobXYZ' extracts job_id via startswith branch."""
+        data = _sample_job_data()
+        mock_doc = _mock_firestore_doc(data)
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_doc
+
+        mock_client = MagicMock()
+        mock_client.collection.return_value.document.return_value = mock_ref
+
+        def fake_generate(report_data, borrower_name, output_dir, **kwargs):
+            md_file = output_dir / f"Identity___{borrower_name.replace(' ', '_')}.md"
+            md_file.write_text("# Report")
+
+        with patch.object(rgo_main, "firestore_client", mock_client), patch.object(rgo_main, "md_gen") as mock_md:
+            mock_md.generate_identity_report = fake_generate
+            on_job_updated(_make_cloud_event("jobs/jobXYZ"))
+
+        # Should have looked up document with job_id "jobXYZ"
+        mock_client.collection.return_value.document.assert_called_with("jobXYZ")
+        update_data = mock_ref.set.call_args[0][0]
+        assert update_data["status"] == "complete"
+
+    # --- Line 301: unexpected file count warning ---
+
+    def test_unexpected_file_count_warning(self):
+        """When generate_identity_report creates no files, a warning is printed but processing continues."""
+        data = _sample_job_data()
+        data["input"]["drive_folder_id"] = ""  # Skip Drive upload
+
+        mock_doc = _mock_firestore_doc(data)
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_doc
+
+        mock_client = MagicMock()
+        mock_client.collection.return_value.document.return_value = mock_ref
+
+        def fake_generate_no_files(report_data, borrower_name, output_dir, **kwargs):
+            # Intentionally create NO files to trigger the warning
+            pass
+
+        with patch.object(rgo_main, "firestore_client", mock_client), patch.object(rgo_main, "md_gen") as mock_md:
+            mock_md.generate_identity_report = fake_generate_no_files
+            on_job_updated(_make_cloud_event())
+
+        update_data = mock_ref.set.call_args[0][0]
+        assert update_data["status"] == "complete"
+
+    # --- Line 340: no files to upload ---
+
+    def test_drive_upload_no_files_to_upload(self):
+        """When report files don't exist on disk, 'no files found to upload' warning path is hit."""
+        data = _sample_job_data()
+
+        mock_doc = _mock_firestore_doc(data)
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_doc
+
+        mock_client = MagicMock()
+        mock_client.collection.return_value.document.return_value = mock_ref
+
+        def fake_generate_no_files(report_data, borrower_name, output_dir, **kwargs):
+            # Create no files — the expected Identity file won't exist
+            pass
+
+        mock_drive_service = MagicMock()
+
+        with (
+            patch.object(rgo_main, "firestore_client", mock_client),
+            patch.object(rgo_main, "md_gen") as mock_md,
+            patch.object(rgo_main, "get_drive_service", return_value=mock_drive_service),
+            patch.object(rgo_main, "find_or_create_folder", return_value="subfolder789"),
+            patch("retry_utils.time.sleep"),
+        ):
+            mock_md.generate_identity_report = fake_generate_no_files
+            on_job_updated(_make_cloud_event())
+
+        update_data = mock_ref.set.call_args[0][0]
+        assert update_data["status"] == "complete"
+        # No upload was attempted since no files existed
+        assert update_data.get("report_urls", {}) == {}
+
+    # --- Lines 358-361: upload future raises exception ---
+
+    def test_drive_upload_future_exception(self):
+        """When upload_single_file raises inside a thread, upload_errors is populated.
+
+        The re-raised Exception("Upload errors: ...") on line 369 is caught by the
+        inner except Exception on line 382, which handles it gracefully (status=complete).
+        """
+        data = _sample_job_data()
+
+        mock_doc = _mock_firestore_doc(data)
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_doc
+
+        mock_client = MagicMock()
+        mock_client.collection.return_value.document.return_value = mock_ref
+
+        def fake_generate(report_data, borrower_name, output_dir, **kwargs):
+            md_file = output_dir / f"Identity___{borrower_name.replace(' ', '_')}.md"
+            md_file.write_text("# Report")
+
+        mock_drive_service = MagicMock()
+
+        with (
+            patch.object(rgo_main, "firestore_client", mock_client),
+            patch.object(rgo_main, "md_gen") as mock_md,
+            patch.object(rgo_main, "get_drive_service", return_value=mock_drive_service),
+            patch.object(rgo_main, "find_or_create_folder", return_value="subfolder789"),
+            patch.object(rgo_main, "upload_single_file", side_effect=RuntimeError("upload boom")),
+            patch("retry_utils.time.sleep"),
+        ):
+            mock_md.generate_identity_report = fake_generate
+            on_job_updated(_make_cloud_event())
+
+        # Upload error is caught by inner except Exception (line 382), handled gracefully
+        last_set = mock_ref.set.call_args[0][0]
+        assert last_set["status"] == "complete"
+        # Drive upload failed, so report_urls should be empty
+        assert last_set.get("report_urls", {}) == {}
+        # No reports_folder_link since Drive upload failed
+        assert "reports_folder_link" not in last_set
+
+    # --- Line 366: missing file warning ---
+
+    def test_drive_upload_missing_file_warning(self):
+        """When expected report file name doesn't exist but upload completes, missing file warning fires."""
+        data = _sample_job_data()
+
+        mock_doc = _mock_firestore_doc(data)
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_doc
+
+        mock_client = MagicMock()
+        mock_client.collection.return_value.document.return_value = mock_ref
+
+        def fake_generate_wrong_name(report_data, borrower_name, output_dir, **kwargs):
+            # Create a file with a NON-matching name, so the expected file isn't found
+            wrong_file = output_dir / "Wrong___Name.md"
+            wrong_file.write_text("# Wrong Report")
+
+        mock_drive_service = MagicMock()
+
+        with (
+            patch.object(rgo_main, "firestore_client", mock_client),
+            patch.object(rgo_main, "md_gen") as mock_md,
+            patch.object(rgo_main, "get_drive_service", return_value=mock_drive_service),
+            patch.object(rgo_main, "find_or_create_folder", return_value="subfolder789"),
+            patch("retry_utils.time.sleep"),
+        ):
+            mock_md.generate_identity_report = fake_generate_wrong_name
+            on_job_updated(_make_cloud_event())
+
+        # No files to upload, but should still complete (line 340 + 366)
+        update_data = mock_ref.set.call_args[0][0]
+        assert update_data["status"] == "complete"
+
+    # --- Line 379: non-404 HttpError ---
+
+    def test_drive_non_404_http_error(self):
+        """Non-404 HttpError (e.g. 403) is handled gracefully with different error message."""
+        data = _sample_job_data()
+
+        mock_doc = _mock_firestore_doc(data)
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_doc
+
+        mock_client = MagicMock()
+        mock_client.collection.return_value.document.return_value = mock_ref
+
+        def fake_generate(report_data, borrower_name, output_dir, **kwargs):
+            md_file = output_dir / f"Identity___{borrower_name.replace(' ', '_')}.md"
+            md_file.write_text("# Report")
+
+        mock_resp = MagicMock(status=403)
+        drive_error = _HttpError(resp=mock_resp, content=b"Forbidden")
+
+        with (
+            patch.object(rgo_main, "firestore_client", mock_client),
+            patch.object(rgo_main, "md_gen") as mock_md,
+            patch.object(rgo_main, "get_drive_service", side_effect=drive_error),
+        ):
+            mock_md.generate_identity_report = fake_generate
+            on_job_updated(_make_cloud_event())
+
+        update_data = mock_ref.set.call_args[0][0]
+        # Reports still complete because Drive errors are handled gracefully
+        assert update_data["status"] == "complete"
+
+    # --- Lines 400-402: markdown file not found + read exception ---
+
+    def test_identity_markdown_file_not_found(self):
+        """When identity markdown file doesn't exist, warning is printed but completes."""
+        data = _sample_job_data()
+        data["input"]["drive_folder_id"] = ""
+
+        mock_doc = _mock_firestore_doc(data)
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_doc
+
+        mock_client = MagicMock()
+        mock_client.collection.return_value.document.return_value = mock_ref
+
+        def fake_generate_no_identity(report_data, borrower_name, output_dir, **kwargs):
+            # Create a file with wrong name so identity file doesn't exist
+            other = output_dir / "Other___File.md"
+            other.write_text("# Other")
+
+        with patch.object(rgo_main, "firestore_client", mock_client), patch.object(rgo_main, "md_gen") as mock_md:
+            mock_md.generate_identity_report = fake_generate_no_identity
+            on_job_updated(_make_cloud_event())
+
+        update_data = mock_ref.set.call_args[0][0]
+        assert update_data["status"] == "complete"
+        # No markdown_reports since the identity file wasn't found
+        assert "identity" not in update_data.get("markdown_reports", {})
+
+    def test_markdown_read_exception(self):
+        """Exception while reading markdown file is caught gracefully."""
+        data = _sample_job_data()
+        data["input"]["drive_folder_id"] = ""
+
+        mock_doc = _mock_firestore_doc(data)
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_doc
+
+        mock_client = MagicMock()
+        mock_client.collection.return_value.document.return_value = mock_ref
+
+        def fake_generate(report_data, borrower_name, output_dir, **kwargs):
+            md_file = output_dir / f"Identity___{borrower_name.replace(' ', '_')}.md"
+            md_file.write_text("# Report")
+
+        with (
+            patch.object(rgo_main, "firestore_client", mock_client),
+            patch.object(rgo_main, "md_gen") as mock_md,
+            patch("builtins.open", side_effect=PermissionError("cannot read")),
+        ):
+            mock_md.generate_identity_report = fake_generate
+            on_job_updated(_make_cloud_event())
+
+        update_data = mock_ref.set.call_args[0][0]
+        assert update_data["status"] == "complete"
+
+    # --- Lines 446-447: Firestore update error in outer except ---
+
+    def test_firestore_update_error_in_outer_except(self):
+        """When both report generation and Firestore error-update fail, no unhandled exception."""
+        data = _sample_job_data()
+
+        mock_doc = _mock_firestore_doc(data)
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_doc
+        # The error-status update itself fails
+        mock_ref.set.side_effect = RuntimeError("Firestore is down")
+
+        mock_client = MagicMock()
+        mock_client.collection.return_value.document.return_value = mock_ref
+
+        with patch.object(rgo_main, "firestore_client", mock_client), patch.object(rgo_main, "md_gen") as mock_md:
+            mock_md.generate_identity_report.side_effect = RuntimeError("generation exploded")
+            # Should not raise — the outer except catches Firestore update error too
+            on_job_updated(_make_cloud_event())
