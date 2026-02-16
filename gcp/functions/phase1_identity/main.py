@@ -350,7 +350,7 @@ def vertex_ai_score(seed: dict[str, Any], queries_payload: list[dict[str, Any]])
         "Task: Match seed (name, email, city, prov, company) against search results.\n"
         "\n"
         "Constraints:\n"
-        "- Scoring: HIGH requires multiple corroborating points (e.g., name + company OR unique name + specific city + handle). "
+        "- Scoring: HIGH requires multiple corroborating points (e.g., name + company OR unique name + specific city + handle). company_name_linkedin handles are high confidence even if the snippet lacks the company name."
         "Common name/city matches = MEDIUM max. Plausible handles with minimal corroborating points = LOW confidence. "
         "Prefer including a handle at LOW confidence over excluding it entirely. Only omit handles that clearly belong to a different person.\n"
         "- Output: Strict JSON only. No preamble.\n"
