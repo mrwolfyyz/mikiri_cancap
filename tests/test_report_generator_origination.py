@@ -496,3 +496,49 @@ class TestOnJobUpdated:
         mock_client.collection.assert_called()
         update_data = mock_ref.set.call_args[0][0]
         assert update_data["status"] == "complete"
+
+    def test_drive_folder_transient_error_retried(self):
+        """Drive 503 on find_or_create_folder is retried, then succeeds."""
+        _setup_payload_mock(workflow_type="origination", status="post_processing")
+        data = _sample_job_data()
+
+        mock_doc = _mock_firestore_doc(data)
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_doc
+
+        mock_client = MagicMock()
+        mock_client.collection.return_value.document.return_value = mock_ref
+
+        def fake_generate(report_data, borrower_name, output_dir, **kwargs):
+            md_file = output_dir / f"Identity___{borrower_name.replace(' ', '_')}.md"
+            md_file.write_text("# Report")
+
+        call_count = [0]
+
+        def folder_side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise Exception("503 Service Unavailable")
+            return "subfolder123"
+
+        with (
+            patch.object(rgo_main, "firestore_client", mock_client),
+            patch.object(rgo_main, "md_gen") as mock_md,
+            patch.object(rgo_main, "get_drive_service", return_value=MagicMock()),
+            patch.object(rgo_main, "find_or_create_folder", side_effect=folder_side_effect),
+            patch.object(
+                rgo_main,
+                "upload_single_file",
+                return_value=(
+                    "Identity___Jane_Smith.md",
+                    {"id": "file1", "webViewLink": "https://drive.google.com/file1"},
+                ),
+            ),
+            patch("retry_utils.time.sleep"),
+        ):
+            mock_md.generate_identity_report = fake_generate
+            on_job_updated(_make_cloud_event())
+
+        assert call_count[0] == 2
+        update_data = mock_ref.set.call_args[0][0]
+        assert update_data["status"] == "complete"

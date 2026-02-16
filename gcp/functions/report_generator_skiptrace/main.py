@@ -27,6 +27,7 @@ firestore_client = firestore.client()
 
 # Import report generation functions
 import generate_markdown_reports_skiptrace as md_gen
+from retry_utils import RetryConfig, retry_with_backoff
 
 # -------------------------
 # Configuration
@@ -170,7 +171,11 @@ def upload_single_file(file_path: Path, file_name: str, parent_folder_id: str) -
     """
     # Create a new Drive service instance for this thread to avoid thread-safety issues
     drive_service = get_drive_service()
-    file_meta = upload_file_to_drive(drive_service, file_path, file_name, parent_folder_id)
+    file_meta = retry_with_backoff(
+        lambda: upload_file_to_drive(drive_service, file_path, file_name, parent_folder_id),
+        RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=10.0),
+        operation_name=f"Drive upload: {file_name}",
+    )
     return (file_name, file_meta)
 
 
@@ -318,7 +323,11 @@ def on_job_updated(event: CloudEvent) -> None:
 
                     # Create borrower folder with job_id
                     job_folder_name = f"{borrower_name}_{job_id}"
-                    job_folder_id = find_or_create_folder(drive_service, drive_folder_id, job_folder_name)
+                    job_folder_id = retry_with_backoff(
+                        lambda: find_or_create_folder(drive_service, drive_folder_id, job_folder_name),
+                        RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=10.0),
+                        operation_name="Drive find/create folder",
+                    )
 
                     # Upload both files
                     report_urls = {}

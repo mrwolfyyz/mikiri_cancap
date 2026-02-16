@@ -712,6 +712,50 @@ class TestVertexAiSearch:
         assert result[0]["snippet"] == "Software Engineer in Toronto"
         assert result[1]["snippet"] == ""  # no snippets → empty string
 
+    def test_search_transient_error_retried(self):
+        """Verify transient gRPC errors are retried before returning empty."""
+        mock_doc = MagicMock()
+        mock_doc.document.derived_struct_data = {
+            "link": "https://linkedin.com/in/test",
+            "title": "Test",
+            "snippets": [{"snippet": "test snippet"}],
+        }
+        mock_response = MagicMock()
+        mock_response.results = [mock_doc]
+
+        mock_client = MagicMock()
+        mock_client.search.side_effect = [
+            Exception("503 Service Unavailable"),
+            mock_response,
+        ]
+
+        with (
+            patch.object(p1_main, "_search_client", mock_client),
+            patch.object(p1_main, "_get_search_client", return_value=mock_client),
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
+            results = p1_main._vertex_ai_search("test-engine", "test query")
+
+        assert len(results) == 1
+        assert mock_client.search.call_count == 2
+
+    def test_search_permanent_error_not_retried(self):
+        """Verify non-retryable errors fail immediately."""
+        mock_client = MagicMock()
+        mock_client.search.side_effect = ValueError("Invalid engine ID")
+
+        with (
+            patch.object(p1_main, "_search_client", mock_client),
+            patch.object(p1_main, "_get_search_client", return_value=mock_client),
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
+            results = p1_main._vertex_ai_search("bad-engine", "test query")
+
+        assert results == []
+        assert mock_client.search.call_count == 1
+
 
 # ===========================================================================
 # Identity resolution orchestration (_run_identity_resolution via main)

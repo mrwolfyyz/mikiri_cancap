@@ -182,7 +182,7 @@ def _vertex_ai_search(engine_id: str, query: str, num: int = 5, label: str = "Se
 
         relevance_score_spec = discoveryengine.SearchRequest.RelevanceScoreSpec(return_relevance_score=True)
 
-        request = discoveryengine.SearchRequest(
+        search_request = discoveryengine.SearchRequest(
             serving_config=serving_config,
             query=query,
             page_size=num,
@@ -191,7 +191,13 @@ def _vertex_ai_search(engine_id: str, query: str, num: int = 5, label: str = "Se
         )
 
         print(f"[Vertex AI Search {label}] Executing search: query={query[:80]}..., serving_config={serving_config}")
-        response = client.search(request)
+
+        # Retry transient gRPC errors (429, 500, 503, DEADLINE_EXCEEDED)
+        response = retry_with_backoff(
+            lambda: client.search(search_request),
+            RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=10.0),
+            operation_name=f"Vertex AI Search {label}",
+        )
 
         results = []
         for result in response.results:
