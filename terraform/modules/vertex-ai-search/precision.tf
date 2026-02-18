@@ -188,6 +188,19 @@ resource "google_discovery_engine_target_site" "precision_nationalpost" {
   ]
 }
 
+resource "google_discovery_engine_target_site" "precision_canada411" {
+  project              = var.project_id
+  location             = "global"
+  data_store_id        = google_discovery_engine_data_store.precision.data_store_id
+  provided_uri_pattern = "*.canada411.ca/search/*"
+  type                 = "INCLUDE"
+  exact_match          = false
+
+  depends_on = [
+    google_discovery_engine_target_site.precision_nationalpost
+  ]
+}
+
 # -----------------------------------------------------------------------------
 # Search Engine
 # -----------------------------------------------------------------------------
@@ -207,6 +220,6 @@ resource "google_discovery_engine_search_engine" "precision" {
   }
 
   depends_on = [
-    google_discovery_engine_target_site.precision_nationalpost
+    google_discovery_engine_target_site.precision_canada411
   ]
 }
