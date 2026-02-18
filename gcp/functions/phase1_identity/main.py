@@ -90,6 +90,39 @@ def extract_domain(url: str) -> str:
         return ""
 
 
+def infer_platform_from_url(url: str) -> str:
+    """Infer social platform name from URL domain."""
+    domain = extract_domain(url)
+    if "linkedin.com" in domain:
+        return "linkedin"
+    if "x.com" in domain or "twitter.com" in domain:
+        return "twitter"
+    if "facebook.com" in domain:
+        return "facebook"
+    if "instagram.com" in domain:
+        return "instagram"
+    if "tiktok.com" in domain:
+        return "tiktok"
+    if "youtube.com" in domain:
+        return "youtube"
+    if domain:
+        return domain.split(".")[0]
+    return "unknown"
+
+
+def extract_handle_from_url(url: str) -> str:
+    """Extract best-effort social handle from URL path."""
+    try:
+        path_parts = [p for p in urlparse(url).path.strip("/").split("/") if p]
+        if not path_parts:
+            return ""
+        if path_parts[0] in {"in", "pub", "company"} and len(path_parts) > 1:
+            return path_parts[1]
+        return path_parts[-1]
+    except Exception:
+        return ""
+
+
 def generate_name_variations(full_name: str) -> tuple[str, str | None]:
     """
     Generate name variations for search queries.
@@ -350,7 +383,7 @@ def vertex_ai_score(seed: dict[str, Any], queries_payload: list[dict[str, Any]])
         "Task: Match seed (name, email, city, prov, company) against search results.\n"
         "\n"
         "Constraints:\n"
-        "- Scoring: HIGH requires multiple corroborating points (e.g., name + company OR unique name + specific city + handle). company_name_linkedin handles are high confidence even if the snippet lacks the company name."
+        "- Scoring: HIGH requires multiple corroborating points (e.g., name + company OR unique name + specific city + handle). "
         "Common name/city matches = MEDIUM max. Plausible handles with minimal corroborating points = LOW confidence. "
         "Prefer including a handle at LOW confidence over excluding it entirely. Only omit handles that clearly belong to a different person.\n"
         "- Output: Strict JSON only. No preamble.\n"
@@ -990,6 +1023,44 @@ def _run_identity_resolution(
         except Exception as e:
             print(f"[Phase1] HIBP lookup failed: {e}")
             breaches = []
+
+    # Guardrail: ensure deterministic company_name_linkedin hit is represented
+    # in top_handles when the query produced results.
+    if not scored_error:
+        if not isinstance(scored.get("top_handles"), list):
+            scored["top_handles"] = []
+
+        company_linkedin_entry = next((q for q in queries_payload if q.get("id") == "company_name_linkedin"), None)
+        company_hits = company_linkedin_entry.get("hits", []) if isinstance(company_linkedin_entry, dict) else []
+
+        if company_linkedin_entry and company_hits:
+            first_hit = company_hits[0] if isinstance(company_hits[0], dict) else {}
+            first_hit_url = first_hit.get("url", "")
+
+            existing_urls = {
+                h.get("url")
+                for h in scored.get("top_handles", [])
+                if isinstance(h, dict) and h.get("url")
+            }
+
+            if first_hit_url and first_hit_url not in existing_urls:
+                location = scored.get("location") if isinstance(scored.get("location"), dict) else {}
+                inferred_city = (location.get("city") or "").strip() or city
+                scored["top_handles"].insert(
+                    0,
+                    {
+                        "platform": infer_platform_from_url(first_hit_url),
+                        "handle": extract_handle_from_url(first_hit_url),
+                        "url": first_hit_url,
+                        "city": inferred_city,
+                        "confidence": "high",
+                    },
+                )
+                print(f"[Phase1] Guardrail inserted company_name_linkedin handle: {first_hit_url}")
+            elif first_hit_url:
+                print(f"[Phase1] Guardrail skipped: company_name_linkedin already in top_handles ({first_hit_url})")
+        elif company_linkedin_entry:
+            print("[Phase1] Guardrail skipped: company_name_linkedin had zero hits")
 
     # -------------------------
     # Location-based name search rerun
