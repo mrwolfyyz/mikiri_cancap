@@ -1038,9 +1038,7 @@ def _run_identity_resolution(
             first_hit_url = first_hit.get("url", "")
 
             existing_urls = {
-                h.get("url")
-                for h in scored.get("top_handles", [])
-                if isinstance(h, dict) and h.get("url")
+                h.get("url") for h in scored.get("top_handles", []) if isinstance(h, dict) and h.get("url")
             }
 
             if first_hit_url and first_hit_url not in existing_urls:
