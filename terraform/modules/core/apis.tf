@@ -20,9 +20,9 @@ locals {
     "storage.googleapis.com",          # Cloud Storage (for function source)
 
     # External services
-    "drive.googleapis.com",            # Google Drive API (for report storage)
-    "customsearch.googleapis.com",     # Google Custom Search API
-    "discoveryengine.googleapis.com",  # Vertex AI Search / Discovery Engine
+    "drive.googleapis.com",           # Google Drive API (for report storage)
+    "customsearch.googleapis.com",    # Google Custom Search API
+    "discoveryengine.googleapis.com", # Vertex AI Search / Discovery Engine
 
     # Firebase
     "firebase.googleapis.com",        # Firebase
