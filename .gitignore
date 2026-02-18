@@ -4,6 +4,8 @@
 *.tfstate.*
 *.tfvars
 !*.tfvars.example
+terraform/environments/*/backend.tf
+!terraform/environments/*/backend.tf.example
 .terraform.lock.hcl
 crash.log
 crash.*.log

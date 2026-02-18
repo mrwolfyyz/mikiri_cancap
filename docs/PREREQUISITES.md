@@ -36,6 +36,8 @@ gcloud config set project YOUR_PROJECT_ID
 gcloud config get-value project
 ```
 
+**Note**: After running `gcloud config set project`, you may see a warning: *"Your active project does not match the quota project in your local Application Default Credentials file."* This is expected and harmless at this stage — it will be resolved in the [Local Tools](#local-tools) section when you configure Application Default Credentials.
+
 **Important**: Note your Project ID (not Project Name) - you'll need this throughout the deployment.
 
 ### 2. Enable Billing
@@ -96,6 +98,7 @@ gcloud services enable \
   eventarc.googleapis.com \
   cloudbuild.googleapis.com \
   drive.googleapis.com \
+  discoveryengine.googleapis.com \
   firebase.googleapis.com \
   firebasehosting.googleapis.com \
   identitytoolkit.googleapis.com \
@@ -148,7 +151,8 @@ gcloud init
 gcloud config set project YOUR_PROJECT_ID
 
 # Set default region
-gcloud config set compute/region northamerica-northeast1
+# Note: use --quiet to avoid a prompt to enable the Compute Engine API (not required)
+gcloud config set compute/region northamerica-northeast1 --quiet
 
 # Authenticate application default credentials (for Terraform)
 # IMPORTANT: Ensure the correct project is active before running this command
@@ -266,8 +270,8 @@ Run through this checklist before deployment. **Verify each item with the comman
   ```bash
   # Replace with your project ID
   PROJECT_ID="your-project-id"
-  gcloud projects describe $PROJECT_ID
-  # Verify billing account is linked (check output)
+  gcloud billing projects describe $PROJECT_ID
+  # Should show: billingEnabled: true
   ```
 
 - [ ] **Project ID noted (not Project Name)**

@@ -83,7 +83,7 @@ Before proceeding, verify that you've completed authentication (this should alre
 
 ```bash
 # Run authentication check script (validates all auth requirements)
-./scripts/check-terraform-auth.sh mikiri-demo-test
+./scripts/check-terraform-auth.sh YOUR_PROJECT_ID
 ```
 
 This script verifies:
@@ -240,7 +240,7 @@ Run the frontend preparation script to copy shared JS/CSS and process HTML templ
 
 ```bash
 # Recommended: Run authentication check script
-./scripts/check-terraform-auth.sh mikiri-demo-test
+./scripts/check-terraform-auth.sh YOUR_PROJECT_ID
 
 # If authentication check passes, proceed with Terraform
 cd terraform/environments/dev  # or prod

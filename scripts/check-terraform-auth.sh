@@ -50,9 +50,9 @@ fi
 echo "✓ Quota project set correctly: $QUOTA_PROJECT"
 
 # Test GCS access (terraform backend)
-if ! gsutil ls -b gs://mikiri-demo-test-terraform-state >/dev/null 2>&1; then
+if ! gsutil ls -b gs://${PROJECT_ID}-terraform-state >/dev/null 2>&1; then
   echo "❌ Cannot access Terraform state bucket"
-  echo "   Bucket: mikiri-demo-test-terraform-state"
+  echo "   Bucket: ${PROJECT_ID}-terraform-state"
   echo ""
   echo "Check IAM permissions or re-authenticate"
   exit 1
