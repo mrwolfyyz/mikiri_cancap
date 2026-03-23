@@ -840,18 +840,27 @@ def _run_identity_resolution(
     if city:
         precision_query_base += f" {city.split(',')[0]}"
 
+    linkedin_name_candidates = [full_name] + [n for n in generated_names if isinstance(n, str)]
+    linkedin_names = []
+    seen_linkedin_names = set()
+    for name in linkedin_name_candidates:
+        normalized = name.strip().lower()
+        if not normalized or normalized in seen_linkedin_names:
+            continue
+        seen_linkedin_names.add(normalized)
+        linkedin_names.append(name.strip())
+    linkedin_name_or_clause = " OR ".join(f'"{name}"' for name in linkedin_names)
+
     # Provincial LinkedIn query
     provincial_linkedin_query = ""
-    if generated_names and province:
+    if linkedin_name_or_clause and province:
         province_full = PROVINCE_NAMES.get(province, province)
-        all_names = [full_name] + [n for n in generated_names if n.lower() != full_name.lower()]
-        name_parts = " OR ".join(f'"{name}"' for name in all_names)
-        provincial_linkedin_query = f"{name_parts} {province_full}"
+        provincial_linkedin_query = f"{linkedin_name_or_clause} {province_full}"
 
     # Company name LinkedIn query
     company_name_linkedin_query = ""
-    if company_name:
-        company_name_linkedin_query = f'"{full_name}" {company_name}'
+    if linkedin_name_or_clause and company_name:
+        company_name_linkedin_query = f"{linkedin_name_or_clause} {company_name}"
 
     # Recall queries
     recall_query = ""

@@ -1188,6 +1188,40 @@ class TestRunIdentityResolution:
         # Check that the provincial_linkedin query entry is in queries payload
         assert any(q["id"] == "provincial_linkedin" for q in result["queries"])
 
+    def test_company_name_linkedin_query_uses_generated_names(self):
+        """Company LinkedIn query should OR full_name with generated name variations."""
+        body = self._base_body(company_name="Acme Corp", generated_names=["Jon Doe", "Jonathan Doe"])
+        scored = self._make_scored()
+        result, status, _, _ = self._run_main(body, scored, linkedin_results=[])
+
+        assert status == 200
+        company_query_entries = [q for q in result["queries"] if q["id"] == "company_name_linkedin"]
+        assert len(company_query_entries) == 1
+        company_query = company_query_entries[0]["query"]
+        assert '"John Doe"' in company_query
+        assert '"Jon Doe"' in company_query
+        assert '"Jonathan Doe"' in company_query
+        assert company_query.endswith(" Acme Corp")
+
+    def test_company_name_linkedin_query_dedupes_case_variant_names(self):
+        """Company LinkedIn query should dedupe duplicate/case-variant generated names."""
+        body = self._base_body(
+            company_name="Acme Corp",
+            generated_names=["john doe", "John Doe", "  JOHN DOE  ", "Jon Doe", "jon doe"],
+        )
+        scored = self._make_scored()
+        result, status, _, _ = self._run_main(body, scored, linkedin_results=[])
+
+        assert status == 200
+        company_query_entries = [q for q in result["queries"] if q["id"] == "company_name_linkedin"]
+        assert len(company_query_entries) == 1
+        company_query = company_query_entries[0]["query"]
+
+        # full_name should appear only once despite duplicates/case variants in generated_names
+        assert company_query.count('"John Doe"') == 1
+        # Jon Doe variation should also dedupe
+        assert company_query.count('"Jon Doe"') == 1
+
     def test_generated_names_added_to_seed_payload(self):
         """Generated names should be carried in the seed sent to LLM."""
         body = self._base_body(generated_names=["Jon Doe", "  ", "Jonathan Doe", 123])
