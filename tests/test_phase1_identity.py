@@ -121,28 +121,34 @@ class TestExtractDomain:
 
 class TestGenerateNameVariations:
     def test_two_part_name(self):
-        full, variation = generate_name_variations("John Smith")
+        full, first_last, middle_last = generate_name_variations("John Smith")
         assert full == "John Smith"
-        assert variation is None
+        assert first_last is None
+        assert middle_last is None
 
     def test_three_part_name(self):
-        full, variation = generate_name_variations("John Michael Smith")
+        full, first_last, middle_last = generate_name_variations("John Michael Smith")
         assert full == "John Michael Smith"
-        assert variation == "Michael Smith"
+        assert first_last == "John Smith"
+        assert middle_last == "Michael Smith"
 
     def test_four_part_name(self):
-        full, variation = generate_name_variations("John Michael David Smith")
-        assert variation == "David Smith"
+        full, first_last, middle_last = generate_name_variations("John Michael David Smith")
+        assert full == "John Michael David Smith"
+        assert first_last == "John Smith"
+        assert middle_last == "David Smith"
 
     def test_single_name(self):
-        full, variation = generate_name_variations("Madonna")
+        full, first_last, middle_last = generate_name_variations("Madonna")
         assert full == "Madonna"
-        assert variation is None
+        assert first_last is None
+        assert middle_last is None
 
     def test_empty_name(self):
-        full, variation = generate_name_variations("")
+        full, first_last, middle_last = generate_name_variations("")
         assert full == ""
-        assert variation is None
+        assert first_last is None
+        assert middle_last is None
 
 
 class TestIsBusinessEmail:
@@ -1182,6 +1188,128 @@ class TestRunIdentityResolution:
         # Check that the provincial_linkedin query entry is in queries payload
         assert any(q["id"] == "provincial_linkedin" for q in result["queries"])
 
+    def test_generated_names_added_to_seed_payload(self):
+        """Generated names should be carried in the seed sent to LLM."""
+        body = self._base_body(generated_names=["Jon Doe", "  ", "Jonathan Doe", 123])
+        scored = self._make_scored()
+        result, status, _, _ = self._run_main(body, scored)
+
+        assert status == 200
+        assert result["seed"]["generated_names"] == ["Jon Doe", "Jonathan Doe"]
+
+    def test_invalid_generated_names_type_not_added_to_seed(self):
+        """Non-list generated_names input should normalize safely and be omitted from seed."""
+        body = self._base_body(generated_names="not-a-list")
+        scored = self._make_scored()
+        result, status, _, _ = self._run_main(body, scored)
+
+        assert status == 200
+        assert "generated_names" not in result["seed"]
+
+    def test_recall_2_primary_query_restored_to_prefix_or_full_name(self):
+        """Primary recall_2 query should be restored to prefix OR full_name only."""
+        body = self._base_body(generated_names=["Sandra Shelvey", "Sandy Shelvey"])
+        scored = self._make_scored()
+        result, status, _, _ = self._run_main(body, scored, precision_results=[])
+
+        assert status == 200
+        recall_2_entries = [q for q in result["queries"] if q["id"] == "recall_2"]
+        assert len(recall_2_entries) == 1
+        recall_2_query = recall_2_entries[0]["query"]
+        assert recall_2_query == 'john OR "John Doe"'
+        assert '"Sandra Shelvey"' not in recall_2_query
+        assert '"Sandy Shelvey"' not in recall_2_query
+
+    def test_recall_2_fallback_runs_when_primary_has_zero_hits(self):
+        """Fallback recall_2 query runs only after primary returns zero hits."""
+        body = self._base_body(generated_names=["Sandra Shelvey", "Sandy Shelvey"])
+        scored = self._make_scored()
+
+        primary_query = 'john OR "John Doe"'
+        fallback_query = '"John Doe" OR "Sandra Shelvey" OR "Sandy Shelvey"'
+        fallback_hit = {
+            "url": "https://example.com/sandra",
+            "title": "Sandra profile",
+            "snippet": "Sandra Shelvey",
+            "relevance_score": 0.0,
+        }
+
+        def precision_side_effect(query, num=5):
+            if query == primary_query:
+                return []
+            if query == fallback_query:
+                return [fallback_hit]
+            return []
+
+        mock_response = MagicMock()
+        mock_response.text = json.dumps(scored)
+        mock_response.candidates = [MagicMock()]
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        mock_hibp_resp = MagicMock()
+        mock_hibp_resp.status_code = 404
+        mock_hibp_resp.raise_for_status = MagicMock()
+
+        with (
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch.object(p1_main, "HIBP_API_KEY", "test-key"),
+            patch.object(p1_main, "_get_search_client", return_value=MagicMock()),
+            patch.object(p1_main, "vertex_ai_search_precision", side_effect=precision_side_effect),
+            patch.object(p1_main, "vertex_ai_search_recall", return_value=[]),
+            patch.object(p1_main, "vertex_ai_search_linkedin", return_value=[]),
+            patch.object(p1_main, "genai") as mock_genai_mod,
+            patch("phase1_identity_main.requests.get", return_value=mock_hibp_resp),
+            patch("retry_utils.time.sleep"),
+        ):
+            mock_genai_mod.Client.return_value = mock_client
+            result, status = main_handler(_make_request(body))
+
+        assert status == 200
+        fallback_entries = [q for q in result["queries"] if q["id"] == "recall_2_fallback"]
+        assert len(fallback_entries) == 1
+        assert fallback_entries[0]["query"] == fallback_query
+        assert "john OR" not in fallback_entries[0]["query"]
+
+    def test_recall_2_fallback_not_run_when_primary_has_hits(self):
+        """No recall_2 fallback query entry should be emitted when primary has hits."""
+        body = self._base_body(generated_names=["Sandra Shelvey", "Sandy Shelvey"])
+        scored = self._make_scored()
+
+        primary_query = 'john OR "John Doe"'
+
+        def precision_side_effect(query, num=5):
+            if query == primary_query:
+                return [{"url": "https://example.com/john", "title": "John", "snippet": "John", "relevance_score": 0.0}]
+            return []
+
+        mock_response = MagicMock()
+        mock_response.text = json.dumps(scored)
+        mock_response.candidates = [MagicMock()]
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_response
+
+        mock_hibp_resp = MagicMock()
+        mock_hibp_resp.status_code = 404
+        mock_hibp_resp.raise_for_status = MagicMock()
+
+        with (
+            patch.object(p1_main, "GCP_PROJECT", "test-project"),
+            patch.object(p1_main, "HIBP_API_KEY", "test-key"),
+            patch.object(p1_main, "_get_search_client", return_value=MagicMock()),
+            patch.object(p1_main, "vertex_ai_search_precision", side_effect=precision_side_effect),
+            patch.object(p1_main, "vertex_ai_search_recall", return_value=[]),
+            patch.object(p1_main, "vertex_ai_search_linkedin", return_value=[]),
+            patch.object(p1_main, "genai") as mock_genai_mod,
+            patch("phase1_identity_main.requests.get", return_value=mock_hibp_resp),
+            patch("retry_utils.time.sleep"),
+        ):
+            mock_genai_mod.Client.return_value = mock_client
+            result, status = main_handler(_make_request(body))
+
+        assert status == 200
+        assert not any(q["id"] == "recall_2_fallback" for q in result["queries"])
+
     def test_three_part_name_uses_or_variation(self):
         """A three-part name produces OR variation in precision query (line 764)."""
         body = self._base_body(full_name="John Michael Doe")
@@ -1216,8 +1344,10 @@ class TestRunIdentityResolution:
         # The precision query in queries payload should contain "Michael Doe" (the variation)
         precision_q = [q for q in result["queries"] if q["id"] == "precision"]
         assert len(precision_q) == 1
+        assert "John Doe" in precision_q[0]["query"]
         assert "Michael Doe" in precision_q[0]["query"]
         assert "John Michael Doe" in precision_q[0]["query"]
+        assert precision_q[0]["query"].count('"John Doe"') == 1
 
     def test_precision_llm_query_executed(self):
         """When precision_query is provided, it's executed as a separate search."""

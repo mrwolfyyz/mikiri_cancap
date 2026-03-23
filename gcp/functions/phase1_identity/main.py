@@ -123,33 +123,35 @@ def extract_handle_from_url(url: str) -> str:
         return ""
 
 
-def generate_name_variations(full_name: str) -> tuple[str, str | None]:
+def generate_name_variations(full_name: str) -> tuple[str, str | None, str | None]:
     """
     Generate name variations for search queries.
 
-    If the name has 3+ parts (indicating a middle name), returns both:
+    If the name has 3+ parts (indicating a middle name), returns:
     - The full name
+    - A variation with first and last name only
     - A variation with middle and last name only
 
     Args:
         full_name: The full name string
 
     Returns:
-        Tuple of (full_name, variation) where variation is None if <3 parts
+        Tuple of (full_name, first_last, middle_last) where variations
+        are None if <3 parts
     """
     if not full_name:
-        return full_name, None
+        return full_name, None, None
 
     parts = [p.strip() for p in full_name.split() if p.strip()]
 
     # If less than 3 parts, no variation needed
     if len(parts) < 3:
-        return full_name, None
+        return full_name, None, None
 
-    # For 3+ parts, create middle+last variation
-    # Use second-to-last and last parts (middle and last name)
+    # For 3+ parts, include both first+last and middle+last variations.
+    first_last = f"{parts[0]} {parts[-1]}"
     middle_last = f"{parts[-2]} {parts[-1]}"
-    return full_name, middle_last
+    return full_name, first_last, middle_last
 
 
 # -------------------------
@@ -378,6 +380,12 @@ def vertex_ai_score(seed: dict[str, Any], queries_payload: list[dict[str, Any]])
     if not GCP_PROJECT:
         return {"error": "GCP_PROJECT not set"}
 
+    seed_name_variations = seed.get("generated_names") if isinstance(seed.get("generated_names"), list) else []
+    print(
+        f"[Vertex AI] Seed generated_names count={len(seed_name_variations)} "
+        f"values={seed_name_variations[:10]}"
+    )
+
     system_prompt = (
         "Role: Evidence-driven Skip Tracer.\n"
         "Task: Match seed (name, email, city, prov, company) against search results.\n"
@@ -387,7 +395,8 @@ def vertex_ai_score(seed: dict[str, Any], queries_payload: list[dict[str, Any]])
         "Common name/city matches = MEDIUM max. Plausible handles with minimal corroborating points = LOW confidence. "
         "Prefer including a handle at LOW confidence over excluding it entirely. Only omit handles that clearly belong to a different person.\n"
         "- Output: Strict JSON only. No preamble.\n"
-        '- Tools: MUST execute Google Search for "<full name> <city>". Cite results in rationale.\n'
+        "- Tools: MUST execute Google Search using OR-combined name variations from the seed (include full_name plus generated_names). "
+        "Cite results in rationale.\n"
         "\n"
         "Handle Logic:\n"
         "- Precision hits: Prioritize.\n"
@@ -406,8 +415,19 @@ def vertex_ai_score(seed: dict[str, Any], queries_payload: list[dict[str, Any]])
         "- The provided search results may be inaccurate or out of date.\n"
         "- ALWAYS use your access to Google Search. Use it to verify ambiguous matches and discover additional information "
         "about the person not found in the provided results.\n"
-        "- ALWAYS execute Google Search for <full name> <city>. If needed, perform additional searches against name variations "
-        "and the province or to verify information in the provided search results.\n"
+        "- REQUIRED SEARCH TEMPLATES (use OR across full_name + generated_names):\n"
+        '  1) Broad Search: "N1" OR "N2" OR "N3"\n'
+        '  2) Province Search: "N1" OR "N2" OR "N3" <province>\n'
+        '  3) City Search: "N1" OR "N2" OR "N3" <city>\n'
+        '  4) Company Search: "N1" OR "N2" OR "N3" <company_name>\n'
+        "- If city/province/company_name is missing, skip that template.\n"
+        "- In addition to the required templates, perform at least 2 independent exploratory Google searches "
+        "that are not simple restatements of the same query.\n"
+        "- Build exploratory searches from contextual clues (e.g., role, employer, affiliation, known associates, "
+        "specialized keywords, platform-specific terms) to discover new corroboration or disambiguate lookalikes.\n"
+        "- Prioritize exploratory queries that can prove or disprove identity matches; avoid generic repetition.\n"
+        "- If a handle matches any provided name variation but lacks corroboration with city, province, company, or other relevant information, include it as low confidence "
+        "rather than omitting.\n"
         "\n"
         "JSON Structure:\n"
         '{"top_handles": [{"platform": str, "handle": str, "url": str, "city": str, "confidence": "high|medium|low"}], '
@@ -524,6 +544,10 @@ Return valid JSON with all required fields."""
             # Extract grounding metadata for audit trail
             grounding_metadata = extract_grounding_metadata(response)
             result["_grounding_metadata"] = grounding_metadata
+            print(
+                f"[Vertex AI] Grounding search queries count={len(grounding_metadata.get('search_queries', []))} "
+                f"queries={grounding_metadata.get('search_queries', [])[:10]}"
+            )
 
             # Validate required fields
             if "top_handles" not in result:
@@ -743,7 +767,10 @@ def main(request):
     company_name = req_data.get("company_name", "").strip()
     precision_query = req_data.get("precision_query", "").strip()
     province = req_data.get("province", "").strip()
-    generated_names = req_data.get("generated_names", [])
+    raw_generated_names = req_data.get("generated_names", [])
+    generated_names = []
+    if isinstance(raw_generated_names, list):
+        generated_names = [name.strip() for name in raw_generated_names if isinstance(name, str) and name.strip()]
 
     if not email or not full_name:
         return {"error": "email and full_name are required"}, 400
@@ -756,6 +783,9 @@ def main(request):
         "last_known_city": city,
         "full_name": full_name,
     }
+
+    if generated_names:
+        seed["generated_names"] = generated_names
 
     # Add company_name to seed if provided
     if company_name:
@@ -790,13 +820,21 @@ def _run_identity_resolution(
     # -------------------------
 
     # Initialize name variables (used later for precision query construction)
-    name_full, name_variation = generate_name_variations(full_name)
+    name_full, name_first_last, name_middle_last = generate_name_variations(full_name)
 
     # 1A. Precision query - social platforms with full name
-    if name_variation:
-        precision_query_base = f'"{name_full}" OR "{name_variation}"'
-    else:
-        precision_query_base = f'"{name_full}"'
+    precision_name_parts = [name_full, name_first_last, name_middle_last]
+    deduped_precision_names = []
+    seen_precision_names = set()
+    for candidate in precision_name_parts:
+        if not isinstance(candidate, str):
+            continue
+        normalized = candidate.strip().lower()
+        if not normalized or normalized in seen_precision_names:
+            continue
+        seen_precision_names.add(normalized)
+        deduped_precision_names.append(candidate.strip())
+    precision_query_base = " OR ".join(f'"{name}"' for name in deduped_precision_names)
 
     # Add location to query (no quotes on city - original behavior)
     if city:
@@ -818,9 +856,21 @@ def _run_identity_resolution(
     # Recall queries
     recall_query = ""
     recall_2_query = ""
+    recall_2_fallback_query = ""
     if len(prefix) >= 4:
         recall_query = f'"{full_name}"'
         recall_2_query = f'{prefix} OR "{full_name}"'
+        all_names = [full_name] + [n for n in generated_names if isinstance(n, str)]
+        deduped_names = []
+        seen_names = set()
+        for name in all_names:
+            normalized = name.strip().lower()
+            if not normalized or normalized in seen_names:
+                continue
+            seen_names.add(normalized)
+            deduped_names.append(name.strip())
+        name_or_clause = " OR ".join(f'"{name}"' for name in deduped_names)
+        recall_2_fallback_query = name_or_clause
 
     # -------------------------
     # Execute search queries in parallel
@@ -834,6 +884,7 @@ def _run_identity_resolution(
     company_name_linkedin_raw = []
     recall_raw = []
     recall_2_raw = []
+    recall_2_fallback_raw = []
 
     with ThreadPoolExecutor(max_workers=6) as executor:
         futures = {}
@@ -880,6 +931,16 @@ def _run_identity_resolution(
 
     print("[Phase1] All parallel searches complete")
 
+    # Recall_2 fallback: if primary recall_2 returned 0 hits, retry with
+    # generated-name OR query (without prefix) to reduce noisy prefix matches.
+    if recall_2_query and recall_2_fallback_query and len(recall_2_raw) == 0 and recall_2_fallback_query != f'"{full_name}"':
+        print(
+            "[Phase1] recall_2 returned 0 hits - trying fallback without prefix: "
+            f"{recall_2_fallback_query}"
+        )
+        recall_2_fallback_raw = vertex_ai_search_precision(recall_2_fallback_query, 10)
+        print(f"[Phase1] recall_2 fallback: {len(recall_2_fallback_raw)} hits")
+
     # Company LinkedIn fallback: if company search returned 0 results and city is provided,
     # try a city-based LinkedIn search (this depends on the company result, so runs sequentially)
     city_linkedin_raw = []
@@ -917,6 +978,15 @@ def _run_identity_resolution(
     )
     recall_hits = _to_hits(recall_raw, "vertex_ai_recall", "recall", "high_recall")
     recall_2_hits = _to_hits(recall_2_raw, "vertex_ai_precision", "recall_2", "high_recall")
+    recall_2_fallback_hits = _to_hits(
+        recall_2_fallback_raw,
+        "vertex_ai_precision",
+        "recall_2_fallback",
+        "high_recall",
+    )
+
+    if recall_2_fallback_hits:
+        recall_2_hits.extend(recall_2_fallback_hits)
 
     # City LinkedIn fallback hits (if any)
     city_linkedin_hits = _to_hits(city_linkedin_raw, "vertex_ai_linkedin", "city_linkedin", "high_precision")
@@ -991,6 +1061,17 @@ def _run_identity_resolution(
                 "type": "high_precision",
                 "query": precision_query,
                 "hits": [asdict(h) for h in llm_precision_hits],
+            }
+        )
+
+    # Add recall_2 fallback query if it was executed
+    if recall_2_fallback_query and recall_2_fallback_raw:
+        queries_payload.append(
+            {
+                "id": "recall_2_fallback",
+                "type": "high_recall",
+                "query": recall_2_fallback_query,
+                "hits": [asdict(h) for h in recall_2_fallback_hits],
             }
         )
 
