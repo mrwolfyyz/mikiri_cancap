@@ -380,11 +380,13 @@ def vertex_ai_score(seed: dict[str, Any], queries_payload: list[dict[str, Any]])
     if not GCP_PROJECT:
         return {"error": "GCP_PROJECT not set"}
 
-    seed_name_variations = seed.get("generated_names") if isinstance(seed.get("generated_names"), list) else []
-    print(
-        f"[Vertex AI] Seed generated_names count={len(seed_name_variations)} "
-        f"values={seed_name_variations[:10]}"
+    raw_seed_generated_names = seed.get("generated_names")
+    seed_name_variations: list[str] = (
+        [name for name in raw_seed_generated_names if isinstance(name, str)]
+        if isinstance(raw_seed_generated_names, list)
+        else []
     )
+    print(f"[Vertex AI] Seed generated_names count={len(seed_name_variations)} values={seed_name_variations[:10]}")
 
     system_prompt = (
         "Role: Evidence-driven Skip Tracer.\n"
@@ -942,11 +944,13 @@ def _run_identity_resolution(
 
     # Recall_2 fallback: if primary recall_2 returned 0 hits, retry with
     # generated-name OR query (without prefix) to reduce noisy prefix matches.
-    if recall_2_query and recall_2_fallback_query and len(recall_2_raw) == 0 and recall_2_fallback_query != f'"{full_name}"':
-        print(
-            "[Phase1] recall_2 returned 0 hits - trying fallback without prefix: "
-            f"{recall_2_fallback_query}"
-        )
+    if (
+        recall_2_query
+        and recall_2_fallback_query
+        and len(recall_2_raw) == 0
+        and recall_2_fallback_query != f'"{full_name}"'
+    ):
+        print(f"[Phase1] recall_2 returned 0 hits - trying fallback without prefix: {recall_2_fallback_query}")
         recall_2_fallback_raw = vertex_ai_search_precision(recall_2_fallback_query, 10)
         print(f"[Phase1] recall_2 fallback: {len(recall_2_fallback_raw)} hits")
 
