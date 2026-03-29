@@ -205,7 +205,6 @@ def main(request):
         # Use Vertex AI Gemini with Google Search grounding to determine domain
         print("[CompanyDomainLookup] Calling Vertex AI with Google Search grounding for domain resolution")
         llm_result = vertex_ai_domain_resolution_grounded(company_name)
-        print(f"[CompanyDomainLookup] DEBUG: LLM result: {json.dumps(llm_result, indent=2)}")
 
         if "error" in llm_result:
             print(f"[CompanyDomainLookup] LLM error: {llm_result['error']}")
