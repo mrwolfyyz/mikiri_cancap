@@ -430,11 +430,13 @@
     const tabsHtml = tabs
       .map(
         (tab, i) => `
-            <button class="tab-button ${i === 0 ? "active" : ""}" data-tab="${
+            <button class="tab-button ${i === 0 ? "active" : ""}" data-tab="${escapeHtml(
           tab.id
-        }">
-                ${tab.label}${
-          tab.badge ? ` <span class="tab-badge">${tab.badge}</span>` : ""
+        )}">
+                ${escapeHtml(tab.label)}${
+          tab.badge
+            ? ` <span class="tab-badge">${escapeHtml(String(tab.badge))}</span>`
+            : ""
         }
             </button>
         `
@@ -446,9 +448,9 @@
         const md =
           markdownReports[tab.id] || `# ${tab.label}\n\nNo data available.`;
         const html = renderMarkdown(container, md, tab.id, jobId);
-        return `<div class="tab-panel ${i === 0 ? "active" : ""}" data-tab="${
+        return `<div class="tab-panel ${i === 0 ? "active" : ""}" data-tab="${escapeHtml(
           tab.id
-        }">
+        )}">
                 <div class="markdown-content">${html}</div>
             </div>`;
       })
