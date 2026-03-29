@@ -597,7 +597,9 @@ Return valid JSON with all required fields."""
         # Detect rate-limiting exhaustion and raise specific error so caller
         # can return 429 to the workflow (enabling workflow-level retries)
         error_str = str(e).lower()
-        if "resource_exhausted" in error_str or "429" in error_str or "too many requests" in error_str:
+        # Match HTTP/gRPC 429, not digit substrings (e.g. MagicMock id='...429...' from tests)
+        looks_like_http_429 = bool(re.search(r"(?<![0-9])429(?![0-9])", error_str))
+        if "resource_exhausted" in error_str or looks_like_http_429 or "too many requests" in error_str:
             raise RateLimitExhaustedError(f"Vertex AI rate limit exhausted after retries: {e}") from e
         return {"error": str(e)}
 
