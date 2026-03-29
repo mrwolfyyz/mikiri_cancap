@@ -525,6 +525,53 @@ class TestProxyChatRequest:
                 data, status, _ = _parse_response(proxy_chat_request(req, {}, "https://chat.example.com", "Chat"))
         assert status == 404
 
+    def test_legacy_job_without_user_id_allows_chat(self):
+        """Legacy jobs (no user_id) match verify_job_ownership: any authed user may chat."""
+        req = _authed_request(method="POST", body={"job_id": "legacy1", "message": "hi"})
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"reply": "ok"}
+        mock_resp.status_code = 200
+        legacy_job = {"status": "complete"}  # no user_id key
+
+        with _app.test_request_context():
+            with (
+                _stub_auth("u1"),
+                _stub_get_job(legacy_job),
+                patch.object(gw, "retry_with_backoff", return_value=mock_resp),
+            ):
+                data, status, _ = _parse_response(proxy_chat_request(req, {}, "https://chat.example.com", "Chat"))
+        assert status == 200
+        assert data["reply"] == "ok"
+
+    def test_proxy_posts_google_identity_token_to_chat_backend(self):
+        """Downstream POST must include Authorization from _id_token_for_url (Cloud Run IAM)."""
+        req = _authed_request(method="POST", body={"message": "hi"})
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"reply": "x"}
+        mock_resp.status_code = 200
+        post_kw: dict = {}
+
+        def passthrough_retry(fn, *args, **kwargs):
+            return fn()
+
+        def capture_post(url, **kwargs):
+            post_kw.update(kwargs)
+            return mock_resp
+
+        with _app.test_request_context():
+            with (
+                _stub_auth(),
+                patch.object(gw, "_id_token_for_url", return_value="mock-google-id-token") as mock_id_tok,
+                patch.object(gw, "retry_with_backoff", side_effect=passthrough_retry),
+                patch.object(gw.requests, "post", side_effect=capture_post),
+            ):
+                data, status, _ = _parse_response(
+                    proxy_chat_request(req, {}, "https://chat.example.com", "Chat")
+                )
+        assert status == 200
+        mock_id_tok.assert_called_once_with("https://chat.example.com")
+        assert post_kw["headers"]["Authorization"] == "Bearer mock-google-id-token"
+
     def test_service_failure(self):
         import requests as req_lib
 

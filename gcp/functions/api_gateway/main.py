@@ -94,6 +94,16 @@ def verify_firebase_token(request: Request) -> tuple[str | None, dict | None]:
         return None, {"error": "Authentication failed. Please refresh the page."}
 
 
+def _id_token_for_url(target_url: str) -> str:
+    """Google identity token for invoking a Gen2 function / Cloud Run URL (service-to-service)."""
+    from google.auth.transport.requests import Request
+    from google.oauth2 import id_token
+
+    audience = target_url.rstrip("/")
+    auth_req = Request()
+    return id_token.fetch_id_token(auth_req, audience)
+
+
 def validate_email(email: str) -> tuple[bool, str]:
     """Validate email format."""
     if not email:
@@ -480,14 +490,19 @@ def proxy_chat_request(request: Request, headers: dict, target_url: str, service
         job = get_job(job_id)
         if not job:
             return jsonify({"error": "Job not found"}), 404, headers
-        if job.get("user_id") != user_id:
+        job_user_id = job.get("user_id")
+        if job_user_id is not None and job_user_id != user_id:
             return jsonify({"error": "Unauthorized"}), 403, headers
 
     def _call_service():
+        id_token = _id_token_for_url(target_url)
         response = requests.post(
             target_url,
             json=data,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {id_token}",
+            },
             timeout=120,  # Handle longer conversations with more history
         )
         response.raise_for_status()
@@ -576,7 +591,7 @@ def main(request: Request):
     # POST /address-verification
     if request.method == "POST" and path == "/address-verification":
         # Verify authentication
-        user_id, auth_error = verify_firebase_token(request)
+        _user_id, auth_error = verify_firebase_token(request)
         if auth_error:
             return jsonify(auth_error), 401, headers
 
@@ -620,10 +635,14 @@ def main(request: Request):
             payload["address"] = address
 
         def _call_address_verification():
+            id_token = _id_token_for_url(ADDRESS_VERIFICATION_URL)
             response = requests.post(
                 ADDRESS_VERIFICATION_URL,
                 json=payload,
-                headers={"Content-Type": "application/json"},
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {id_token}",
+                },
                 timeout=60,  # Address verification may take longer due to LLM analysis
             )
             response.raise_for_status()

@@ -67,13 +67,10 @@ locals {
     "report_generator_origination"
   ])
 
-  # Functions that need public (unauthenticated) access
-  # These are accessed by the frontend or API Gateway proxies to them
+  # Cloud Run invoker open to the internet (browser calls Firebase-backed gateway only)
+  # Chat and address backends are invoked by api_gateway using a Google ID token
   public_functions = toset([
-    "api_gateway",
-    "chat_handler",
-    "chat_handler_origination",
-    "address_verification"
+    "api_gateway"
   ])
 
   # Functions that need Vertex AI access

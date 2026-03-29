@@ -3,7 +3,8 @@
 # =============================================================================
 # Deploys all Cloud Functions using Gen2 (Cloud Run-backed).
 # Functions are organized by their authentication requirements:
-# - Public: api_gateway, chat_handler, chat_handler_origination, address_verification
+# - Public (browser): api_gateway only
+# - Private (functions SA + ID token from api_gateway): chat_handler, chat_handler_origination, address_verification
 # - OIDC (workflow-invoked): phase1_identity, domain_enrichment, address_geocoding, company_domain_lookup, aggregator
 # - Eventarc-triggered: report_generator_skiptrace, report_generator_origination
 # =============================================================================
@@ -297,17 +298,17 @@ resource "google_cloudfunctions2_function" "chat_handler" {
   ]
 }
 
-# Allow public access to chat_handler (API Gateway verifies Firebase token before proxying)
+# chat_handler: only the shared functions SA (api_gateway runtime) may invoke
 resource "google_cloud_run_service_iam_member" "chat_handler_invoker" {
   project  = var.project_id
   location = var.region
   service  = google_cloudfunctions2_function.chat_handler.name
   role     = "roles/run.invoker"
-  member   = "allUsers"
+  member   = "serviceAccount:${google_service_account.functions.email}"
 }
 
 # -----------------------------------------------------------------------------
-# Chat Handler Origination (Public)
+# Chat Handler Origination (private; invoked by API Gateway with ID token)
 # -----------------------------------------------------------------------------
 
 resource "google_cloudfunctions2_function" "chat_handler_origination" {
@@ -369,11 +370,11 @@ resource "google_cloud_run_service_iam_member" "chat_handler_origination_invoker
   location = var.region
   service  = google_cloudfunctions2_function.chat_handler_origination.name
   role     = "roles/run.invoker"
-  member   = "allUsers"
+  member   = "serviceAccount:${google_service_account.functions.email}"
 }
 
 # -----------------------------------------------------------------------------
-# Address Verification (Public)
+# Address Verification (private; invoked by API Gateway with ID token)
 # -----------------------------------------------------------------------------
 
 resource "google_cloudfunctions2_function" "address_verification" {
@@ -437,7 +438,7 @@ resource "google_cloud_run_service_iam_member" "address_verification_invoker" {
   location = var.region
   service  = google_cloudfunctions2_function.address_verification.name
   role     = "roles/run.invoker"
-  member   = "allUsers"
+  member   = "serviceAccount:${google_service_account.functions.email}"
 }
 
 # =============================================================================
