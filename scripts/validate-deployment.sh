@@ -69,6 +69,8 @@ FUNCTIONS=(
   "domain-enrichment"
   "address-geocoding"
   "company-domain-lookup"
+  "query-constructor"
+  "contact-extraction"
   "aggregator"
   "report-generator-skiptrace"
   "report-generator-origination"
