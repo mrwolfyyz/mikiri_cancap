@@ -431,6 +431,14 @@
                     </div>
                 </div>`;
 
+    const askQuestionsButtonHtml = chatUrl
+      ? `
+                        <a id="reportOpenChatButton" href="${chatUrl}" target="_blank" class="button-secondary">
+                            <svg class="button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14 2H2C1.45 2 1 2.45 1 3V11C1 11.55 1.45 12 2 12H4V14.5L7 12H14C14.55 12 15 11.55 15 11V3C15 2.45 14.55 2 14 2Z" stroke="currentColor" stroke-width="1.5"/></svg>
+                            Ask Questions
+                        </a>`
+      : "";
+
     container.innerHTML = `
             <div class="report-header">
                 <div class="report-info">
@@ -442,12 +450,7 @@
                 <div class="action-bar">
                     ${originationHtml}
                     <div class="common-actions">
-                        <a id="reportOpenChatButton" href="${
-                          chatUrl || "#"
-                        }" target="_blank" class="button-secondary">
-                            <svg class="button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14 2H2C1.45 2 1 2.45 1 3V11C1 11.55 1.45 12 2 12H4V14.5L7 12H14C14.55 12 15 11.55 15 11V3C15 2.45 14.55 2 14 2Z" stroke="currentColor" stroke-width="1.5"/></svg>
-                            Ask Questions
-                        </a>
+                        ${askQuestionsButtonHtml}
                         <button class="button-secondary" onclick="window.print()">
                             <svg class="button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M9 1H3C2.45 1 2 1.45 2 2V14C2 14.55 2.45 15 3 15H13C13.55 15 14 14.55 14 14V6L9 1Z" stroke="currentColor" stroke-width="1.5"/><path d="M9 1V6H14" stroke="currentColor" stroke-width="1.5"/></svg>
                             Export PDF

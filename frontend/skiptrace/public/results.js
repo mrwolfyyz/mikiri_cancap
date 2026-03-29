@@ -104,7 +104,6 @@ async function loadInvestigationData() {
         workflowType: currentWorkflow,
         jobData,
         markdownReports,
-        chatUrl: `chat.html?job_id=${currentJobId}`
     });
 
     elements.loadingState.style.display = 'none';

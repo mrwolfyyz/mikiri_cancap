@@ -702,7 +702,6 @@ async function showResults(job) {
       workflowType,
       jobData,
       markdownReports,
-      chatUrl: `chat.html?job_id=${currentJobId}`,
       onSubmitFeedback: submitFeedback,
     });
 
