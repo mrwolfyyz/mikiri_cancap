@@ -115,6 +115,8 @@ def generate_street_view_url(address: str, lat: float | None = None, lon: float 
     """
     if lat is not None and lon is not None:
         print(f"[Street View] Using coordinates: {lat:.6f}, {lon:.6f}")
+        # Not a Flask HTTP response: this helper only builds a Google Maps URL from floats.
+        # Static analysis may flag the f-string like a returned HTML body; there is no XSS vector here.
         return f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={lat},{lon}"
 
     # Fallback: search URL (one click to Street View via pegman)
@@ -300,7 +302,7 @@ Common red flags include:
 - Virtual office addresses (Regus, WeWork, co-working spaces, etc.)
 - Shipping/mailbox locations (UPS/FedEx stores, PO boxes, postal outlets)
 - Addresses where the claimed business doesn't exist
-- Addresses with inconsistent unit/suite numbers used by all other verified tenants in the building
+- Addresses containing unit/suite numbers, inconsistent with other verified tenants in the building
 - Addresses that are clearly residential when a business is claimed
 - Absence of ratings or reviews or complaints or comments from customers or clients
 - Absence of any supporting information or evidence of the business's existence

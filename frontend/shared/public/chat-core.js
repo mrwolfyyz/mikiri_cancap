@@ -655,9 +655,9 @@ async function init() {
 
     // Load existing chat history
     if (db) {
-        // Store initial welcome message before loading history
+        // Store a clone of the welcome message before replacing the container with the loader
         const initialMessage = elements.chatMessages.querySelector('.message.assistant');
-        const initialMessageHTML = initialMessage ? initialMessage.outerHTML : null;
+        const welcomeClone = initialMessage ? initialMessage.cloneNode(true) : null;
 
         // Show loading indicator
         elements.chatMessages.innerHTML = '<div class="loading-history" style="padding: var(--space-md); text-align: center; color: var(--text-secondary);">Loading chat history...</div>';
@@ -671,9 +671,9 @@ async function init() {
             loader.remove();
         }
 
-        // If no history was loaded, restore the initial welcome message
-        if (history.length === 0 && initialMessageHTML) {
-            elements.chatMessages.innerHTML = initialMessageHTML;
+        // If no history was loaded, restore the initial welcome message (DOM node, not HTML string)
+        if (history.length === 0 && welcomeClone) {
+            elements.chatMessages.appendChild(welcomeClone);
         }
     }
 }

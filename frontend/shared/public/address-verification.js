@@ -95,6 +95,53 @@ function formatPostalCode(value) {
 
 // escapeHtml() is now in shared-utils.js (loaded before this file)
 
+/**
+ * Defense-in-depth: HTML is built with escapeHtml throughout; sanitize before innerHTML
+ * so a future edit cannot accidentally introduce XSS.
+ */
+function sanitizeAddressVerificationHtml(html) {
+  if (typeof DOMPurify === "undefined") {
+    console.warn("[AddressVerification] DOMPurify not loaded");
+    return "<p>Security dependency missing. Please refresh the page.</p>";
+  }
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [
+      "div",
+      "h3",
+      "h4",
+      "h5",
+      "p",
+      "span",
+      "strong",
+      "ul",
+      "ol",
+      "li",
+      "a",
+      "details",
+      "summary",
+      "svg",
+      "path",
+    ],
+    ALLOWED_ATTR: [
+      "class",
+      "href",
+      "target",
+      "rel",
+      "aria-hidden",
+      "width",
+      "height",
+      "viewBox",
+      "fill",
+      "stroke",
+      "stroke-width",
+      "stroke-linecap",
+      "stroke-linejoin",
+      "d",
+    ],
+    ALLOW_DATA_ATTR: false,
+  });
+}
+
 // ===========================
 // Address Verification API
 // ===========================
@@ -376,7 +423,8 @@ function showAddressVerificationResults(data) {
     html += `</div>`;
   }
 
-  elements.addressVerificationResultsContent.innerHTML = html;
+  elements.addressVerificationResultsContent.innerHTML =
+    sanitizeAddressVerificationHtml(html);
 }
 
 function showAddressVerificationError(message) {

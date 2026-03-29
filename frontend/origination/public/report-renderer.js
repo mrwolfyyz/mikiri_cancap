@@ -510,7 +510,9 @@
                     <h2 id="reportTitle">${escapeHtml(name)}${
       city ? " - " + escapeHtml(city) : ""
     }</h2>
-                    <p class="report-meta" id="reportMeta">Generated on ${createdAt}</p>
+                    <p class="report-meta" id="reportMeta">Generated on ${escapeHtml(
+                      String(createdAt)
+                    )}</p>
                 </div>
                 <div class="action-bar">
                     ${originationHtml}
