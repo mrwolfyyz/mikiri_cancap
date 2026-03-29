@@ -2,7 +2,7 @@
 
 This document describes the security architecture of the Mikiri Skip Trace & Origination Intelligence Platform.
 
-**Last Updated**: January 2026  
+**Last Updated**: March 2026  
 **Status**: Beta Deployment
 
 ---
@@ -48,15 +48,15 @@ Mikiri was built with Privacy by Design principles from the beginning:
 │                    (7-day TTL → 1-day)                      │
 └─────────────────────────────────────────────────────────────┘
 
-External APIs (minimal):
-• HIBP API - email breach checks only
-• Vertex AI - Google-hosted LLM in YOUR project
-• Gemini 2.5 Flash - Google Search grounding for address verification
+External touchpoints (data still primarily stored in your GCP project):
+• HIBP API — email breach checks
+• Vertex AI (Gemini) — LLM in your project; some flows use Google Search grounding (queries touch the public web)
+• OpenStreetMap Nominatim — address geocoding (full address strings)
+• Gravatar — profile lookup (email-derived hash; no raw email in URL)
+• Public WHOIS / DNS — domain registration and MX lookups for email domains
 ```
 
-All borrower data stays in your GCP environment except:
-- Email addresses sent to HIBP for breach checking
-- Investigation data sent to Vertex AI (stays within your GCP project)
+Primary investigation results and chat stay in Firestore in your GCP project. The sections below list what is sent outside GCP (or to Google APIs that query the public web), in addition to in-project Vertex processing.
 
 ---
 
@@ -64,7 +64,7 @@ All borrower data stays in your GCP environment except:
 
 ### Current (Beta)
 - **Frontend**: Firebase Anonymous Authentication
-- **API Gateway**: Verifies Firebase ID tokens on job, chat, markdown, feedback, and investigation routes; health checks remain unauthenticated
+- **API Gateway**: Verifies Firebase ID tokens on investigation (`POST /investigate-skiptrace`, `POST /investigate-origination`), job status (`GET /jobs/{job_id}`), markdown (`GET /get_markdown/{job_id}`), chat (`POST /chat_handler`, `POST /chat_handler_origination`), feedback (`POST /jobs/{job_id}/feedback`), and address verification (`POST /address-verification`); `GET /health`, `GET /`, and `OPTIONS` preflight remain unauthenticated
 - **Firestore Rules**: Job and chat paths require `resource.data.user_id == request.auth.uid` (no cross-tenant reads by job ID)
 - **Rationale**: Keep beta deployment simple
 
@@ -93,10 +93,27 @@ All borrower data stays in your GCP environment except:
 - **Industry Standard**: Used by password managers and enterprises globally
 
 **2. Vertex AI (Gemini)**
-- **Data Sent**: Investigation data for AI analysis
+- **Data Sent**: Investigation-related prompts and context for AI analysis (varies by function)
 - **Data Received**: Analysis and summaries
 - **Location**: Runs in YOUR GCP project, billed to you
-- **Note**: This is Google Cloud AI, not a third-party service
+- **Note**: This is Google Cloud AI, not a random third-party SaaS
+
+**3. Google Search grounding (Gemini tool)**
+- **Where**: Phase 1 identity resolution, company domain lookup, and address verification use Gemini 2.5 Flash with Google Search grounding
+- **What**: The model issues search queries; snippets and retrieval involve the public web. Processing and billing remain in your GCP project.
+
+**4. OpenStreetMap Nominatim (geocoding)**
+- **Data Sent**: Address strings derived from investigation output (geocoding step)
+- **Service**: Public Nominatim API at `nominatim.openstreetmap.org`
+
+**5. Gravatar**
+- **Data Sent**: MD5 hash of normalized email (standard Gravatar URL pattern)
+- **Data Received**: Optional public profile metadata when a profile exists
+- **Where**: Report generation (skip trace and origination)
+
+**6. WHOIS and public DNS (domain enrichment)**
+- **Data Sent**: Email domain / registration lookups
+- **What**: Queries hit public WHOIS and DNS infrastructure (not stored vendor databases; standard internet resolution paths)
 
 ---
 
@@ -181,9 +198,9 @@ All API keys stored in **Google Secret Manager**:
 
 ### Medium Priority (Post-Beta)
 
-**2. Data Retention Policy**
-- **Current**: Manual deletion only
-- **Plan**: Automated TTL enforcement (currently 7 days, target 1 day)
+**2. Data Retention Tuning**
+- **Current**: Firestore TTL is enabled on `expire_at` for `jobs` and `chat_messages` collection groups (automatic deletion after the retention window; see Terraform `google_firestore_field` in `terraform/modules/core/firestore.tf`). Parent document TTL does not automatically delete subcollections—operational cleanup may still be needed for edge cases.
+- **Plan**: Shorten the window from the current **7-day** job lifetime (beta) toward a **1-day** production target, aligned with product and compliance needs
 - **Timeline**: Based on operational learnings
 
 **3. PII in Cloud Logs**
@@ -256,7 +273,7 @@ Because everything runs in your GCP environment, **you have full control**:
 - ✅ **Secrets in Secret Manager** (no hardcoded credentials)
 - ✅ **Least-Privilege IAM** (no editor/owner service accounts)
 - ✅ **Firestore Security Rules** (user isolation enforced)
-- ✅ **Token Verification** (all API calls authenticated)
+- ✅ **Token Verification** (Firebase ID token required for all user-data API routes; health and CORS preflight are public)
 - ✅ **CORS Restricted** (configurable per environment, locked to hosting URLs in production)
 - ✅ **Server-Side Rate Limiting** (per-user, 5 requests per 5 minutes via Firestore)
 - ✅ **Request Size Limits** (50KB for investigations, 500KB for chat including markdown context)
@@ -272,13 +289,13 @@ Because everything runs in your GCP environment, **you have full control**:
 ## Common Questions
 
 **Q: What PII leaves our environment?**
-A: Only email addresses (to HIBP for breach checking). Vertex AI processing stays within your GCP project.
+A: **Email addresses** go to HIBP for breach checking. **Address strings** may be sent to OpenStreetMap Nominatim for geocoding. **MD5 hashes of email** (Gravatar’s standard) are used for Gravatar lookups. **Domains** are resolved via public WHOIS/DNS. **Investigation text and context** are sent to Vertex AI (Gemini) in your project; flows that use **Google Search grounding** also cause the model to query the public web as part of analysis. Primary structured results remain in Firestore in your project.
 
 **Q: Can we audit who ran which investigation?**
 A: Not in beta (anonymous auth). For production, specify your preferred identity provider (Google Workspace, Azure AD, etc.) and we'll implement it via Firebase in ~1 hour.
 
 **Q: How do we delete borrower data?**  
-A: Firestore documents can be deleted via console or API at any time. No vendor coordination required. We can implement automated retention policies based on your compliance requirements.
+A: Firestore documents can be deleted via console or API at any time. TTL on `expire_at` also removes job and chat message documents automatically after the configured retention window. Retention length can be adjusted for compliance requirements.
 
 **Q: What happens if HIBP goes down?**  
 A: Investigation continues without breach data. Platform degrades gracefully if external APIs fail.
