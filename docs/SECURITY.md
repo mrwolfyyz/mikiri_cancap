@@ -64,8 +64,8 @@ All borrower data stays in your GCP environment except:
 
 ### Current (Beta)
 - **Frontend**: Firebase Anonymous Authentication
-- **API Gateway**: Verifies Firebase ID tokens on every request
-- **Firestore Rules**: Enforce user isolation (users can only see their own data)
+- **API Gateway**: Verifies Firebase ID tokens on job, chat, markdown, feedback, and investigation routes; health checks remain unauthenticated
+- **Firestore Rules**: Job and chat paths require `resource.data.user_id == request.auth.uid` (no cross-tenant reads by job ID)
 - **Rationale**: Keep beta deployment simple
 
 ### Production Plan
@@ -79,7 +79,7 @@ All borrower data stays in your GCP environment except:
 ## Data Flow & Storage
 
 ### What Stays in Your Environment
-- Investigation results (Firestore with TTL)
+- Investigation results (Firestore with TTL on `expire_at` for `jobs` and `chat_messages` collection groups; parent TTL does not delete subcollections automatically—see Terraform `google_firestore_field` in `terraform/modules/core/firestore.tf`)
 - Borrower PII (names, addresses, phones, emails)
 - Generated reports (Firestore + optional Google Drive export)
 - Chat history (Firestore)

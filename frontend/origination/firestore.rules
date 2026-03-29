@@ -13,12 +13,11 @@ service cloud.firestore {
       allow read, write: if isJobOwner(jobId);
     }
     
-    // Allow read access to jobs for authenticated users (needed for ownership check in isJobOwner function)
-    // Note: Backend functions use Admin SDK which bypasses these rules, so writes from backend are unaffected
+    // Job documents: owner only (prevents cross-tenant reads by job ID)
+    // isJobOwner's get() on jobs/{jobId} uses this rule; backend uses Admin SDK and bypasses rules
     match /jobs/{jobId} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null && resource.data.user_id == request.auth.uid;
       // No write rule - frontend should not write to jobs directly (goes through API Gateway)
-      // Backend writes via Admin SDK bypass rules, so this doesn't affect them
     }
     
     // All other collections/paths are unaffected by these rules

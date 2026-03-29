@@ -64,6 +64,9 @@ ADDRESS_VERIFICATION_URL = os.environ.get("ADDRESS_VERIFICATION_URL")
 # CORS configuration (restrict in production)
 CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "*")
 
+# Job document retention (aligned with report generators and frontend chat TTL)
+JOB_RETENTION_DAYS = 7
+
 
 # =============================================================================
 # Authentication & Validation Helpers
@@ -203,12 +206,14 @@ def create_job(
     """Create a new job in Firestore."""
     job_id = uuid.uuid4().hex[:12]
     now = datetime.utcnow()
+    expire_at = now + timedelta(days=JOB_RETENTION_DAYS)
 
     job_data = {
         "status": "triggering",
         "created_at": now,
         "started_at": None,
         "completed_at": None,
+        "expire_at": expire_at,
         "user_id": user_id,  # Store user_id for ownership verification
         "input": {
             "email": email,
@@ -348,29 +353,36 @@ def get_cors_headers(request: Request):
 
 def verify_job_ownership(request: Request, job_id: str, headers: dict) -> tuple[dict | None, str | None, tuple | None]:
     """
-    Verify job exists and caller owns it (backward-compatible).
+    Verify job exists and caller owns it.
 
-    For jobs with user_id: requires auth and ownership match.
-    For legacy jobs without user_id: allows access without auth.
+    Requires a valid Firebase ID token. Job document must include user_id matching the token.
 
     Returns: (job, user_id, error_response)
-        - On success: (job_dict, user_id_or_None, None)
+        - On success: (job_dict, user_id, None)
         - On error: (None, None, (jsonify_response, status_code, headers))
     """
     job = get_job(job_id)
     if not job:
         return None, None, (jsonify({"error": "Job not found"}), 404, headers)
 
-    job_user_id = job.get("user_id")
-    if job_user_id is not None:
-        user_id, auth_error = verify_firebase_token(request)
-        if auth_error:
-            return None, None, (jsonify(auth_error), 401, headers)
-        if job_user_id != user_id:
-            return None, None, (jsonify({"error": "Unauthorized"}), 403, headers)
-        return job, user_id, None
+    user_id, auth_error = verify_firebase_token(request)
+    if auth_error:
+        return None, None, (jsonify(auth_error), 401, headers)
 
-    return job, None, None  # Legacy job, no ownership check
+    job_user_id = job.get("user_id")
+    if job_user_id is None:
+        return (
+            None,
+            None,
+            (
+                jsonify({"error": "Job has no owner; access denied"}),
+                403,
+                headers,
+            ),
+        )
+    if job_user_id != user_id:
+        return None, None, (jsonify({"error": "Unauthorized"}), 403, headers)
+    return job, user_id, None
 
 
 # =============================================================================
@@ -491,7 +503,9 @@ def proxy_chat_request(request: Request, headers: dict, target_url: str, service
         if not job:
             return jsonify({"error": "Job not found"}), 404, headers
         job_user_id = job.get("user_id")
-        if job_user_id is not None and job_user_id != user_id:
+        if job_user_id is None:
+            return jsonify({"error": "Job has no owner; access denied"}), 403, headers
+        if job_user_id != user_id:
             return jsonify({"error": "Unauthorized"}), 403, headers
 
     def _call_service():
@@ -688,7 +702,9 @@ def main(request: Request):
             return jsonify({"error": "Job not found"}), 404, headers
 
         job_user_id = job.get("user_id")
-        if job_user_id is not None and job_user_id != user_id:
+        if job_user_id is None:
+            return jsonify({"error": "Job has no owner; access denied"}), 403, headers
+        if job_user_id != user_id:
             return jsonify({"error": "Unauthorized"}), 403, headers
 
         # Parse and validate request body

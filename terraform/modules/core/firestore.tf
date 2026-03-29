@@ -28,6 +28,32 @@ resource "google_firestore_database" "default" {
 }
 
 # -----------------------------------------------------------------------------
+# TTL policies (expire_at) — automatic deletion after retention period
+# One TTL field per collection group. Deletion can lag; subcollections are not auto-deleted with parent.
+# -----------------------------------------------------------------------------
+resource "google_firestore_field" "jobs_expire_at_ttl" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+  field      = "expire_at"
+
+  ttl_config {}
+
+  depends_on = [google_firestore_database.default]
+}
+
+resource "google_firestore_field" "chat_messages_expire_at_ttl" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "chat_messages"
+  field      = "expire_at"
+
+  ttl_config {}
+
+  depends_on = [google_firestore_database.default]
+}
+
+# -----------------------------------------------------------------------------
 # Firestore Indexes (if needed)
 # -----------------------------------------------------------------------------
 # Composite index for rate limiting query in api_gateway:
@@ -60,4 +86,7 @@ resource "google_firestore_index" "jobs_user_created" {
 # Rules files are located at:
 #   - frontend/skiptrace/firestore.rules
 #   - frontend/origination/firestore.rules
+#
+# TTL policies on `expire_at` for `jobs` and `chat_messages` are defined above
+# (google_firestore_field). Allow several minutes after apply for TTL to activate.
 # -----------------------------------------------------------------------------

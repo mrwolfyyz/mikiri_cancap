@@ -395,14 +395,25 @@ class TestVerifyJobOwnership:
             data, status, _ = _parse_response(err)
         assert status == 401
 
-    def test_legacy_job_no_user_id(self):
+    def test_legacy_job_no_user_id_requires_auth(self):
         job = {"status": "complete"}  # no user_id key
         with _app.test_request_context():
             with _stub_get_job(job):
-                got_job, got_uid, err = verify_job_ownership(_make_request(), "j1", {})
-        assert err is None
-        assert got_job == job
-        assert got_uid is None
+                _, _, err = verify_job_ownership(_make_request(), "j1", {})
+        assert err is not None
+        _, status, _ = _parse_response(err)
+        assert status == 401
+
+    def test_legacy_job_no_user_id_denied_when_authed(self):
+        job = {"status": "complete"}  # no user_id key
+        req = _make_request(headers={"Authorization": "Bearer tok"})
+        with _app.test_request_context():
+            with _stub_get_job(job), _stub_auth("u1"):
+                _, _, err = verify_job_ownership(req, "j1", {})
+        assert err is not None
+        data, status, _ = _parse_response(err)
+        assert status == 403
+        assert "owner" in data["error"].lower() or "denied" in data["error"].lower()
 
 
 # ===========================================================================
@@ -549,23 +560,16 @@ class TestProxyChatRequest:
                 data, status, _ = _parse_response(proxy_chat_request(req, {}, "https://chat.example.com", "Chat"))
         assert status == 404
 
-    def test_legacy_job_without_user_id_allows_chat(self):
-        """Legacy jobs (no user_id) match verify_job_ownership: any authed user may chat."""
+    def test_legacy_job_without_user_id_chat_denied(self):
+        """Jobs without user_id cannot use chat proxy."""
         req = _authed_request(method="POST", body={"job_id": "legacy1", "message": "hi"})
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"reply": "ok"}
-        mock_resp.status_code = 200
         legacy_job = {"status": "complete"}  # no user_id key
 
         with _app.test_request_context():
-            with (
-                _stub_auth("u1"),
-                _stub_get_job(legacy_job),
-                patch.object(gw, "retry_with_backoff", return_value=mock_resp),
-            ):
+            with _stub_auth("u1"), _stub_get_job(legacy_job):
                 data, status, _ = _parse_response(proxy_chat_request(req, {}, "https://chat.example.com", "Chat"))
-        assert status == 200
-        assert data["reply"] == "ok"
+        assert status == 403
+        assert "owner" in data["error"].lower() or "denied" in data["error"].lower()
 
     def test_proxy_posts_google_identity_token_to_chat_backend(self):
         """Downstream POST must include Authorization from _id_token_for_url (Cloud Run IAM)."""
