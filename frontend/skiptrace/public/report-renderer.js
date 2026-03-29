@@ -5,6 +5,64 @@
 (function (global) {
   "use strict";
 
+  function sanitizeReportMarkdownHtml(html) {
+    if (typeof global.DOMPurify === "undefined") {
+      console.warn("[ReportRenderer] DOMPurify not loaded");
+      return "<p>Report security dependency missing.</p>";
+    }
+    return global.DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: [
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "p",
+        "br",
+        "hr",
+        "ul",
+        "ol",
+        "li",
+        "blockquote",
+        "pre",
+        "code",
+        "strong",
+        "em",
+        "del",
+        "ins",
+        "sup",
+        "sub",
+        "a",
+        "img",
+        "table",
+        "thead",
+        "tbody",
+        "tr",
+        "th",
+        "td",
+        "div",
+        "span",
+      ],
+      ALLOWED_ATTR: [
+        "href",
+        "target",
+        "rel",
+        "title",
+        "class",
+        "id",
+        "colspan",
+        "rowspan",
+        "alt",
+        "src",
+        "width",
+        "height",
+        "align",
+      ],
+      ALLOW_DATA_ATTR: false,
+    });
+  }
+
   // ===========================
   // Markdown Helpers
   // ===========================
@@ -132,7 +190,8 @@
     };
 
     try {
-      return marked.parse(markdown, { renderer });
+      const raw = marked.parse(markdown, { renderer });
+      return sanitizeReportMarkdownHtml(raw);
     } catch (e) {
       return "<p>Error rendering content.</p>";
     }
@@ -431,9 +490,13 @@
                     </div>
                 </div>`;
 
-    const askQuestionsButtonHtml = chatUrl
+    const safeChatUrl =
+      typeof isSafeHttpUrl === "function" && chatUrl && isSafeHttpUrl(chatUrl)
+        ? chatUrl.trim()
+        : null;
+    const askQuestionsButtonHtml = safeChatUrl
       ? `
-                        <a id="reportOpenChatButton" href="${chatUrl}" target="_blank" class="button-secondary">
+                        <a id="reportOpenChatButton" href="${escapeHtml(safeChatUrl)}" target="_blank" rel="noopener noreferrer" class="button-secondary">
                             <svg class="button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M14 2H2C1.45 2 1 2.45 1 3V11C1 11.55 1.45 12 2 12H4V14.5L7 12H14C14.55 12 15 11.55 15 11V3C15 2.45 14.55 2 14 2Z" stroke="currentColor" stroke-width="1.5"/></svg>
                             Ask Questions
                         </a>`

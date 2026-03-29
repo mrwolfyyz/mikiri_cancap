@@ -350,8 +350,11 @@ function renderMarkdown(text) {
     // Inline code (`code`)
     html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 
-    // Links [text](url)
-    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // Links [text](url) — only http(s); escape href for attribute safety
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, linkText, url) => {
+        const safe = sanitizeMarkdownLinkUrl(url);
+        return `<a href="${escapeHtmlAttr(safe)}" target="_blank" rel="noopener noreferrer">${linkText}</a>`;
+    });
 
     // Unordered lists (- item)
     html = html.replace(/^- (.+)$/gm, '<li>$1</li>');

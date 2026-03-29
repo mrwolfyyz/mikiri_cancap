@@ -711,7 +711,11 @@ async function showResults(job) {
     console.error("Error loading report:", error);
     elements.progressSection.style.display = "none";
     elements.resultsSection.style.display = "block";
-    elements.inlineReportContainer.innerHTML = `<p class="error-message">Failed to load report: ${error.message}</p>`;
+    elements.inlineReportContainer.replaceChildren();
+    const errP = document.createElement("p");
+    errP.className = "error-message";
+    errP.textContent = `Failed to load report: ${error.message}`;
+    elements.inlineReportContainer.appendChild(errP);
   }
 }
 

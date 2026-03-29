@@ -196,9 +196,9 @@ function showAddressVerificationResults(data) {
   // Street View link
   const geocoding = data.geocoding || {};
   const streetViewUrl = geocoding.street_view_url;
-  if (streetViewUrl) {
+  if (streetViewUrl && isSafeHttpUrl(streetViewUrl)) {
     html += `<div class="verification-street-view">`;
-    html += `<a href="${escapeHtml(streetViewUrl)}" target="_blank" rel="noopener noreferrer" class="button-secondary">`;
+    html += `<a href="${escapeHtml(streetViewUrl.trim())}" target="_blank" rel="noopener noreferrer" class="button-secondary">`;
     html += `<svg class="button-icon" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1C5.24 1 3 3.24 3 6c0 3.75 5 9 5 9s5-5.25 5-9c0-2.76-2.24-5-5-5zm0 7a2 2 0 1 1 0-4 2 2 0 0 1 0 4z" stroke="currentColor" stroke-width="1.5"/></svg>`;
     html += `View on Google Street View`;
     html += `</a>`;
@@ -343,13 +343,20 @@ function showAddressVerificationResults(data) {
         html += `<div class="verification-hits-body">`;
         hits.forEach((hit, hitIndex) => {
           const title = hit.title || "Untitled";
-          const url = hit.url || "#";
+          const url = hit.url || "";
           const snippet = hit.snippet || "";
 
           html += `<div class="verification-hit">`;
-          html += `<div><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="verification-hit-link">${hitIndex + 1}. ${escapeHtml(title)}</a></div>`;
-          if (url && !url.includes("vertexaisearch.cloud.google.com")) {
-            html += `<div class="verification-hit-url">${escapeHtml(url)}</div>`;
+          if (url && isSafeHttpUrl(url)) {
+            html += `<div><a href="${escapeHtml(url.trim())}" target="_blank" rel="noopener noreferrer" class="verification-hit-link">${hitIndex + 1}. ${escapeHtml(title)}</a></div>`;
+            if (!url.includes("vertexaisearch.cloud.google.com")) {
+              html += `<div class="verification-hit-url">${escapeHtml(url)}</div>`;
+            }
+          } else {
+            html += `<div><span class="verification-hit-link">${hitIndex + 1}. ${escapeHtml(title)}</span></div>`;
+            if (url) {
+              html += `<div class="verification-hit-url">${escapeHtml(url)}</div>`;
+            }
           }
           if (snippet) {
             html += `<div class="verification-hit-snippet">${escapeHtml(snippet)}</div>`;

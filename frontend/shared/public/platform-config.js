@@ -63,13 +63,14 @@ const PlatformConfig = {
     } catch (error) {
       console.error("Failed to load configuration:", error);
 
-      // Show user-friendly error
+      // Show user-friendly error (text only — never interpolate into innerHTML)
       const errorDiv = document.createElement("div");
       errorDiv.style.cssText =
         "position: fixed; top: 0; left: 0; right: 0; background: #dc3545; color: white; padding: 1rem; text-align: center; z-index: 9999;";
-      errorDiv.innerHTML =
-        "<strong>Configuration Error:</strong> " +
-        error.message;
+      const strong = document.createElement("strong");
+      strong.textContent = "Configuration Error:";
+      errorDiv.appendChild(strong);
+      errorDiv.appendChild(document.createTextNode(" " + String(error.message)));
       document.body.prepend(errorDiv);
 
       throw error;
