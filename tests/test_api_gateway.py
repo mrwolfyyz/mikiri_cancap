@@ -565,9 +565,7 @@ class TestProxyChatRequest:
                 patch.object(gw, "retry_with_backoff", side_effect=passthrough_retry),
                 patch.object(gw.requests, "post", side_effect=capture_post),
             ):
-                data, status, _ = _parse_response(
-                    proxy_chat_request(req, {}, "https://chat.example.com", "Chat")
-                )
+                data, status, _ = _parse_response(proxy_chat_request(req, {}, "https://chat.example.com", "Chat"))
         assert status == 200
         mock_id_tok.assert_called_once_with("https://chat.example.com")
         assert post_kw["headers"]["Authorization"] == "Bearer mock-google-id-token"
