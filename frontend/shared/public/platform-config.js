@@ -36,8 +36,23 @@ const PlatformConfig = {
         );
       }
 
-      this._config = await platformRes.json();
-      this._firebaseConfig = await firebaseRes.json();
+      const platformText = await platformRes.text();
+      const firebaseText = await firebaseRes.text();
+
+      const parseJson = (raw, label) => {
+        try {
+          return JSON.parse(raw);
+        } catch (e) {
+          const looksLikeHtml = raw.trimStart().startsWith("<");
+          const hint = looksLikeHtml
+            ? ` Hosting may be serving index.html for missing ${label} (run terraform apply to generate it, then redeploy).`
+            : "";
+          throw new Error(`${label} is not valid JSON.${hint} (${e.message})`);
+        }
+      };
+
+      this._config = parseJson(platformText, "platform.json");
+      this._firebaseConfig = parseJson(firebaseText, "firebase-config.json");
 
       console.log(
         "Platform configuration loaded:",

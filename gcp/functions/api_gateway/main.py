@@ -433,8 +433,8 @@ def handle_investigation(request: Request, headers: dict, workflow_name: str):
     if not valid:
         errors.append({"field": "province", "message": msg})
 
-    if not company_name:
-        errors.append({"field": "company_name", "message": "Company name is required"})
+    if company_name and len(company_name) > 200:
+        errors.append({"field": "company_name", "message": "Company name must be 200 characters or less"})
 
     if errors:
         return jsonify({"error": "validation_error", "details": errors}), 400, headers

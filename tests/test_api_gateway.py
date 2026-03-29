@@ -431,6 +431,30 @@ class TestHandleInvestigation:
         assert status == 202
         assert data["job_id"] == "j1"
 
+    def test_optional_company_name_omitted(self):
+        body = {k: v for k, v in self._valid_body().items() if k != "company_name"}
+        req = _authed_request(method="POST", path="/investigate-skiptrace", body=body)
+        with _app.test_request_context():
+            with _stub_auth(), _stub_rate_limit(), _stub_create_job("j1"), _stub_trigger_workflow() as mock_tw:
+                gw.db.collection.return_value.document.return_value.update = MagicMock()
+                data, status, _ = _parse_response(handle_investigation(req, {}, "investigate-skiptrace"))
+        assert status == 202
+        assert data["job_id"] == "j1"
+        mock_tw.assert_called_once()
+        assert mock_tw.call_args[0][5] == ""
+
+    def test_company_name_too_long(self):
+        body = self._valid_body()
+        body["company_name"] = "x" * 201
+        req = _authed_request(method="POST", path="/investigate-skiptrace", body=body)
+        with _app.test_request_context():
+            with _stub_auth(), _stub_rate_limit():
+                data, status, _ = _parse_response(handle_investigation(req, {}, "investigate-skiptrace"))
+        assert status == 400
+        assert data["error"] == "validation_error"
+        fields = {d["field"]: d["message"] for d in data["details"]}
+        assert fields.get("company_name") == "Company name must be 200 characters or less"
+
     def test_auth_failure(self):
         req = _make_request(method="POST", headers={})
         with _app.test_request_context():

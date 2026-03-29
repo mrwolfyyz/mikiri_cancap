@@ -96,6 +96,11 @@
     font-size: var(--font-sm);
 }
 
+.form-group label .optional-hint {
+    font-weight: 400;
+    color: var(--text-secondary);
+}
+
 .form-group input {
     width: 100%;
     padding: 14px 16px;

@@ -288,11 +288,12 @@ function validateEmail(email) {
 }
 
 function validateCompanyName(companyName) {
-  if (!companyName || companyName.trim().length === 0) {
-    return "Company name is required";
+  const trimmed = (companyName || "").trim();
+  if (trimmed.length === 0) {
+    return null;
   }
 
-  if (companyName.length > 200) {
+  if (trimmed.length > 200) {
     return "Company name must be less than 200 characters";
   }
 
