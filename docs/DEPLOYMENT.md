@@ -106,7 +106,7 @@ gcloud auth application-default print-access-token > /dev/null && echo "✓ Appl
 
 # Verify quota project is set (required for Identity Platform API)
 # IMPORTANT: You must set this manually - it's required before terraform apply
-gcloud auth application-default set-quota-project mikiri-demo-test
+gcloud auth application-default set-quota-project YOUR_PROJECT_ID
 
 # Verify OAuth client project matches target project (required for Identity Platform API)
 # This prevents "quota project" errors due to OAuth client mismatch
