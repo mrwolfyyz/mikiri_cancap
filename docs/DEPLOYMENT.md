@@ -48,7 +48,7 @@ cd <repository-directory>
 
 **Option A: Use command-line arguments (Recommended)**
 - Scripts accept project ID and region as arguments
-- Example: `./scripts/validate-deployment.sh PROJECT_ID REGION`
+- Example: `./scripts/validate-deployment.sh PROJECT_ID REGION ENVIRONMENT`
 - No `.env` file needed
 
 **Option B: Set environment variables in your shell**
@@ -70,7 +70,7 @@ nano .env
 If you create `.env`, you must manually source it before running scripts:
 ```bash
 source .env
-./scripts/validate-deployment.sh
+./scripts/validate-deployment.sh "$GCP_PROJECT" "$GCP_REGION" dev
 ```
 
 **Note**: Terraform uses `terraform.tfvars`, not `.env`. The `.env` file is only for shell convenience.
@@ -168,7 +168,7 @@ Key variables to configure:
 | `project_id` | GCP Project ID | `my-project-123` |
 | `region` | GCP Region | `northamerica-northeast1` |
 | `location` | GCP Location (for Firestore) | `northamerica-northeast1` |
-| `cors_allowed_origins` | CORS origins | `https://myapp.web.app` (prod) or `*` (dev) |
+| `cors_allowed_origins` | CORS origins (required) | `*` (explicit dev choice) or `https://PROJECT-skiptrace.web.app,https://PROJECT-origination.web.app` (prod) |
 
 ### Backend State (GCS)
 
@@ -411,7 +411,7 @@ Run the validation script from repository root:
 cd ../..
 
 # Run validation script
-./scripts/validate-deployment.sh PROJECT_ID REGION
+./scripts/validate-deployment.sh PROJECT_ID REGION ENVIRONMENT
 ```
 
 Run smoke tests:
@@ -553,13 +553,13 @@ firebase hosting:clone PROJECT_ID:PREVIOUS_RELEASE_ID PROJECT_ID:live
 
 ### Development
 
-- Use `cors_allowed_origins = "*"` for easier testing
+- Use `cors_allowed_origins = "*"` only as an explicit development choice
 - Consider lower function memory/instance limits
 - Firebase emulators can be used for local development
 
 ### Production
 
-- Set specific CORS origins: `cors_allowed_origins = "https://your-domain.web.app"`
+- Set specific CORS origins (no wildcard): `cors_allowed_origins = "https://your-domain.web.app"`
 - Enable Firebase App Check (see firebase.tf comments)
 - Configure alerting and monitoring
 - Use production-grade secret management

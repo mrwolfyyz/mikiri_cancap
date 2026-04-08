@@ -27,7 +27,14 @@ variable "environment" {
 variable "cors_allowed_origins" {
   description = "CORS allowed origins for API Gateway (use '*' for dev, specific domains for prod)"
   type        = string
-  default     = "*"
+
+  validation {
+    condition = (
+      var.environment == "dev" ||
+      trimspace(var.cors_allowed_origins) != "*"
+    )
+    error_message = "cors_allowed_origins cannot be '*' in staging or prod."
+  }
 }
 
 # -----------------------------------------------------------------------------

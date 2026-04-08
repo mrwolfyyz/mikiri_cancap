@@ -69,6 +69,7 @@ os.environ.setdefault("GCP_LOCATION", "northamerica-northeast1")
 os.environ.setdefault("CHAT_HANDLER_URL", "https://chat.example.com")
 os.environ.setdefault("CHAT_HANDLER_ORIGINATION_URL", "https://chat-orig.example.com")
 os.environ.setdefault("ADDRESS_VERIFICATION_URL", "https://addr.example.com")
+os.environ.setdefault("CORS_ALLOWED_ORIGINS", "*")
 
 # ---------------------------------------------------------------------------
 # Load api_gateway/main.py

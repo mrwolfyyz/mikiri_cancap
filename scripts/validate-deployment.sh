@@ -11,9 +11,10 @@ set -e
 # Configuration
 PROJECT_ID="${1:-$GCP_PROJECT}"
 REGION="${2:-northamerica-northeast1}"
+DEPLOY_ENV="${3:-dev}"
 
 if [[ -z "$PROJECT_ID" ]]; then
-  echo "Usage: $0 <project_id> [region]"
+  echo "Usage: $0 <project_id> [region] [environment]"
   echo ""
   echo "Environment variable GCP_PROJECT can also be used."
   exit 1
@@ -26,6 +27,7 @@ echo "=========================================="
 echo "Validating deployment"
 echo "Project: $PROJECT_ID"
 echo "Region:  $REGION"
+echo "Env:     $DEPLOY_ENV"
 echo "=========================================="
 echo ""
 
@@ -95,6 +97,30 @@ for func in "${FUNCTIONS[@]}"; do
 done
 
 echo ""
+
+# -----------------------------------------------------------------------------
+# Check CORS policy (non-dev guardrail)
+# -----------------------------------------------------------------------------
+if [[ "$DEPLOY_ENV" != "dev" ]]; then
+  echo "Checking CORS policy for non-dev environment..."
+  API_CORS=$(gcloud functions describe "api-gateway" \
+    --project="$PROJECT_ID" \
+    --region="$REGION" \
+    --gen2 \
+    --format="value(serviceConfig.environmentVariables.CORS_ALLOWED_ORIGINS)" 2>/dev/null || true)
+
+  API_CORS_TRIMMED="$(echo "$API_CORS" | tr -d '[:space:]')"
+  if [[ "$API_CORS_TRIMMED" == "*" ]]; then
+    echo "  ❌ api-gateway CORS_ALLOWED_ORIGINS is '*' in non-dev ($DEPLOY_ENV)"
+    ALL_OK=false
+  elif [[ -z "$API_CORS_TRIMMED" ]]; then
+    echo "  ❌ api-gateway CORS_ALLOWED_ORIGINS is unset in non-dev ($DEPLOY_ENV)"
+    ALL_OK=false
+  else
+    echo "  ✓ api-gateway CORS_ALLOWED_ORIGINS is restricted"
+  fi
+  echo ""
+fi
 
 # -----------------------------------------------------------------------------
 # Check Workflows

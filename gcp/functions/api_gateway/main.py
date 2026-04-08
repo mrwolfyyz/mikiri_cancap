@@ -61,8 +61,13 @@ CHAT_HANDLER_URL = os.environ.get("CHAT_HANDLER_URL")
 CHAT_HANDLER_ORIGINATION_URL = os.environ.get("CHAT_HANDLER_ORIGINATION_URL")
 ADDRESS_VERIFICATION_URL = os.environ.get("ADDRESS_VERIFICATION_URL")
 
-# CORS configuration (restrict in production)
-CORS_ALLOWED_ORIGINS = os.environ.get("CORS_ALLOWED_ORIGINS", "*")
+# CORS configuration (must be explicitly configured per environment)
+CORS_ALLOWED_ORIGINS = (os.environ.get("CORS_ALLOWED_ORIGINS") or "").strip()
+if not CORS_ALLOWED_ORIGINS:
+    raise ValueError(
+        "CORS_ALLOWED_ORIGINS must be explicitly configured. "
+        "Use '*' only for deliberate development usage."
+    )
 
 # Job document retention (aligned with report generators and frontend chat TTL)
 JOB_RETENTION_DAYS = 7
