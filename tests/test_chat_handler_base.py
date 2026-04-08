@@ -11,6 +11,7 @@ Covers:
 - handle_chat_request (integration tests with mocked Gemini client)
 """
 
+import json
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -40,13 +41,46 @@ sys.modules["google.genai.types"] = _mock_genai_types
 # Now safe to import
 import chat_handler_base
 from chat_handler_base import (
+    CHAT_RESPONSE_FALLBACK_TEXT,
     MAX_PROMPT_CHARS,
     ChatHandlerConfig,
     _truncate_history_if_needed,
     extract_grounding_metadata,
     format_conversation_history,
     handle_chat_request,
+    parse_chat_json_response,
 )
+
+
+def _llm_json(text: str) -> str:
+    """Gemini JSON-mode style body: one object with string response."""
+    return json.dumps({"response": text})
+
+
+# ===========================================================================
+# Tests for parse_chat_json_response
+# ===========================================================================
+class TestParseChatJsonResponse:
+    """Pure tests for JSON envelope parsing."""
+
+    def test_valid_object(self):
+        assert parse_chat_json_response('{"response": "hello"}') == "hello"
+
+    def test_code_fenced(self):
+        raw = '```json\n{"response": "x"}\n```'
+        assert parse_chat_json_response(raw) == "x"
+
+    def test_wrong_response_type(self):
+        assert parse_chat_json_response('{"response": 1}') is None
+
+    def test_missing_key(self):
+        assert parse_chat_json_response("{}") is None
+
+    def test_not_json(self):
+        assert parse_chat_json_response("not json") is None
+
+    def test_empty_response_string(self):
+        assert parse_chat_json_response('{"response": "   "}') is None
 
 
 # ===========================================================================
@@ -391,7 +425,7 @@ class TestHandleChatRequest:
             patch.object(chat_handler_base, "_get_client") as mock_client,
         ):
             mock_resp = MagicMock()
-            mock_resp.text = "response"
+            mock_resp.text = _llm_json("ok")
             mock_resp.candidates = []
             mock_client.return_value.models.generate_content.return_value = mock_resp
             body, status, headers = handle_chat_request(request, self._make_config())
@@ -419,7 +453,7 @@ class TestHandleChatRequest:
             patch.object(chat_handler_base, "_get_client") as mock_client,
         ):
             mock_resp = MagicMock()
-            mock_resp.text = "response"
+            mock_resp.text = _llm_json("ok")
             mock_resp.candidates = []
             mock_client.return_value.models.generate_content.return_value = mock_resp
             body, status, headers = handle_chat_request(request, self._make_config())
@@ -508,7 +542,7 @@ class TestHandleChatRequest:
         mock_get_client.return_value = mock_client
 
         mock_response = MagicMock()
-        mock_response.text = "  Here's what I found about John Smith.  "
+        mock_response.text = _llm_json("Here's what I found about John Smith.")
         mock_response.candidates = []
         mock_client.models.generate_content.return_value = mock_response
 
@@ -532,7 +566,7 @@ class TestHandleChatRequest:
         mock_get_client.return_value = mock_client
 
         mock_response = MagicMock()
-        mock_response.text = "The answer is 42."
+        mock_response.text = _llm_json("The answer is 42.")
         mock_response.candidates = []
         mock_client.models.generate_content.return_value = mock_response
 
@@ -562,7 +596,7 @@ class TestHandleChatRequest:
         mock_get_client.return_value = mock_client
 
         mock_response = MagicMock()
-        mock_response.text = "Found info."
+        mock_response.text = _llm_json("Found info.")
         mock_response.candidates = []
         mock_client.models.generate_content.return_value = mock_response
 
@@ -579,7 +613,7 @@ class TestHandleChatRequest:
         mock_get_client.return_value = mock_client
 
         mock_response = MagicMock()
-        mock_response.text = "response"
+        mock_response.text = _llm_json("response")
         mock_response.candidates = []
         mock_client.models.generate_content.return_value = mock_response
 
@@ -637,7 +671,7 @@ class TestHandleChatRequest:
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
         mock_response = MagicMock()
-        mock_response.text = "response"
+        mock_response.text = _llm_json("response")
         mock_response.candidates = []
         mock_client.models.generate_content.return_value = mock_response
 
@@ -663,3 +697,49 @@ class TestHandleChatRequest:
 
         handle_chat_request(request, config)
         assert received_ctx[0] == md_context
+
+    def test_markdown_context_not_object_returns_400(self):
+        request = self._make_request(
+            json_data={"message": "hi", "markdown_context": "not a dict"},
+        )
+        body, status, headers = handle_chat_request(request, self._make_config())
+        assert status == 400
+        assert "object" in body["error"].lower()
+
+    @patch.object(chat_handler_base, "_get_client")
+    @patch.object(chat_handler_base, "GCP_PROJECT", "test-project")
+    def test_json_schema_mismatch_silent_retry_then_success(self, mock_get_client):
+        """Invalid JSON shape on first model response triggers one silent retry."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        bad = MagicMock()
+        bad.text = '{"foo": "bar"}'
+        bad.candidates = []
+        good = MagicMock()
+        good.text = _llm_json("Recovered")
+        good.candidates = []
+        mock_client.models.generate_content.side_effect = [bad, good]
+        request = self._make_request(json_data={"message": "hi"})
+        body, status, headers = handle_chat_request(request, self._make_config())
+        assert status == 200
+        assert body["response"] == "Recovered"
+        assert mock_client.models.generate_content.call_count == 2
+
+    @patch.object(chat_handler_base, "_get_client")
+    @patch.object(chat_handler_base, "GCP_PROJECT", "test-project")
+    def test_json_schema_mismatch_twice_uses_fallback(self, mock_get_client):
+        """Two invalid model JSON payloads yield friendly fallback text (HTTP 200)."""
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+        bad = MagicMock()
+        bad.text = "{}"
+        bad.candidates = []
+        bad2 = MagicMock()
+        bad2.text = '{"response": 123}'
+        bad2.candidates = []
+        mock_client.models.generate_content.side_effect = [bad, bad2]
+        request = self._make_request(json_data={"message": "hi"})
+        body, status, headers = handle_chat_request(request, self._make_config())
+        assert status == 200
+        assert body["response"] == CHAT_RESPONSE_FALLBACK_TEXT
+        assert mock_client.models.generate_content.call_count == 2
