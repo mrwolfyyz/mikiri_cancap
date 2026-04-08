@@ -235,10 +235,10 @@ class TestCheckRateLimit:
         ]
         assert check_rate_limit("user-1") is False
 
-    def test_firestore_error_allows_request(self):
-        """Graceful degradation: allow request if rate limit query fails."""
+    def test_firestore_error_fails_closed(self):
+        """If the rate limit query fails, deny the request (fail closed)."""
         gw.db.collection.return_value.where.side_effect = Exception("index missing")
-        assert check_rate_limit("user-1") is True
+        assert check_rate_limit("user-1") is False
         gw.db.collection.return_value.where.side_effect = None  # cleanup
 
 

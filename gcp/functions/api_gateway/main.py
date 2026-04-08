@@ -382,11 +382,12 @@ def check_rate_limit(user_id: str) -> bool:
     """Check if user has exceeded the investigation rate limit.
 
     Returns True if the request is allowed, False if rate limited.
-    Degrades gracefully (allows request) if the query fails (e.g., missing index).
+    If the Firestore count query cannot be completed (after retries for transient
+    errors), returns False (fail closed) so the caller returns 429.
     """
-    try:
-        from google.cloud.firestore_v1.base_query import FieldFilter
+    from google.cloud.firestore_v1.base_query import FieldFilter
 
+    def _count_under_limit() -> bool:
         window_start = datetime.utcnow() - timedelta(seconds=RATE_LIMIT_WINDOW_SECONDS)
         recent_jobs = (
             db.collection("jobs")
@@ -397,9 +398,16 @@ def check_rate_limit(user_id: str) -> bool:
         )
         count = recent_jobs[0][0].value
         return count < RATE_LIMIT_MAX_REQUESTS
+
+    try:
+        return retry_with_backoff(
+            _count_under_limit,
+            RetryConfig(max_attempts=3, base_delay_seconds=0.5, max_delay_seconds=5.0),
+            operation_name="Firestore rate limit count",
+        )
     except Exception as e:
-        logger.warning(f"Rate limit check failed, allowing request: {e}")
-        return True
+        logger.error("Rate limit check failed; rejecting request: %s", e)
+        return False
 
 
 # =============================================================================
