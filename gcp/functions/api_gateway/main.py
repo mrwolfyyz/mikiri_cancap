@@ -65,8 +65,7 @@ ADDRESS_VERIFICATION_URL = os.environ.get("ADDRESS_VERIFICATION_URL")
 CORS_ALLOWED_ORIGINS = (os.environ.get("CORS_ALLOWED_ORIGINS") or "").strip()
 if not CORS_ALLOWED_ORIGINS:
     raise ValueError(
-        "CORS_ALLOWED_ORIGINS must be explicitly configured. "
-        "Use '*' only for deliberate development usage."
+        "CORS_ALLOWED_ORIGINS must be explicitly configured. Use '*' only for deliberate development usage."
     )
 
 # Job document retention (aligned with report generators and frontend chat TTL)
