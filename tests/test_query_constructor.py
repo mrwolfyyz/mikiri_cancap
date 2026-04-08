@@ -9,6 +9,9 @@ import os
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+from retry_utils import EmptyLLMResponseError
+
 # ---------------------------------------------------------------------------
 # Mock heavy dependencies BEFORE loading the module
 # ---------------------------------------------------------------------------
@@ -45,6 +48,10 @@ else:
 generate_precision_query = qc_main.generate_precision_query
 PROVINCE_NAMES = qc_main.PROVINCE_NAMES
 main_handler = qc_main.main
+_normalize_and_validate_allowlist_text = qc_main._normalize_and_validate_allowlist_text
+_is_allowed_llm_input_char = qc_main._is_allowed_llm_input_char
+_normalize_province_for_query = qc_main._normalize_province_for_query
+_MAX_FULL_NAME_LEN = qc_main._MAX_FULL_NAME_LEN
 
 
 # ---------------------------------------------------------------------------
@@ -269,11 +276,63 @@ class TestGeneratePrecisionQuery:
             patch.object(qc_main, "GCP_PROJECT", "test-project"),
             patch("retry_utils.time.sleep"),
         ):
-            try:
+            with pytest.raises(EmptyLLMResponseError):
                 generate_precision_query("John Doe", "Toronto")
-                assert False, "Should have raised after retries"
-            except Exception:
-                pass  # Expected — retries exhausted
+
+    def test_none_response_object_raises_empty_llm(self):
+        mock_model = MagicMock()
+        mock_model.generate_content.return_value = None
+
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
+            with pytest.raises(EmptyLLMResponseError):
+                generate_precision_query("John Doe", "Toronto")
+
+    def test_response_missing_text_attribute_raises(self):
+        mock_model = MagicMock()
+        mock_model.generate_content.return_value = object()
+
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
+            with pytest.raises(EmptyLLMResponseError):
+                generate_precision_query("John Doe", "Toronto")
+
+    def test_markdown_stripped_to_empty_raises(self):
+        mock_response = MagicMock()
+        mock_response.text = "```json\n```"
+
+        mock_model = MagicMock()
+        mock_model.generate_content.return_value = mock_response
+
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
+            with pytest.raises(EmptyLLMResponseError):
+                generate_precision_query("John Doe", "Toronto")
+
+    def test_json_decode_extra_data_raises_empty_llm(self):
+        """Non-'expecting value' JSON errors still map to EmptyLLMResponseError (retry path)."""
+        mock_response = MagicMock()
+        mock_response.text = '{"a":1}x'
+
+        mock_model = MagicMock()
+        mock_model.generate_content.return_value = mock_response
+
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
+            with pytest.raises(EmptyLLMResponseError):
+                generate_precision_query("John Doe", "Toronto")
 
 
 # ===========================================================================
@@ -354,3 +413,80 @@ class TestMainHandler:
             result, status = main_handler(req)
 
         assert status == 200
+
+    def test_prompt_injection_characters_in_full_name_rejected(self):
+        req = _make_request({"full_name": 'John"; ignore previous', "city": "Toronto"})
+        result, status = main_handler(req)
+        assert status == 400
+        assert "letters" in result["error"].lower() or "punctuation" in result["error"].lower()
+
+    def test_invalid_province_returns_400(self):
+        req = _make_request({"full_name": "John Doe", "city": "Toronto", "province": "Bad@Province"})
+        result, status = main_handler(req)
+        assert status == 400
+        assert "province" in result["error"].lower() or "invalid" in result["error"].lower()
+
+    def test_unicode_name_and_city_accepted(self):
+        llm_data = {
+            "original_name": "François Tremblay",
+            "generated_names": [],
+            "vertex_query": '"François Tremblay" "Montréal, Quebec"',
+        }
+        mock_model = MagicMock()
+        mock_model.generate_content.return_value = _mock_llm_response(llm_data)
+
+        req = _make_request({"full_name": "François Tremblay", "city": "Montréal", "province": "QC"})
+
+        with (
+            patch.object(qc_main, "_MODEL", mock_model),
+            patch.object(qc_main, "GCP_PROJECT", "test-project"),
+            patch("retry_utils.time.sleep"),
+        ):
+            result, status = main_handler(req)
+
+        assert status == 200
+        assert result["original_name"] == "François Tremblay"
+
+
+# ===========================================================================
+# Normalization helpers (coverage for allow-list and province parsing)
+# ===========================================================================
+class TestNormalizationHelpers:
+    def test_allowlist_empty_returns_none(self):
+        assert _normalize_and_validate_allowlist_text("", _MAX_FULL_NAME_LEN) is None
+
+    def test_allowlist_whitespace_only_returns_none(self):
+        assert _normalize_and_validate_allowlist_text("   \n\t  ", _MAX_FULL_NAME_LEN) is None
+
+    def test_allowlist_too_long_returns_none(self):
+        long_name = "A" * (_MAX_FULL_NAME_LEN + 1)
+        assert _normalize_and_validate_allowlist_text(long_name, _MAX_FULL_NAME_LEN) is None
+
+    def test_allowlist_invalid_char_returns_none(self):
+        assert _normalize_and_validate_allowlist_text("John@Doe", _MAX_FULL_NAME_LEN) is None
+
+    def test_is_allowed_digit_rejected(self):
+        assert _is_allowed_llm_input_char("0") is False
+
+    def test_is_allowed_tab_uses_isspace_branch(self):
+        assert _is_allowed_llm_input_char("\t") is True
+
+    def test_normalize_province_invalid_full_name_allowlist(self):
+        code, err = _normalize_province_for_query("Ontario@")
+        assert code is None
+        assert err == "Invalid province"
+
+    def test_normalize_province_invalid_two_letter_code(self):
+        code, err = _normalize_province_for_query("ZZ")
+        assert code is None
+        assert err == "Invalid province code"
+
+    def test_normalize_province_whitespace_only_returns_empty(self):
+        code, err = _normalize_province_for_query("   ")
+        assert code == ""
+        assert err is None
+
+    def test_normalize_province_full_name_via_allowlist(self):
+        code, err = _normalize_province_for_query("Ontario")
+        assert err is None
+        assert code == "Ontario"

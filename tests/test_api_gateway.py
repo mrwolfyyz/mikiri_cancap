@@ -12,7 +12,7 @@ the routing, authentication, rate limiting, job lifecycle, and proxy logic.
 import json
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import flask
@@ -93,6 +93,7 @@ proxy_chat_request = gw.proxy_chat_request
 handle_extension_prefill_session = gw.handle_extension_prefill_session
 handle_prefill_session_redeem = gw.handle_prefill_session_redeem
 validate_prefill_payload = gw.validate_prefill_payload
+_prefill_doc_expired = gw._prefill_doc_expired
 
 
 # ---------------------------------------------------------------------------
@@ -694,6 +695,180 @@ class TestPrefillSession:
         assert status == 200
         assert data["email"] == "jane@example.com"
         mock_ref.delete.assert_called_once()
+
+    def test_prefill_doc_expired_none(self):
+        assert _prefill_doc_expired(None) is False
+
+    def test_prefill_doc_expired_datetime_past(self):
+        past = datetime.now(UTC) - timedelta(hours=1)
+        assert _prefill_doc_expired(past) is True
+
+    def test_prefill_doc_expired_datetime_future(self):
+        future = datetime.now(UTC) + timedelta(hours=1)
+        assert _prefill_doc_expired(future) is False
+
+    def test_validate_prefill_camel_case(self):
+        payload, errors = validate_prefill_payload({"fullName": "Jo Smith", "companyName": "Acme"})
+        assert errors == []
+        assert payload["full_name"] == "Jo Smith"
+        assert payload["company_name"] == "Acme"
+
+    def test_validate_prefill_invalid_province(self):
+        payload, errors = validate_prefill_payload({"email": "a@b.com", "province": "XX"})
+        assert payload is None
+        assert any(e["field"] == "province" for e in errors)
+
+    def test_validate_prefill_company_too_long(self):
+        payload, errors = validate_prefill_payload({"email": "a@b.com", "company_name": "x" * 201})
+        assert payload is None
+        assert any(e["field"] == "company_name" for e in errors)
+
+    def test_validate_prefill_email_invalid(self):
+        payload, errors = validate_prefill_payload({"email": "not-an-email"})
+        assert payload is None
+        assert any(e["field"] == "email" for e in errors)
+
+    def test_validate_prefill_full_name_too_short(self):
+        payload, errors = validate_prefill_payload({"full_name": "A"})
+        assert payload is None
+        assert any(e["field"] == "full_name" for e in errors)
+
+    def test_validate_prefill_invalid_city(self):
+        payload, errors = validate_prefill_payload({"email": "a@b.com", "city": "City123"})
+        assert payload is None
+        assert any(e["field"] == "city" for e in errors)
+
+    def test_prefill_doc_expired_timestamp_raises(self):
+        bad_ts = MagicMock()
+        bad_ts.timestamp = MagicMock(side_effect=ValueError("bad ts"))
+        assert _prefill_doc_expired(bad_ts) is True
+
+    def test_handle_prefill_redeem_expired_doc_delete_raises(self):
+        past = datetime.now(UTC) - timedelta(minutes=1)
+        doc = {"email": "j@example.com", "expire_at": past}
+        mock_snap = MagicMock()
+        mock_snap.exists = True
+        mock_snap.to_dict.return_value = doc
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_snap
+        mock_ref.delete = MagicMock(side_effect=RuntimeError("delete failed"))
+        gw.db.collection.return_value.document.return_value = mock_ref
+
+        req = _make_request(method="POST", path="/prefill-session/redeem", body={"token": "abc"})
+        with _app.test_request_context():
+            data, status, _ = _parse_response(handle_prefill_session_redeem(req, {}))
+        assert status == 404
+        mock_ref.delete.assert_called_once()
+
+    def test_handle_prefill_create_oversized_body(self):
+        req = _make_request(
+            method="POST",
+            path="/extension/prefill-session",
+            content_length=20_000,
+            body={"email": "a@b.com"},
+        )
+        req.headers = {"X-Extension-Prefill-Secret": "test-extension-prefill-secret"}
+        with _app.test_request_context():
+            data, status, _ = _parse_response(handle_extension_prefill_session(req, {}))
+        assert status == 413
+
+    def test_handle_prefill_create_invalid_json(self):
+        req = _make_request(
+            method="POST",
+            path="/extension/prefill-session",
+            bad_json=True,
+        )
+        req.headers = {"X-Extension-Prefill-Secret": "test-extension-prefill-secret"}
+        with _app.test_request_context():
+            data, status, _ = _parse_response(handle_extension_prefill_session(req, {}))
+        assert status == 400
+
+    def test_handle_prefill_create_firestore_failure(self):
+        req = _make_request(
+            method="POST",
+            path="/extension/prefill-session",
+            body={"email": "john@example.com"},
+        )
+        req.headers = {"X-Extension-Prefill-Secret": "test-extension-prefill-secret"}
+        with _app.test_request_context():
+            with patch.object(gw, "retry_with_backoff", side_effect=RuntimeError("fs")):
+                data, status, _ = _parse_response(handle_extension_prefill_session(req, {}))
+        assert status == 500
+
+    def test_handle_prefill_redeem_oversized_body(self):
+        req = _make_request(
+            method="POST",
+            path="/prefill-session/redeem",
+            content_length=10_000,
+            body={"token": "x"},
+        )
+        with _app.test_request_context():
+            data, status, _ = _parse_response(handle_prefill_session_redeem(req, {}))
+        assert status == 413
+
+    def test_handle_prefill_redeem_invalid_json(self):
+        req = _make_request(method="POST", path="/prefill-session/redeem", bad_json=True)
+        with _app.test_request_context():
+            data, status, _ = _parse_response(handle_prefill_session_redeem(req, {}))
+        assert status == 400
+
+    def test_handle_prefill_redeem_invalid_token_length(self):
+        req = _make_request(
+            method="POST",
+            path="/prefill-session/redeem",
+            body={"token": "x" * 600},
+        )
+        with _app.test_request_context():
+            data, status, _ = _parse_response(handle_prefill_session_redeem(req, {}))
+        assert status == 400
+
+    def test_handle_prefill_redeem_firestore_read_error(self):
+        gw.db.collection.return_value.document.return_value.get.side_effect = RuntimeError("db")
+        req = _make_request(method="POST", path="/prefill-session/redeem", body={"token": "tok"})
+        with _app.test_request_context():
+            data, status, _ = _parse_response(handle_prefill_session_redeem(req, {}))
+        assert status == 500
+        gw.db.collection.return_value.document.return_value.get.side_effect = None
+
+    def test_handle_prefill_redeem_expired_doc(self):
+        past = datetime.now(UTC) - timedelta(minutes=1)
+        doc = {
+            "full_name": "X",
+            "email": "j@example.com",
+            "expire_at": past,
+        }
+        mock_snap = MagicMock()
+        mock_snap.exists = True
+        mock_snap.to_dict.return_value = doc
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_snap
+        mock_ref.delete = MagicMock()
+        gw.db.collection.return_value.document.return_value = mock_ref
+
+        req = _make_request(method="POST", path="/prefill-session/redeem", body={"token": "abc"})
+        with _app.test_request_context():
+            data, status, _ = _parse_response(handle_prefill_session_redeem(req, {}))
+        assert status == 404
+        mock_ref.delete.assert_called_once()
+
+    def test_handle_prefill_redeem_delete_fails(self):
+        doc = {
+            "full_name": "Jane",
+            "email": "j@example.com",
+            "expire_at": None,
+        }
+        mock_snap = MagicMock()
+        mock_snap.exists = True
+        mock_snap.to_dict.return_value = doc
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_snap
+        mock_ref.delete = MagicMock(side_effect=RuntimeError("delete failed"))
+        gw.db.collection.return_value.document.return_value = mock_ref
+
+        req = _make_request(method="POST", path="/prefill-session/redeem", body={"token": "abc"})
+        with _app.test_request_context():
+            data, status, _ = _parse_response(handle_prefill_session_redeem(req, {}))
+        assert status == 500
 
 
 # ===========================================================================
