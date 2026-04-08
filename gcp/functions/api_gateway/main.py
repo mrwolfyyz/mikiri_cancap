@@ -963,8 +963,6 @@ def main(request: Request):
                 {
                     "status": "healthy",
                     "service": "api_gateway",
-                    "project": PROJECT_ID or "not_configured",
-                    "region": LOCATION,
                 }
             ),
             200,

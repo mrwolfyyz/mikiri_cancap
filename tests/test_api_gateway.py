@@ -890,7 +890,7 @@ class TestMainRouting:
             with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 200
-        assert data["status"] == "healthy"
+        assert data == {"status": "healthy", "service": "api_gateway"}
 
     def test_root_health_check(self):
         req = _make_request(method="GET", path="/")
@@ -898,7 +898,7 @@ class TestMainRouting:
             with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 200
-        assert data["status"] == "healthy"
+        assert data == {"status": "healthy", "service": "api_gateway"}
 
     def test_unknown_path(self):
         req = _make_request(method="GET", path="/nonexistent")
