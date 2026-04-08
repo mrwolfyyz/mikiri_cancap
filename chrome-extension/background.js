@@ -9,9 +9,6 @@ const SKIP_TRACE_INTELLIGENCE_URL = CONFIG?.SKIP_TRACE_INTELLIGENCE_URL || 'http
 
 // Listen for extension icon clicks
 chrome.action.onClicked.addListener(async (tab) => {
-  console.log('[Skip Trace Extension] Extension icon clicked on tab:', tab.url);
-  console.log('[Skip Trace Extension] Using platform URL:', SKIP_TRACE_INTELLIGENCE_URL);
-  
   // Check if config is properly set
   if (SKIP_TRACE_INTELLIGENCE_URL.includes('YOUR-PROJECT')) {
     showErrorNotification('Extension not configured. Please update config.js with your project settings.');
@@ -37,8 +34,6 @@ chrome.action.onClicked.addListener(async (tab) => {
 
     // Create server-side prefill session (no PII in tab URL)
     const url = await buildPrefillUrl(extractedData);
-
-    console.log('[Skip Trace Extension] Opening Skip Trace Intelligence Platform (prefill hash, no PII in query)');
 
     await chrome.tabs.create({ url: url });
     
@@ -68,7 +63,7 @@ async function extractDataFromTab(tabId) {
         return response.data;
       }
     } catch (messageError) {
-      console.log('[Skip Trace Extension] Content script not available, using injected script');
+      // Content script not available; injected script path already attempted above
     }
 
     return null;

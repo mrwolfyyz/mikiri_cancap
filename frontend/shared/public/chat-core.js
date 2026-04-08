@@ -28,7 +28,6 @@ async function loadConfig() {
         // Set Firebase config
         FIREBASE_CONFIG = PlatformConfig.firebaseConfig;
 
-        console.log('Configuration loaded via PlatformConfig');
         return true;
     } catch (error) {
         console.error('Failed to load configuration:', error);
@@ -50,8 +49,6 @@ async function initializeAuth() {
 
         // Sign in anonymously
         await firebase.auth().signInAnonymously();
-        const user = firebase.auth().currentUser;
-        console.log("Anonymous authentication successful, UID:", user?.uid);
 
         return db;
     } catch (error) {
@@ -160,7 +157,6 @@ async function saveMessageToFirestore(jobId, role, content, groundingMetadata = 
 
         // Use merge: true to prevent overwrite on retry (idempotent)
         await messageRef.set(messageData, { merge: true });
-        console.log(`Saved ${role} message to Firestore`);
         return { success: true };
     } catch (error) {
         console.error("Error saving message to Firestore:", error);
@@ -192,27 +188,17 @@ async function saveMessageWithRetry(jobId, role, content, groundingMetadata = nu
 
 async function loadChatHistory(jobId) {
     try {
-        const user = firebase.auth().currentUser;
-        console.log("[loadChatHistory] Current user UID:", user?.uid);
-
         // Check if job exists first (optional but good practice)
         const jobDoc = await db.collection('jobs').doc(jobId).get();
         if (!jobDoc.exists) {
-            console.warn("[loadChatHistory] Job does not exist yet");
             return [];
         }
-
-        const jobData = jobDoc.data();
-        console.log("[loadChatHistory] Job user_id:", jobData?.user_id);
-        console.log("[loadChatHistory] Current auth UID:", user?.uid);
-        console.log("[loadChatHistory] UIDs match:", jobData?.user_id === user?.uid);
 
         const messagesRef = db.collection('jobs').doc(jobId)
             .collection('chat_messages')
             .orderBy('timestamp', 'asc'); // Order by server timestamp
 
         const snapshot = await messagesRef.get();
-        console.log("[loadChatHistory] Found", snapshot.size, "messages");
 
         if (snapshot.empty) {
             return []; // No existing chat history
@@ -556,7 +542,6 @@ async function handleSendMessage() {
             try {
                 markdownContext = await getMarkdown(jobId);
                 markdownFetched = true;
-                console.log("Fetched markdown context");
             } catch (error) {
                 console.warn("Could not fetch markdown context:", error);
                 // Continue without markdown context

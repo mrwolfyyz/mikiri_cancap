@@ -54,11 +54,6 @@ const PlatformConfig = {
       this._config = parseJson(platformText, "platform.json");
       this._firebaseConfig = parseJson(firebaseText, "firebase-config.json");
 
-      console.log(
-        "Platform configuration loaded:",
-        this._config.platform
-      );
-
       return this._config;
     } catch (error) {
       console.error("Failed to load configuration:", error);

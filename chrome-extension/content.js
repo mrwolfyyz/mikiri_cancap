@@ -1,8 +1,6 @@
 // Content script to extract data from the loan origination form
 // This script runs on the mock loan origination page
 
-console.log('[Loan Origination Extension] Content script loaded');
-
 // Function to extract form data
 function extractFormData() {
   const data = {
@@ -51,10 +49,8 @@ function extractFormData() {
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'extractData') {
-    console.log('[Loan Origination Extension] Extracting form data...');
     const extractedData = extractFormData();
-    console.log('[Loan Origination Extension] Extracted data:', extractedData);
-    
+
     // Send response back to background script
     sendResponse({ success: true, data: extractedData });
     return true; // Keep message channel open for async response

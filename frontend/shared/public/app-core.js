@@ -34,8 +34,6 @@ async function loadConfig() {
     // Set Firebase config
     FIREBASE_CONFIG = PlatformConfig.firebaseConfig;
 
-    console.log("Configuration loaded via PlatformConfig");
-    console.log("API URL:", API_URL);
     return true;
   } catch (error) {
     console.error("Failed to load configuration:", error);
@@ -171,7 +169,6 @@ async function initializeAuth() {
 
     // Sign in anonymously
     await firebase.auth().signInAnonymously();
-    console.log("Anonymous authentication successful");
   } catch (error) {
     console.error("Authentication error:", error);
     // Show user-friendly error message
@@ -1175,9 +1172,6 @@ async function init() {
   setTimeout(() => {
     populateFromPrefillHash();
   }, 100);
-
-  console.log(PlatformConfig.getUI("initMessage"));
-  console.log("API URL:", API_URL);
 }
 
 // Start the app when DOM is ready

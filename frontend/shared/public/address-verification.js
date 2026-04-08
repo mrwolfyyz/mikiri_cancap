@@ -480,7 +480,6 @@ function resetAddressVerificationForm() {
 }
 
 async function handleAddressVerificationSubmit(e) {
-  console.log("Address verification form submitted");
   e.preventDefault();
   e.stopPropagation();
 
@@ -624,7 +623,6 @@ function initAddressVerificationListeners() {
       "submit",
       handleAddressVerificationSubmit
     );
-    console.log("Address verification form event listener attached");
   } else {
     console.error("Address verification form not found!");
   }
