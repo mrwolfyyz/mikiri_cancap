@@ -157,6 +157,12 @@ resource "local_file" "chrome_extension_config" {
 const CONFIG = {
   // Skip Trace Intelligence Platform URL
   SKIP_TRACE_INTELLIGENCE_URL: 'https://${google_firebase_hosting_site.skiptrace.site_id}.web.app/index.html',
+
+  // API Gateway (prefill session — same as firebase-config apiUrl)
+  API_GATEWAY_URL: '${google_cloudfunctions2_function.api_gateway.service_config[0].uri}',
+
+  // Shared secret for POST /extension/prefill-session (do not commit this file)
+  EXTENSION_PREFILL_SECRET: '${random_password.extension_prefill_secret.result}',
   
   // Version info for debugging
   VERSION: '1.0.0',
@@ -172,7 +178,9 @@ EOT
   filename = "${path.module}/../../../chrome-extension/config.js"
 
   depends_on = [
-    google_firebase_hosting_site.skiptrace
+    google_firebase_hosting_site.skiptrace,
+    google_cloudfunctions2_function.api_gateway,
+    random_password.extension_prefill_secret,
   ]
 }
 

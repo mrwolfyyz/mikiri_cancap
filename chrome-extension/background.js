@@ -35,13 +35,12 @@ chrome.action.onClicked.addListener(async (tab) => {
       return;
     }
 
-    // Build URL with query parameters
-    const url = buildURLWithParams(extractedData);
-    
-    console.log('[Skip Trace Extension] Opening Skip Trace Intelligence Platform:', url);
-    
-    // Open new tab with the Skip Trace Intelligence Platform
-    chrome.tabs.create({ url: url });
+    // Create server-side prefill session (no PII in tab URL)
+    const url = await buildPrefillUrl(extractedData);
+
+    console.log('[Skip Trace Extension] Opening Skip Trace Intelligence Platform (prefill hash, no PII in query)');
+
+    await chrome.tabs.create({ url: url });
     
   } catch (error) {
     console.error('[Skip Trace Extension] Error:', error);
@@ -119,25 +118,55 @@ function extractFormData() {
   return data;
 }
 
-// Build URL with query parameters
-function buildURLWithParams(data) {
-  const params = new URLSearchParams();
-  
-  if (data.name) {
-    params.append('fullName', data.name);
-  }
-  if (data.email) {
-    params.append('email', data.email);
-  }
-  if (data.city) {
-    params.append('city', data.city);
-  }
-  if (data.company) {
-    params.append('companyName', data.company);
+/**
+ * POST prefill payload to API Gateway; open skiptrace with #prefill=<token> only.
+ * Fragment is not sent to the hosting server (avoids PII in access logs).
+ */
+async function buildPrefillUrl(data) {
+  const apiBase = (CONFIG && CONFIG.API_GATEWAY_URL) || '';
+  const secret = (CONFIG && CONFIG.EXTENSION_PREFILL_SECRET) || '';
+
+  if (!apiBase || !secret) {
+    throw new Error('Extension missing API_GATEWAY_URL or EXTENSION_PREFILL_SECRET in config.js');
   }
 
-  const queryString = params.toString();
-  return queryString ? `${SKIP_TRACE_INTELLIGENCE_URL}?${queryString}` : SKIP_TRACE_INTELLIGENCE_URL;
+  const body = {
+    full_name: (data.name || '').trim(),
+    email: (data.email || '').trim(),
+    city: (data.city || '').trim(),
+    company_name: (data.company || '').trim(),
+  };
+
+  const res = await fetch(`${apiBase.replace(/\/$/, '')}/extension/prefill-session`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Extension-Prefill-Secret': secret,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const errJson = await res.json();
+      if (errJson && errJson.error) {
+        detail = errJson.error;
+      }
+    } catch (_) {
+      /* ignore */
+    }
+    throw new Error(detail || 'Prefill session failed');
+  }
+
+  const out = await res.json();
+  const token = out && out.token;
+  if (!token || typeof token !== 'string') {
+    throw new Error('Invalid response from prefill API');
+  }
+
+  const base = SKIP_TRACE_INTELLIGENCE_URL.split('#')[0];
+  return `${base}#prefill=${encodeURIComponent(token)}`;
 }
 
 // Show error notification

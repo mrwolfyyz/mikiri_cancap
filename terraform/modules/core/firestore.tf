@@ -53,6 +53,17 @@ resource "google_firestore_field" "chat_messages_expire_at_ttl" {
   depends_on = [google_firestore_database.default]
 }
 
+resource "google_firestore_field" "prefill_sessions_expire_at_ttl" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "prefill_sessions"
+  field      = "expire_at"
+
+  ttl_config {}
+
+  depends_on = [google_firestore_database.default]
+}
+
 # -----------------------------------------------------------------------------
 # Firestore Indexes (if needed)
 # -----------------------------------------------------------------------------

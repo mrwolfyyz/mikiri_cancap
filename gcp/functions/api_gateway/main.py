@@ -9,18 +9,22 @@ Handles:
 - POST /address-verification - Address verification for business auto loan applications
 - POST /chat_handler - Chat handler for skip trace
 - POST /chat_handler_origination - Chat handler for origination
+- POST /extension/prefill-session - Chrome extension: create one-time prefill (shared secret)
+- POST /prefill-session/redeem - Browser: redeem prefill token (no PII in URL)
 - GET /health - Health check
 
 Note: This version has hardcoded values removed for deployment flexibility.
 Configuration is loaded from environment variables set by Terraform.
 """
 
+import hmac
 import json
 import logging
 import os
 import re
+import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import functions_framework
@@ -70,6 +74,11 @@ if not CORS_ALLOWED_ORIGINS:
 
 # Job document retention (aligned with report generators and frontend chat TTL)
 JOB_RETENTION_DAYS = 7
+
+# Chrome extension → web app prefill (Firestore collection prefill_sessions)
+EXTENSION_PREFILL_SECRET = (os.environ.get("EXTENSION_PREFILL_SECRET") or "").strip()
+PREFILL_SESSION_TTL_MINUTES = int(os.environ.get("PREFILL_SESSION_TTL_MINUTES") or "10")
+PREFILL_SESSION_COLLECTION = "prefill_sessions"
 
 
 # =============================================================================
@@ -158,6 +167,206 @@ def validate_province(province: str) -> tuple[bool, str]:
     if province not in VALID_PROVINCES:
         return False, "Invalid province. Must be a valid Canadian province code"
     return True, ""
+
+
+def validate_prefill_province_optional(province: str) -> tuple[bool, str]:
+    """Province optional; if set, must be a valid code."""
+    if not province:
+        return True, ""
+    if province not in VALID_PROVINCES:
+        return False, "Invalid province. Must be a valid Canadian province code"
+    return True, ""
+
+
+def validate_prefill_payload(data: dict[str, Any]) -> tuple[dict[str, str] | None, list[dict[str, str]]]:
+    """
+    Validate prefill payload from Chrome extension (looser than investigation).
+
+    Requires at least one of: full_name, email, city, company_name (mirror extension hasData).
+    """
+    full_name = (data.get("full_name") or "").strip()
+    email = (data.get("email") or "").strip()
+    city = (data.get("city") or "").strip()
+    company_name = (data.get("company_name") or "").strip()
+    province = (data.get("province") or "").strip()
+
+    # Accept legacy camelCase from some clients
+    if not full_name and data.get("fullName"):
+        full_name = str(data.get("fullName") or "").strip()
+    if not company_name and data.get("companyName"):
+        company_name = str(data.get("companyName") or "").strip()
+
+    errors: list[dict[str, str]] = []
+
+    if not any([full_name, email, city, company_name]):
+        errors.append(
+            {"field": "_all", "message": "At least one of full_name, email, city, or company_name is required"}
+        )
+        return None, errors
+
+    if email:
+        valid, msg = validate_email(email)
+        if not valid:
+            errors.append({"field": "email", "message": msg})
+
+    if full_name:
+        if len(full_name) < 2 or len(full_name) > 100:
+            errors.append({"field": "full_name", "message": "Full name must be 2-100 characters"})
+
+    if city:
+        valid, msg = validate_city(city)
+        if not valid:
+            errors.append({"field": "city", "message": msg})
+
+    if company_name and len(company_name) > 200:
+        errors.append({"field": "company_name", "message": "Company name must be 200 characters or less"})
+
+    valid, msg = validate_prefill_province_optional(province)
+    if not valid:
+        errors.append({"field": "province", "message": msg})
+
+    if errors:
+        return None, errors
+
+    return {
+        "full_name": full_name,
+        "email": email,
+        "city": city,
+        "company_name": company_name,
+        "province": province,
+    }, []
+
+
+def _verify_extension_prefill_secret(request: Request) -> bool:
+    """Constant-time compare of X-Extension-Prefill-Secret to EXTENSION_PREFILL_SECRET."""
+    if not EXTENSION_PREFILL_SECRET:
+        return False
+    got = (request.headers.get("X-Extension-Prefill-Secret") or "").strip()
+    try:
+        return hmac.compare_digest(got.encode("utf-8"), EXTENSION_PREFILL_SECRET.encode("utf-8"))
+    except Exception:
+        return False
+
+
+def _prefill_doc_expired(expire_at: Any) -> bool:
+    """True if expire_at is in the past (Firestore Timestamp or datetime)."""
+    if expire_at is None:
+        return False
+    try:
+        if hasattr(expire_at, "timestamp"):
+            return datetime.now(UTC).timestamp() > expire_at.timestamp()
+        if isinstance(expire_at, datetime):
+            exp = expire_at
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=UTC)
+            return datetime.now(UTC) > exp
+    except Exception:
+        return True
+    return False
+
+
+def handle_extension_prefill_session(request: Request, headers: dict):
+    """POST /extension/prefill-session — authenticated by X-Extension-Prefill-Secret."""
+    if not _verify_extension_prefill_secret(request):
+        return jsonify({"error": "Unauthorized"}), 401, headers
+
+    content_length = request.content_length or 0
+    if content_length > 10_000:
+        return jsonify({"error": "Request too large"}), 413, headers
+
+    try:
+        data = request.get_json() or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON"}), 400, headers
+
+    payload, errors = validate_prefill_payload(data)
+    if errors or payload is None:
+        return jsonify({"error": "validation_error", "details": errors}), 400, headers
+
+    token = secrets.token_urlsafe(32)
+    now = datetime.utcnow()
+    expire_at = now + timedelta(minutes=PREFILL_SESSION_TTL_MINUTES)
+
+    doc = {
+        "full_name": payload["full_name"] or None,
+        "email": payload["email"] or None,
+        "city": payload["city"] or None,
+        "company_name": payload["company_name"] or None,
+        "province": payload["province"] or None,
+        "created_at": now,
+        "expire_at": expire_at,
+    }
+
+    try:
+        retry_with_backoff(
+            lambda: db.collection(PREFILL_SESSION_COLLECTION).document(token).set(doc),
+            RetryConfig(max_attempts=3, base_delay_seconds=0.5, max_delay_seconds=5.0),
+            operation_name="Firestore create prefill session",
+        )
+    except Exception as e:
+        logger.error("Prefill session create failed: %s", e)
+        return jsonify({"error": "Failed to create session"}), 500, headers
+
+    return jsonify({"token": token}), 200, headers
+
+
+def handle_prefill_session_redeem(request: Request, headers: dict):
+    """
+    POST /prefill-session/redeem — one-time token exchange (token in JSON body).
+
+    Unauthenticated: token is high-entropy, single-use, short TTL.
+    """
+    content_length = request.content_length or 0
+    if content_length > 5_000:
+        return jsonify({"error": "Request too large"}), 413, headers
+
+    try:
+        data = request.get_json() or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON"}), 400, headers
+
+    token = (data.get("token") or "").strip()
+    if not token or len(token) > 512:
+        return jsonify({"error": "Invalid token"}), 400, headers
+
+    doc_ref = db.collection(PREFILL_SESSION_COLLECTION).document(token)
+
+    try:
+        snap = doc_ref.get()
+    except Exception as e:
+        logger.error("Prefill redeem read failed: %s", e)
+        return jsonify({"error": "Failed to redeem"}), 500, headers
+
+    if not snap.exists:
+        return jsonify({"error": "Invalid or expired token"}), 404, headers
+
+    doc = snap.to_dict() or {}
+    if _prefill_doc_expired(doc.get("expire_at")):
+        try:
+            doc_ref.delete()
+        except Exception:
+            pass
+        return jsonify({"error": "Invalid or expired token"}), 404, headers
+
+    try:
+        doc_ref.delete()
+    except Exception as e:
+        logger.error("Prefill redeem delete failed: %s", e)
+        return jsonify({"error": "Failed to redeem"}), 500, headers
+
+    return (
+        jsonify(
+            {
+                "full_name": (doc.get("full_name") or "") or "",
+                "email": (doc.get("email") or "") or "",
+                "city": (doc.get("city") or "") or "",
+                "company_name": (doc.get("company_name") or "") or "",
+                "province": (doc.get("province") or "") or "",
+            }
+        ),
+        200,
+        headers,
+    )
 
 
 # =============================================================================
@@ -551,7 +760,7 @@ def main(request: Request):
         headers.update(
             {
                 "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Extension-Prefill-Secret",
                 "Access-Control-Max-Age": "3600",
             }
         )
@@ -560,6 +769,14 @@ def main(request: Request):
     headers = get_cors_headers(request)
 
     path = request.path
+
+    # POST /extension/prefill-session (Chrome extension — shared secret)
+    if request.method == "POST" and path == "/extension/prefill-session":
+        return handle_extension_prefill_session(request, headers)
+
+    # POST /prefill-session/redeem (browser — opaque token in JSON body)
+    if request.method == "POST" and path == "/prefill-session/redeem":
+        return handle_prefill_session_redeem(request, headers)
 
     # POST /investigate-skiptrace
     if request.method == "POST" and path == "/investigate-skiptrace":

@@ -1053,86 +1053,75 @@ function initEventListeners() {
 }
 
 // ===========================
-// URL Parameter Population
+// Prefill from Chrome extension (hash #prefill=token — no PII in query string)
 // ===========================
-function populateFromURLParams() {
+function stripHashFromUrl() {
+  const url = window.location.pathname + window.location.search;
+  window.history.replaceState({}, document.title, url);
+}
+
+/**
+ * Redeem opaque prefill token from URL fragment (not sent to hosting server on first GET).
+ * Replaces legacy ?fullName=&email= query prefill (removed for PIPEDA / audit compliance).
+ */
+async function populateFromPrefillHash() {
   try {
-    const urlParams = new URLSearchParams(window.location.search);
-
-    // Extract parameters
-    const fullName = urlParams.get("fullName");
-    const email = urlParams.get("email");
-    const city = urlParams.get("city");
-    const companyName = urlParams.get("companyName");
-    const province = urlParams.get("province");
-
-    // Check if we have any parameters to populate
-    if (!fullName && !email && !city && !companyName && !province) {
-      return; // No URL parameters, nothing to do
+    const rawHash = window.location.hash;
+    if (!rawHash || rawHash.length <= 1) {
+      return;
     }
 
-    // Get form elements directly (in case elements object isn't ready)
+    const hash = rawHash.startsWith("#") ? rawHash.slice(1) : rawHash;
+    const params = new URLSearchParams(hash);
+    const token = params.get("prefill");
+    if (!token) {
+      return;
+    }
+
+    if (!API_URL) {
+      console.warn("Prefill: API_URL not configured");
+      stripHashFromUrl();
+      return;
+    }
+
+    const res = await fetch(`${API_URL}/prefill-session/redeem`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: decodeURIComponent(token) }),
+    });
+
+    stripHashFromUrl();
+
+    if (!res.ok) {
+      console.warn("Prefill redeem failed:", res.status);
+      return;
+    }
+
+    const data = await res.json();
     const fullNameInput = document.getElementById("fullName");
     const emailInput = document.getElementById("email");
     const cityInput = document.getElementById("city");
     const companyNameInput = document.getElementById("companyName");
     const provinceInput = document.getElementById("province");
 
-    // Populate form fields if values exist
-    let populated = false;
-
-    if (fullName && fullNameInput) {
-      fullNameInput.value = decodeURIComponent(fullName);
-      populated = true;
-      console.log("Populated fullName:", fullName);
+    if (data.full_name && fullNameInput) {
+      fullNameInput.value = data.full_name;
     }
-
-    if (email && emailInput) {
-      emailInput.value = decodeURIComponent(email);
-      populated = true;
-      console.log("Populated email:", email);
+    if (data.email && emailInput) {
+      emailInput.value = data.email;
     }
-
-    if (city && cityInput) {
-      cityInput.value = decodeURIComponent(city);
-      populated = true;
-      console.log("Populated city:", city);
+    if (data.city && cityInput) {
+      cityInput.value = data.city;
     }
-
-    if (companyName && companyNameInput) {
-      companyNameInput.value = decodeURIComponent(companyName);
-      populated = true;
-      console.log("Populated companyName:", companyName);
+    if (data.company_name && companyNameInput) {
+      companyNameInput.value = data.company_name;
     }
-
-    if (province && provinceInput) {
-      provinceInput.value = decodeURIComponent(province);
-      populated = true;
-      console.log("Populated province:", province);
-    }
-
-    // If any fields were populated, clean the URL (remove query params)
-    if (populated) {
-      // Clean URL without reloading the page
-      const cleanUrl = window.location.pathname + window.location.hash;
-      window.history.replaceState({}, document.title, cleanUrl);
-
-      console.log("Form populated from URL parameters:", {
-        fullName,
-        email,
-        city,
-        companyName,
-      });
-    } else {
-      console.warn("URL parameters found but form elements not available:", {
-        fullName,
-        email,
-        city,
-        companyName,
-      });
+    if (data.province && provinceInput) {
+      provinceInput.value = data.province;
     }
   } catch (error) {
-    console.error("Error populating form from URL parameters:", error);
+    console.error("Error redeeming prefill token:", error);
+    stripHashFromUrl();
   }
 }
 
@@ -1182,10 +1171,9 @@ async function init() {
   loadDriveConfiguration();
   updateServiceAccountEmail();
 
-  // Populate form from URL parameters (for Chrome extension integration)
-  // Use setTimeout to ensure DOM elements are fully available
+  // Prefill from extension (#prefill=token after server-side session create)
   setTimeout(() => {
-    populateFromURLParams();
+    populateFromPrefillHash();
   }, 100);
 
   console.log(PlatformConfig.getUI("initMessage"));

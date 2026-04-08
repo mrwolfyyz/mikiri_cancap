@@ -85,13 +85,11 @@ Enter the following information:
 
 ### Step 4: Verify Data Population
 
-- The new tab should open at `https://bounceback-demo.web.app/index.html`
-- The form fields should be pre-filled with:
-  - Full Name
-  - Email
-  - City
-  - Company Name
-- The URL parameters will be automatically cleaned after population
+- The new tab should open at your configured Skip Trace URL (see `config.js` from Terraform: `SKIP_TRACE_INTELLIGENCE_URL`).
+- The extension calls `POST /extension/prefill-session` on the API Gateway, then opens the app with **`#prefill=<opaque_token>` only** (no name, email, or employer in the query string). The fragment is not sent to Firebase Hosting on the first request, which keeps PII out of typical access logs.
+- The web app redeems the token via `POST /prefill-session/redeem` and clears the hash from the address bar after filling the form.
+
+**Configuration:** After `terraform apply`, use the generated `chrome-extension/config.js` (copy from the repo root after apply, or load the extension from a directory that contains it). It must include `API_GATEWAY_URL` and `EXTENSION_PREFILL_SECRET`. For local testing without Terraform, copy `config.js.example` to `config.js` and fill in values. `config.js` is gitignored because it contains a secret.
 
 ## Troubleshooting
 
@@ -142,21 +140,21 @@ This extension uses Chrome's Manifest V3 specification:
 1. User clicks extension icon
 2. Background script injects data extraction function
 3. Form fields are extracted from the page
-4. URL is constructed with query parameters
-5. New tab opens with Borrower Intelligence Platform
-6. Front-end reads URL parameters and populates form
+4. Background script `POST`s JSON to `/extension/prefill-session` (header `X-Extension-Prefill-Secret`) and receives `{ "token": "..." }`
+5. New tab opens with Skip Trace URL and **`#prefill=<token>`** only (no PII in query string)
+6. Front-end calls `POST /prefill-session/redeem` with the token, then fills the form and clears the hash
 
-### URL Format
+### URL / navigation format
 
-The extension creates URLs in this format:
+The visible URL uses a **hash fragment** (opaque token), not query parameters with borrower PII:
 ```
-https://bounceback-demo.web.app/index.html?fullName=John+Doe&email=john@example.com&city=Toronto&companyName=Acme+Corp
+https://PROJECT_ID-skiptrace.web.app/index.html#prefill=OPAQUE_TOKEN
 ```
 
 ## Development Notes
 
-- The extension is configured to work with the live Borrower Intelligence Platform
-- For local testing, modify `BORROWER_INTELLIGENCE_URL` in `background.js`
+- The extension is configured via Terraform-generated `config.js` (`SKIP_TRACE_INTELLIGENCE_URL`, `API_GATEWAY_URL`, `EXTENSION_PREFILL_SECRET`)
+- For local testing without Terraform, copy `config.js.example` to `config.js` and set the values
 - Content script matches patterns for localhost and file:// protocols
 - All form field extraction uses multiple selector strategies for reliability
 

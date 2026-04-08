@@ -1,0 +1,15 @@
+// Copy to config.js and fill in values (or generate config.js via Terraform apply).
+// config.js is gitignored when it contains secrets.
+
+const CONFIG = {
+  SKIP_TRACE_INTELLIGENCE_URL: "https://YOUR-PROJECT-skiptrace.web.app/index.html",
+  API_GATEWAY_URL: "https://YOUR-REGION-YOUR-PROJECT.cloudfunctions.net/api-gateway",
+  EXTENSION_PREFILL_SECRET: "your-prefill-secret-from-terraform-output",
+  VERSION: "1.0.0",
+  ENVIRONMENT: "local",
+  PROJECT_ID: "YOUR-PROJECT",
+};
+
+if (typeof window !== "undefined") {
+  window.CONFIG = CONFIG;
+}

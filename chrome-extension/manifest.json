@@ -12,7 +12,9 @@
   "host_permissions": [
     "http://localhost/*",
     "https://*.web.app/*",
-    "https://*.firebaseapp.com/*"
+    "https://*.firebaseapp.com/*",
+    "https://*.run.app/*",
+    "https://*.cloudfunctions.net/*"
   ],
   "action": {
     "default_title": "Send to Skip Trace Intelligence",

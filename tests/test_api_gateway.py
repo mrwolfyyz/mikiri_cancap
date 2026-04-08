@@ -70,6 +70,8 @@ os.environ.setdefault("CHAT_HANDLER_URL", "https://chat.example.com")
 os.environ.setdefault("CHAT_HANDLER_ORIGINATION_URL", "https://chat-orig.example.com")
 os.environ.setdefault("ADDRESS_VERIFICATION_URL", "https://addr.example.com")
 os.environ.setdefault("CORS_ALLOWED_ORIGINS", "*")
+os.environ.setdefault("EXTENSION_PREFILL_SECRET", "test-extension-prefill-secret")
+os.environ.setdefault("PREFILL_SESSION_TTL_MINUTES", "10")
 
 # ---------------------------------------------------------------------------
 # Load api_gateway/main.py
@@ -88,6 +90,9 @@ get_cors_headers = gw.get_cors_headers
 verify_job_ownership = gw.verify_job_ownership
 handle_investigation = gw.handle_investigation
 proxy_chat_request = gw.proxy_chat_request
+handle_extension_prefill_session = gw.handle_extension_prefill_session
+handle_prefill_session_redeem = gw.handle_prefill_session_redeem
+validate_prefill_payload = gw.validate_prefill_payload
 
 
 # ---------------------------------------------------------------------------
@@ -618,6 +623,80 @@ class TestProxyChatRequest:
 
 
 # ===========================================================================
+# Prefill session (extension + redeem)
+# ===========================================================================
+class TestPrefillSession:
+    def test_validate_prefill_requires_one_field(self):
+        payload, errors = validate_prefill_payload({})
+        assert payload is None
+        assert any(e.get("field") == "_all" for e in errors)
+
+    def test_validate_prefill_email_only(self):
+        payload, errors = validate_prefill_payload({"email": "john@example.com"})
+        assert errors == []
+        assert payload["email"] == "john@example.com"
+
+    def test_handle_prefill_create_unauthorized(self):
+        req = _make_request(
+            method="POST",
+            path="/extension/prefill-session",
+            body={"email": "john@example.com"},
+        )
+        with _app.test_request_context():
+            data, status, _ = _parse_response(handle_extension_prefill_session(req, {}))
+        assert status == 401
+
+    def test_handle_prefill_create_success(self):
+        req = _make_request(
+            method="POST",
+            path="/extension/prefill-session",
+            body={"email": "john@example.com"},
+        )
+        req.headers = {"X-Extension-Prefill-Secret": "test-extension-prefill-secret"}
+        mock_set = MagicMock()
+        gw.db.collection.return_value.document.return_value.set = mock_set
+        with _app.test_request_context():
+            data, status, _ = _parse_response(handle_extension_prefill_session(req, {}))
+        assert status == 200
+        assert "token" in data
+        mock_set.assert_called_once()
+
+    def test_handle_prefill_redeem_not_found(self):
+        mock_snap = MagicMock()
+        mock_snap.exists = False
+        gw.db.collection.return_value.document.return_value.get.return_value = mock_snap
+
+        req = _make_request(method="POST", path="/prefill-session/redeem", body={"token": "missing"})
+        with _app.test_request_context():
+            data, status, _ = _parse_response(handle_prefill_session_redeem(req, {}))
+        assert status == 404
+
+    def test_handle_prefill_redeem_success(self):
+        doc = {
+            "full_name": "Jane Doe",
+            "email": "jane@example.com",
+            "city": "Toronto",
+            "company_name": "",
+            "province": "",
+            "expire_at": None,
+        }
+        mock_snap = MagicMock()
+        mock_snap.exists = True
+        mock_snap.to_dict.return_value = doc
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_snap
+        mock_ref.delete = MagicMock()
+        gw.db.collection.return_value.document.return_value = mock_ref
+
+        req = _make_request(method="POST", path="/prefill-session/redeem", body={"token": "abc"})
+        with _app.test_request_context():
+            data, status, _ = _parse_response(handle_prefill_session_redeem(req, {}))
+        assert status == 200
+        assert data["email"] == "jane@example.com"
+        mock_ref.delete.assert_called_once()
+
+
+# ===========================================================================
 # Main routing
 # ===========================================================================
 class TestMainRouting:
@@ -652,6 +731,27 @@ class TestMainRouting:
             with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 404
+
+    def test_post_extension_prefill_routes(self):
+        req = _make_request(method="POST", path="/extension/prefill-session", body={"email": "a@b.com"})
+        req.headers = {"X-Extension-Prefill-Secret": "test-extension-prefill-secret"}
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                patch.object(gw, "handle_extension_prefill_session", return_value=("ok", 200, {})) as mock_h,
+            ):
+                main_handler(req)
+        mock_h.assert_called_once()
+
+    def test_post_prefill_redeem_routes(self):
+        req = _make_request(method="POST", path="/prefill-session/redeem", body={"token": "x"})
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                patch.object(gw, "handle_prefill_session_redeem", return_value=("ok", 200, {})) as mock_h,
+            ):
+                main_handler(req)
+        mock_h.assert_called_once()
 
     def test_post_investigate_skiptrace_routes_correctly(self):
         req = _authed_request(method="POST", path="/investigate-skiptrace")
