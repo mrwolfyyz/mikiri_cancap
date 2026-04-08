@@ -10,13 +10,19 @@ Performs:
 import json
 import os
 import traceback
-import unicodedata
 from typing import Any
 
 import functions_framework
 
 # Vertex AI imports
 import vertexai
+from llm_input_validators import (
+    MAX_CITY_LEN,
+    MAX_FULL_NAME_LEN,
+    PROVINCE_NAMES,
+    normalize_and_validate_allowlist_text,
+    normalize_province_for_query,
+)
 from retry_utils import EmptyLLMResponseError, RetryConfig, retry_with_backoff
 from vertexai.generative_models import GenerationConfig, GenerativeModel
 
@@ -36,79 +42,6 @@ if GCP_PROJECT:
     _MODEL = GenerativeModel(model_name="gemini-2.5-flash-lite")
 else:
     _MODEL = None
-
-# Province code to full name mapping
-# Max lengths after NFKC normalize + whitespace collapse (security / LLM prompt bounds)
-_MAX_FULL_NAME_LEN = 200
-_MAX_CITY_LEN = 120
-_MAX_PROVINCE_LEN = 40
-
-PROVINCE_NAMES = {
-    "ON": "Ontario",
-    "BC": "British Columbia",
-    "AB": "Alberta",
-    "QC": "Quebec",
-    "MB": "Manitoba",
-    "SK": "Saskatchewan",
-    "NS": "Nova Scotia",
-    "NB": "New Brunswick",
-    "NL": "Newfoundland and Labrador",
-    "PE": "Prince Edward Island",
-    "NT": "Northwest Territories",
-    "YT": "Yukon",
-    "NU": "Nunavut",
-}
-
-
-def _is_allowed_llm_input_char(c: str) -> bool:
-    """Allow Unicode letters, whitespace, and a small punctuation set (audit allow-list)."""
-    if c in " '-.":
-        return True
-    if c.isspace():
-        return True
-    cat = unicodedata.category(c)
-    return cat.startswith("L")
-
-
-def _normalize_and_validate_allowlist_text(raw: str, max_len: int) -> str | None:
-    """
-    NFKC-normalize, collapse whitespace, enforce per-character allow-list and max length.
-    Returns normalized string or None if invalid.
-    """
-    if not raw:
-        return None
-    t = unicodedata.normalize("NFKC", raw).strip()
-    if not t:
-        return None
-    collapsed = " ".join(t.split())
-    if len(collapsed) > max_len:
-        return None
-    for ch in collapsed:
-        if not _is_allowed_llm_input_char(ch):
-            return None
-    return collapsed
-
-
-def _normalize_province_for_query(province: str) -> tuple[str | None, str | None]:
-    """
-    Returns (normalized_province_token, error_message).
-    Accepts a 2-letter code in PROVINCE_NAMES or a full-name string matching the allow-list.
-    """
-    if not province:
-        return "", None
-    p = unicodedata.normalize("NFKC", province).strip()
-    if not p:
-        return "", None
-    if len(p) == 2 and p.isalpha():
-        code = p.upper()
-        if code in PROVINCE_NAMES:
-            return code, None
-        return None, "Invalid province code"
-    validated = _normalize_and_validate_allowlist_text(p, _MAX_PROVINCE_LEN)
-    if validated is None:
-        return None, "Invalid province"
-    return validated, None
-
 
 # -------------------------
 # LLM Prompt (provided by user)
@@ -308,9 +241,9 @@ def main(request):
     if not fn_stripped or not city_stripped:
         return {"error": "full_name and city are required"}, 400
 
-    full_name = _normalize_and_validate_allowlist_text(fn_stripped, _MAX_FULL_NAME_LEN)
-    city = _normalize_and_validate_allowlist_text(city_stripped, _MAX_CITY_LEN)
-    province_norm, province_err = _normalize_province_for_query(str(province_raw).strip())
+    full_name = normalize_and_validate_allowlist_text(fn_stripped, MAX_FULL_NAME_LEN)
+    city = normalize_and_validate_allowlist_text(city_stripped, MAX_CITY_LEN)
+    province_norm, province_err = normalize_province_for_query(str(province_raw).strip())
 
     if full_name is None or city is None:
         return {"error": "full_name and city must contain only letters, spaces, and limited punctuation"}, 400

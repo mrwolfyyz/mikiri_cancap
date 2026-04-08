@@ -35,7 +35,17 @@ from google.cloud import firestore
 from google.cloud.workflows import executions_v1
 
 # Import retry utilities (local copy for deployment)
+from llm_input_validators import (
+    MAX_CITY_LEN,
+    MAX_FULL_NAME_LEN,
+    PROVINCE_NAMES,
+    normalize_and_validate_allowlist_text,
+    normalize_province_for_query,
+)
 from retry_utils import RetryConfig, retry_with_backoff
+
+# Canadian province/territory codes (same keys as PROVINCE_NAMES); kept for tests and callers.
+VALID_PROVINCES = list(PROVINCE_NAMES.keys())
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -133,49 +143,67 @@ def validate_email(email: str) -> tuple[bool, str]:
 
 
 def validate_full_name(name: str) -> tuple[bool, str]:
-    """Validate full name."""
-    if not name:
+    """
+    Validate full name for LLM-bound fields.
+    Order: shared NFKC + whitespace collapse + allow-list + length cap, then api_gateway-only
+    two-word rule. On success returns (True, normalized_name).
+    """
+    if not name or not str(name).strip():
         return False, "Full name is required"
-    if len(name) < 2 or len(name) > 100:
-        return False, "Full name must be 2-100 characters"
-    # Must contain at least first and last name (space-separated)
-    parts = name.strip().split()
-    if len(parts) < 2:
+    normalized = normalize_and_validate_allowlist_text(str(name).strip(), MAX_FULL_NAME_LEN)
+    if normalized is None:
+        return False, "Full name must contain only letters, spaces, and limited punctuation"
+    if len(normalized) < 2:
+        return False, "Full name must be 2-200 characters"
+    if len(normalized.split()) < 2:
         return False, "Must contain first and last name"
-    return True, ""
+    return True, normalized
 
 
 def validate_city(city: str) -> tuple[bool, str]:
-    """Validate city (optional)."""
-    if not city:
-        return True, ""  # Optional field
-    if len(city) < 2 or len(city) > 100:
-        return False, "City must be 2-100 characters"
-    # Allow letters, spaces, hyphens, apostrophes, periods, and common accented characters
-    if not re.match(r"^[A-Za-zÀ-ÿ\s'.\-]+$", city):
+    """
+    Validate city (optional for prefill). On success: (True, normalized_city), or (True, '') if empty.
+    """
+    if not city or not str(city).strip():
+        return True, ""
+    normalized = normalize_and_validate_allowlist_text(str(city).strip(), MAX_CITY_LEN)
+    if normalized is None:
         return False, "City contains invalid characters"
-    return True, ""
+    if len(normalized) < 2:
+        return False, "City must be 2-120 characters"
+    return True, normalized
 
 
-VALID_PROVINCES = ["ON", "BC", "AB", "QC", "MB", "SK", "NS", "NB", "NL", "PE", "NT", "YT", "NU"]
+def _province_validation_message(err: str | None) -> str:
+    if err == "Invalid province code":
+        return "Invalid province. Must be a valid Canadian province code"
+    if err == "Invalid province":
+        return "Invalid province"
+    return "Invalid province"
 
 
 def validate_province(province: str) -> tuple[bool, str]:
-    """Validate province (required, must be valid Canadian province code)."""
-    if not province:
+    """Validate province (required): two-letter code or allow-listed free text. Returns (True, normalized)."""
+    if not province or not str(province).strip():
         return False, "Province is required"
-    if province not in VALID_PROVINCES:
-        return False, "Invalid province. Must be a valid Canadian province code"
-    return True, ""
+    norm, err = normalize_province_for_query(str(province).strip())
+    if err:
+        return False, _province_validation_message(err)
+    if norm is None:
+        return False, "Invalid province"
+    return True, norm
 
 
 def validate_prefill_province_optional(province: str) -> tuple[bool, str]:
-    """Province optional; if set, must be a valid code."""
-    if not province:
+    """Province optional; if set, must be a valid code or allow-listed free text."""
+    if not province or not str(province).strip():
         return True, ""
-    if province not in VALID_PROVINCES:
-        return False, "Invalid province. Must be a valid Canadian province code"
-    return True, ""
+    norm, err = normalize_province_for_query(str(province).strip())
+    if err:
+        return False, _province_validation_message(err)
+    if norm is None:
+        return False, "Invalid province"
+    return True, norm
 
 
 def validate_prefill_payload(data: dict[str, Any]) -> tuple[dict[str, str] | None, list[dict[str, str]]]:
@@ -217,6 +245,8 @@ def validate_prefill_payload(data: dict[str, Any]) -> tuple[dict[str, str] | Non
         valid, msg = validate_city(city)
         if not valid:
             errors.append({"field": "city", "message": msg})
+        else:
+            city = msg
 
     if company_name and len(company_name) > 200:
         errors.append({"field": "company_name", "message": "Company name must be 200 characters or less"})
@@ -224,6 +254,8 @@ def validate_prefill_payload(data: dict[str, Any]) -> tuple[dict[str, str] | Non
     valid, msg = validate_prefill_province_optional(province)
     if not valid:
         errors.append({"field": "province", "message": msg})
+    else:
+        province = msg
 
     if errors:
         return None, errors
@@ -657,14 +689,20 @@ def handle_investigation(request: Request, headers: dict, workflow_name: str):
     valid, msg = validate_full_name(full_name)
     if not valid:
         errors.append({"field": "full_name", "message": msg})
+    else:
+        full_name = msg
 
     valid, msg = validate_city(city)
     if not valid:
         errors.append({"field": "city", "message": msg})
+    else:
+        city = msg
 
     valid, msg = validate_province(province)
     if not valid:
         errors.append({"field": "province", "message": msg})
+    else:
+        province = msg
 
     if company_name and len(company_name) > 200:
         errors.append({"field": "company_name", "message": "Company name must be 200 characters or less"})

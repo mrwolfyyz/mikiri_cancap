@@ -32,6 +32,13 @@ _mock_gen_models.GenerationConfig = MagicMock()
 # Load query_constructor/main.py via conftest helper.
 # Set GCP_PROJECT so the module-level init path is exercised.
 # ---------------------------------------------------------------------------
+from llm_input_validators import (
+    MAX_FULL_NAME_LEN,
+    is_allowed_llm_input_char,
+    normalize_and_validate_allowlist_text,
+    normalize_province_for_query,
+)
+
 from conftest import load_function_module
 
 _orig_gcp_project = os.environ.get("GCP_PROJECT")
@@ -48,10 +55,6 @@ else:
 generate_precision_query = qc_main.generate_precision_query
 PROVINCE_NAMES = qc_main.PROVINCE_NAMES
 main_handler = qc_main.main
-_normalize_and_validate_allowlist_text = qc_main._normalize_and_validate_allowlist_text
-_is_allowed_llm_input_char = qc_main._is_allowed_llm_input_char
-_normalize_province_for_query = qc_main._normalize_province_for_query
-_MAX_FULL_NAME_LEN = qc_main._MAX_FULL_NAME_LEN
 
 
 # ---------------------------------------------------------------------------
@@ -453,40 +456,40 @@ class TestMainHandler:
 # ===========================================================================
 class TestNormalizationHelpers:
     def test_allowlist_empty_returns_none(self):
-        assert _normalize_and_validate_allowlist_text("", _MAX_FULL_NAME_LEN) is None
+        assert normalize_and_validate_allowlist_text("", MAX_FULL_NAME_LEN) is None
 
     def test_allowlist_whitespace_only_returns_none(self):
-        assert _normalize_and_validate_allowlist_text("   \n\t  ", _MAX_FULL_NAME_LEN) is None
+        assert normalize_and_validate_allowlist_text("   \n\t  ", MAX_FULL_NAME_LEN) is None
 
     def test_allowlist_too_long_returns_none(self):
-        long_name = "A" * (_MAX_FULL_NAME_LEN + 1)
-        assert _normalize_and_validate_allowlist_text(long_name, _MAX_FULL_NAME_LEN) is None
+        long_name = "A" * (MAX_FULL_NAME_LEN + 1)
+        assert normalize_and_validate_allowlist_text(long_name, MAX_FULL_NAME_LEN) is None
 
     def test_allowlist_invalid_char_returns_none(self):
-        assert _normalize_and_validate_allowlist_text("John@Doe", _MAX_FULL_NAME_LEN) is None
+        assert normalize_and_validate_allowlist_text("John@Doe", MAX_FULL_NAME_LEN) is None
 
     def test_is_allowed_digit_rejected(self):
-        assert _is_allowed_llm_input_char("0") is False
+        assert is_allowed_llm_input_char("0") is False
 
     def test_is_allowed_tab_uses_isspace_branch(self):
-        assert _is_allowed_llm_input_char("\t") is True
+        assert is_allowed_llm_input_char("\t") is True
 
     def test_normalize_province_invalid_full_name_allowlist(self):
-        code, err = _normalize_province_for_query("Ontario@")
+        code, err = normalize_province_for_query("Ontario@")
         assert code is None
         assert err == "Invalid province"
 
     def test_normalize_province_invalid_two_letter_code(self):
-        code, err = _normalize_province_for_query("ZZ")
+        code, err = normalize_province_for_query("ZZ")
         assert code is None
         assert err == "Invalid province code"
 
     def test_normalize_province_whitespace_only_returns_empty(self):
-        code, err = _normalize_province_for_query("   ")
+        code, err = normalize_province_for_query("   ")
         assert code == ""
         assert err is None
 
     def test_normalize_province_full_name_via_allowlist(self):
-        code, err = _normalize_province_for_query("Ontario")
+        code, err = normalize_province_for_query("Ontario")
         assert err is None
         assert code == "Ontario"

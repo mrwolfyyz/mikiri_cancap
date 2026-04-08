@@ -68,6 +68,12 @@ FUNCTIONS_NEEDING_CHAT_HANDLER_BASE=(
   "chat_handler_origination"
 )
 
+# Functions that require llm_input_validators.py
+FUNCTIONS_NEEDING_LLM_INPUT_VALIDATORS=(
+  "api_gateway"
+  "query_constructor"
+)
+
 # Source file locations
 RETRY_UTILS_SOURCE="$ROOT_DIR/gcp/shared/retry_utils.py"
 ADDRESS_UTILS_SOURCE="$ROOT_DIR/gcp/shared/address_utils.py"
@@ -75,10 +81,11 @@ CONTACT_EXTRACTION_UTILS_SOURCE="$ROOT_DIR/gcp/shared/contact_extraction_utils.p
 DOMAIN_UTILS_SOURCE="$ROOT_DIR/gcp/shared/domain_utils.py"
 REPORT_UTILS_SOURCE="$ROOT_DIR/gcp/shared/report_utils.py"
 CHAT_HANDLER_BASE_SOURCE="$ROOT_DIR/gcp/shared/chat_handler_base.py"
+LLM_INPUT_VALIDATORS_SOURCE="$ROOT_DIR/gcp/shared/llm_input_validators.py"
 
 # Check if source files exist
 ALL_SOURCES_OK=true
-for source_file in "$RETRY_UTILS_SOURCE" "$ADDRESS_UTILS_SOURCE" "$CONTACT_EXTRACTION_UTILS_SOURCE" "$DOMAIN_UTILS_SOURCE" "$REPORT_UTILS_SOURCE" "$CHAT_HANDLER_BASE_SOURCE"; do
+for source_file in "$RETRY_UTILS_SOURCE" "$ADDRESS_UTILS_SOURCE" "$CONTACT_EXTRACTION_UTILS_SOURCE" "$DOMAIN_UTILS_SOURCE" "$REPORT_UTILS_SOURCE" "$CHAT_HANDLER_BASE_SOURCE" "$LLM_INPUT_VALIDATORS_SOURCE"; do
   if [[ ! -f "$source_file" ]]; then
     echo "❌ ERROR: Source file not found: $source_file"
     ALL_SOURCES_OK=false
@@ -96,6 +103,7 @@ echo "  $CONTACT_EXTRACTION_UTILS_SOURCE"
 echo "  $DOMAIN_UTILS_SOURCE"
 echo "  $REPORT_UTILS_SOURCE"
 echo "  $CHAT_HANDLER_BASE_SOURCE"
+echo "  $LLM_INPUT_VALIDATORS_SOURCE"
 echo ""
 
 # Copy retry_utils.py to each function that needs it
@@ -199,6 +207,23 @@ for func in "${FUNCTIONS_NEEDING_CHAT_HANDLER_BASE[@]}"; do
 done
 
 echo ""
+
+# Copy llm_input_validators.py to each function that needs it
+echo "Copying llm_input_validators.py to functions..."
+for func in "${FUNCTIONS_NEEDING_LLM_INPUT_VALIDATORS[@]}"; do
+  DEST_DIR="$ROOT_DIR/gcp/functions/$func"
+  DEST_FILE="$DEST_DIR/llm_input_validators.py"
+
+  if [[ ! -d "$DEST_DIR" ]]; then
+    echo "  ⚠️  Directory not found: $DEST_DIR"
+    continue
+  fi
+
+  cp "$LLM_INPUT_VALIDATORS_SOURCE" "$DEST_FILE"
+  echo "  ✓ $func/llm_input_validators.py"
+done
+
+echo ""
 echo "=========================================="
 echo "Verification"
 echo "=========================================="
@@ -278,6 +303,19 @@ for func in "${FUNCTIONS_NEEDING_CHAT_HANDLER_BASE[@]}"; do
     echo "  ✓ $func/chat_handler_base.py"
   else
     echo "  ❌ $func/chat_handler_base.py - MISSING!"
+    ALL_OK=false
+  fi
+done
+
+echo ""
+
+echo "Verifying llm_input_validators.py presence..."
+for func in "${FUNCTIONS_NEEDING_LLM_INPUT_VALIDATORS[@]}"; do
+  DEST_FILE="$ROOT_DIR/gcp/functions/$func/llm_input_validators.py"
+  if [[ -f "$DEST_FILE" ]]; then
+    echo "  ✓ $func/llm_input_validators.py"
+  else
+    echo "  ❌ $func/llm_input_validators.py - MISSING!"
     ALL_OK=false
   fi
 done

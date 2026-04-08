@@ -3,11 +3,20 @@
 The validation functions in api_gateway/main.py are pure functions (no GCP
 dependencies), but main.py has heavy module-level imports (Firestore,
 Firebase Admin, etc.). Rather than mocking those, we extract the functions
-from the source file at test time using exec().
+from the source file at test time using exec(), with llm_input_validators
+injected into the namespace (same symbols main.py imports).
 """
 
 import re
 from pathlib import Path
+
+from llm_input_validators import (
+    MAX_CITY_LEN,
+    MAX_FULL_NAME_LEN,
+    PROVINCE_NAMES,
+    normalize_and_validate_allowlist_text,
+    normalize_province_for_query,
+)
 
 # ---------------------------------------------------------------------------
 # Extract validation functions from main.py source without importing the module
@@ -15,20 +24,29 @@ from pathlib import Path
 _MAIN_PY = Path(__file__).resolve().parent.parent / "gcp" / "functions" / "api_gateway" / "main.py"
 _source = _MAIN_PY.read_text()
 
-# Extract standalone validation functions and constants via exec.
-# We only need: validate_email, validate_full_name, validate_city,
-# validate_province, VALID_PROVINCES.  These depend only on the `re` module.
-_namespace = {"re": re}
+_namespace = {
+    "re": re,
+    "MAX_FULL_NAME_LEN": MAX_FULL_NAME_LEN,
+    "MAX_CITY_LEN": MAX_CITY_LEN,
+    "PROVINCE_NAMES": PROVINCE_NAMES,
+    "normalize_and_validate_allowlist_text": normalize_and_validate_allowlist_text,
+    "normalize_province_for_query": normalize_province_for_query,
+}
 
-# Extract VALID_PROVINCES
+# VALID_PROVINCES = list(PROVINCE_NAMES.keys())
 exec(
     "\n".join(line for line in _source.splitlines() if line.startswith("VALID_PROVINCES")),
     _namespace,
 )
 
-# Extract each validation function (they are self-contained)
-for fn_name in ("validate_email", "validate_full_name", "validate_city", "validate_province"):
-    # Find function boundaries
+# Order matters: _province_validation_message before validate_province
+for fn_name in (
+    "validate_email",
+    "validate_full_name",
+    "validate_city",
+    "_province_validation_message",
+    "validate_province",
+):
     lines = _source.splitlines()
     start = None
     end = None
@@ -39,7 +57,7 @@ for fn_name in ("validate_email", "validate_full_name", "validate_city", "valida
             end = i
             break
     if start is not None:
-        fn_source = "\n".join(lines[start:end])
+        fn_source = "\n".join(lines[start : end if end is not None else len(lines)])
         exec(fn_source, _namespace)
 
 validate_email = _namespace["validate_email"]
@@ -106,11 +124,12 @@ class TestValidateFullName:
     def test_valid_name(self):
         valid, msg = validate_full_name("John Smith")
         assert valid is True
-        assert msg == ""
+        assert msg == "John Smith"
 
     def test_valid_name_three_parts(self):
-        valid, _ = validate_full_name("John Michael Smith")
+        valid, norm = validate_full_name("John Michael Smith")
         assert valid is True
+        assert norm == "John Michael Smith"
 
     def test_empty_name(self):
         valid, msg = validate_full_name("")
@@ -125,18 +144,47 @@ class TestValidateFullName:
     def test_too_short(self):
         valid, msg = validate_full_name("A")
         assert valid is False
+        assert "2-200" in msg or "character" in msg.lower()
 
     def test_too_long(self):
-        valid, msg = validate_full_name("A" * 101)
+        # Two words, total length > MAX_FULL_NAME_LEN after normalization
+        long_two_word = "John " + "x" * (MAX_FULL_NAME_LEN - 5) + " Smith"
+        assert len(long_two_word) > MAX_FULL_NAME_LEN
+        valid, msg = validate_full_name(long_two_word)
         assert valid is False
 
     def test_name_with_hyphen(self):
-        valid, _ = validate_full_name("Jean-Pierre Tremblay")
+        valid, norm = validate_full_name("Jean-Pierre Tremblay")
         assert valid is True
+        assert norm == "Jean-Pierre Tremblay"
 
     def test_name_with_apostrophe(self):
-        valid, _ = validate_full_name("Patrick O'Brien")
+        valid, norm = validate_full_name("Patrick O'Brien")
         assert valid is True
+        assert norm == "Patrick O'Brien"
+
+    def test_injection_style_rejected(self):
+        valid, msg = validate_full_name('Jane"; DROP TABLE users--')
+        assert valid is False
+
+    def test_digits_rejected(self):
+        valid, msg = validate_full_name("Jane Smith 2")
+        assert valid is False
+
+    def test_brackets_backticks_quotes_rejected(self):
+        for bad in ("Jane [Smith]", "Jane `Smith`", 'Jane "Smith"'):
+            valid, msg = validate_full_name(bad + " Doe")
+            assert valid is False, bad
+
+    def test_unicode_name_accepted(self):
+        valid, norm = validate_full_name("François 李明 Smith")
+        assert valid is True
+        assert "François" in norm and "Smith" in norm
+
+    def test_nfc_whitespace_collapsed(self):
+        valid, norm = validate_full_name("  John   Smith  ")
+        assert valid is True
+        assert norm == "John Smith"
 
 
 class TestValidateCity:
@@ -145,28 +193,33 @@ class TestValidateCity:
     def test_valid_city(self):
         valid, msg = validate_city("Toronto")
         assert valid is True
-        assert msg == ""
+        assert msg == "Toronto"
 
     def test_empty_is_valid(self):
         # City is optional
         valid, msg = validate_city("")
         assert valid is True
+        assert msg == ""
 
     def test_city_with_hyphen(self):
-        valid, _ = validate_city("Sault Ste-Marie")
+        valid, norm = validate_city("Sault Ste-Marie")
         assert valid is True
+        assert norm == "Sault Ste-Marie"
 
     def test_city_with_apostrophe(self):
-        valid, _ = validate_city("St John's")
+        valid, norm = validate_city("St John's")
         assert valid is True
+        assert norm == "St John's"
 
     def test_city_with_period(self):
-        valid, _ = validate_city("St. John's")
+        valid, norm = validate_city("St. John's")
         assert valid is True
+        assert norm == "St. John's"
 
     def test_city_with_accents(self):
-        valid, _ = validate_city("Montréal")
+        valid, norm = validate_city("Montréal")
         assert valid is True
+        assert norm == "Montréal"
 
     def test_city_with_numbers_rejected(self):
         valid, msg = validate_city("Toronto123")
@@ -177,7 +230,11 @@ class TestValidateCity:
         assert valid is False
 
     def test_too_long(self):
-        valid, msg = validate_city("A" * 101)
+        valid, msg = validate_city("A" * (MAX_CITY_LEN + 1))
+        assert valid is False
+
+    def test_injection_rejected(self):
+        valid, msg = validate_city("Toronto; DROP--")
         assert valid is False
 
 
@@ -187,15 +244,17 @@ class TestValidateProvince:
     def test_valid_province_on(self):
         valid, msg = validate_province("ON")
         assert valid is True
-        assert msg == ""
+        assert msg == "ON"
 
     def test_valid_province_bc(self):
-        valid, _ = validate_province("BC")
+        valid, norm = validate_province("BC")
         assert valid is True
+        assert norm == "BC"
 
     def test_valid_province_qc(self):
-        valid, _ = validate_province("QC")
+        valid, norm = validate_province("QC")
         assert valid is True
+        assert norm == "QC"
 
     def test_empty_province(self):
         valid, msg = validate_province("")
@@ -206,13 +265,17 @@ class TestValidateProvince:
         valid, msg = validate_province("XX")
         assert valid is False
 
-    def test_lowercase_rejected(self):
-        valid, msg = validate_province("on")
-        assert valid is False
+    def test_lowercase_code_normalized_to_upper(self):
+        """Aligned with query_constructor: two-letter alpha codes are uppercased."""
+        valid, norm = validate_province("on")
+        assert valid is True
+        assert norm == "ON"
 
-    def test_full_name_rejected(self):
-        valid, msg = validate_province("Ontario")
-        assert valid is False
+    def test_free_text_province_ontario_accepted(self):
+        """Full province name allowed when it passes shared allow-list (matches query_constructor)."""
+        valid, norm = validate_province("Ontario")
+        assert valid is True
+        assert norm == "Ontario"
 
     def test_all_valid_provinces(self):
         for prov in VALID_PROVINCES:
