@@ -2,7 +2,7 @@
 
 This document describes the security architecture of the Mikiri Skip Trace & Origination Intelligence Platform.
 
-**Last Updated**: March 2026  
+**Last Updated**: April 2026  
 **Status**: Beta Deployment
 
 ---
@@ -159,11 +159,11 @@ All API keys stored in **Google Secret Manager**:
 - All other functions are private (only invoked by workflows)
 
 ### CORS
-- **Configurable**: `cors_allowed_origins` in `terraform.tfvars`, propagated to API Gateway, chat handlers, and address verification via environment variable
-- **Production**: Restricted to specific Firebase Hosting URLs
-  - `https://PROJECT_ID-skiptrace.web.app`
-  - `https://PROJECT_ID-origination.web.app`
-- **Development**: Can be set to `*` for easier testing
+- `CORS_ALLOWED_ORIGINS` is required at startup in api_gateway — the function fails at import if missing or blank; no implicit wildcard default
+- Terraform validation rejects `cors_allowed_origins = "*"` when environment is not dev (enforced at plan time)
+- Deployment validation script fails non-zero if the deployed api-gateway has `CORS_ALLOWED_ORIGINS` set to `*` in non-dev environments
+- **Development**: can be explicitly set to `*` for easier testing
+- **Production**: restricted to specific Firebase Hosting URLs (`https://PROJECT_ID-skiptrace.web.app`, `https://PROJECT_ID-origination.web.app`)
 
 ---
 
@@ -274,12 +274,12 @@ Because everything runs in your GCP environment, **you have full control**:
 - ✅ **Least-Privilege IAM** (no editor/owner service accounts)
 - ✅ **Firestore Security Rules** (user isolation enforced)
 - ✅ **Token Verification** (Firebase ID token required for all user-data API routes; health and CORS preflight are public)
-- ✅ **CORS Restricted** (configurable per environment, locked to hosting URLs in production)
-- ✅ **Server-Side Rate Limiting** (per-user, 5 requests per 5 minutes via Firestore)
+- ✅ **CORS Restricted** (required at api_gateway startup; Terraform and deploy validation block wildcard in non-dev; hosting URLs in production)
+- ✅ **Server-Side Rate Limiting** (per-user, 5 requests per 5 minutes via Firestore; fails closed on Firestore error (returns 429 rather than allowing unlimited requests through))
 - ✅ **Request Size Limits** (50KB for investigations, 500KB for chat including markdown context)
 - ✅ **Conversation History Cap** (frontend: 40 messages, backend: rejects >50 messages)
-- ✅ **Input Validation** (request size limits, field length limits, city character whitelist, province code validation)
-- ✅ **XSS Prevention** (DOMPurify sanitization on injected HTML)
+- ✅ **Input Validation** (request size limits, field length limits; `full_name` and `city` validated via NFKC normalization + Unicode letter allow-list in shared module `gcp/shared/llm_input_validators.py`, applied consistently across `api_gateway` and `query_constructor`; province validated as two-letter code or allow-listed free text; HTTP 400 on invalid input — fail closed)
+- ✅ **XSS Prevention** (defense in depth: `escapeHtml` via browser-native DOM for text values; `textContent` for user input; URL allowlisting via `sanitizeMarkdownLinkUrl` and `isSafeHttpUrl`; attribute encoding via `escapeHtmlAttr`; DOMPurify with explicit tag/attribute allowlists for markdown and vendor HTML)
 - ✅ **Infrastructure as Code** (Terraform = auditable, repeatable)
 - ✅ **Short Data Retention** (7 days → 1 day target)
 - ✅ **Public Data Only** (no proprietary databases or vendor dependencies)
