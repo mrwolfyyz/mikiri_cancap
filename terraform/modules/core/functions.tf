@@ -478,8 +478,8 @@ resource "google_cloudfunctions2_function" "api_gateway" {
       CHAT_HANDLER_ORIGINATION_URL = google_cloudfunctions2_function.chat_handler_origination.service_config[0].uri
       ADDRESS_VERIFICATION_URL     = google_cloudfunctions2_function.address_verification.service_config[0].uri
       # nonsensitive: avoids Google provider "inconsistent sensitive attribute" when applying env map
-      EXTENSION_PREFILL_SECRET     = nonsensitive(random_password.extension_prefill_secret.result)
-      PREFILL_SESSION_TTL_MINUTES  = "10"
+      EXTENSION_PREFILL_SECRET    = nonsensitive(random_password.extension_prefill_secret.result)
+      PREFILL_SESSION_TTL_MINUTES = "10"
     }
   }
 

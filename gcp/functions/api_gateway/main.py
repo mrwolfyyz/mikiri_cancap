@@ -344,8 +344,8 @@ def handle_prefill_session_redeem(request: Request, headers: dict):
     if _prefill_doc_expired(doc.get("expire_at")):
         try:
             doc_ref.delete()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Prefill expired doc cleanup delete failed: %s", e)
         return jsonify({"error": "Invalid or expired token"}), 404, headers
 
     try:

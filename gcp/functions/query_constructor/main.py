@@ -10,6 +10,7 @@ Performs:
 import json
 import os
 import traceback
+import unicodedata
 from typing import Any
 
 import functions_framework
@@ -37,6 +38,11 @@ else:
     _MODEL = None
 
 # Province code to full name mapping
+# Max lengths after NFKC normalize + whitespace collapse (security / LLM prompt bounds)
+_MAX_FULL_NAME_LEN = 200
+_MAX_CITY_LEN = 120
+_MAX_PROVINCE_LEN = 40
+
 PROVINCE_NAMES = {
     "ON": "Ontario",
     "BC": "British Columbia",
@@ -52,6 +58,56 @@ PROVINCE_NAMES = {
     "YT": "Yukon",
     "NU": "Nunavut",
 }
+
+
+def _is_allowed_llm_input_char(c: str) -> bool:
+    """Allow Unicode letters, whitespace, and a small punctuation set (audit allow-list)."""
+    if c in " '-.":
+        return True
+    if c.isspace():
+        return True
+    cat = unicodedata.category(c)
+    return cat.startswith("L")
+
+
+def _normalize_and_validate_allowlist_text(raw: str, max_len: int) -> str | None:
+    """
+    NFKC-normalize, collapse whitespace, enforce per-character allow-list and max length.
+    Returns normalized string or None if invalid.
+    """
+    if not raw:
+        return None
+    t = unicodedata.normalize("NFKC", raw).strip()
+    if not t:
+        return None
+    collapsed = " ".join(t.split())
+    if len(collapsed) > max_len:
+        return None
+    for ch in collapsed:
+        if not _is_allowed_llm_input_char(ch):
+            return None
+    return collapsed
+
+
+def _normalize_province_for_query(province: str) -> tuple[str | None, str | None]:
+    """
+    Returns (normalized_province_token, error_message).
+    Accepts a 2-letter code in PROVINCE_NAMES or a full-name string matching the allow-list.
+    """
+    if not province:
+        return "", None
+    p = unicodedata.normalize("NFKC", province).strip()
+    if not p:
+        return "", None
+    if len(p) == 2 and p.isalpha():
+        code = p.upper()
+        if code in PROVINCE_NAMES:
+            return code, None
+        return None, "Invalid province code"
+    validated = _normalize_and_validate_allowlist_text(p, _MAX_PROVINCE_LEN)
+    if validated is None:
+        return None, "Invalid province"
+    return validated, None
 
 
 # -------------------------
@@ -188,11 +244,11 @@ Return valid JSON only."""
                 raise EmptyLLMResponseError(f"JSON decode error (malformed response): {e}") from e
 
             # Validate required fields (defensive guard against model/SDK behavior changes)
-            if "original_name" not in result:
+            if "original_name" not in result or not isinstance(result.get("original_name"), str):
                 result["original_name"] = full_name
             if "generated_names" not in result:
                 result["generated_names"] = []
-            if "vertex_query" not in result:
+            if "vertex_query" not in result or not isinstance(result.get("vertex_query"), str):
                 # Fallback: construct basic query
                 result["vertex_query"] = f'"{full_name}" "{location}"'
 
@@ -243,12 +299,26 @@ def main(request):
     except Exception:
         return {"error": "Invalid JSON"}, 400
 
-    full_name = req_data.get("full_name", "").strip()
-    city = req_data.get("city", "").strip()
-    province = req_data.get("province", "").strip()
+    full_name_raw = req_data.get("full_name") or ""
+    city_raw = req_data.get("city") or ""
+    province_raw = req_data.get("province") or ""
 
-    if not full_name or not city:
+    fn_stripped = str(full_name_raw).strip()
+    city_stripped = str(city_raw).strip()
+    if not fn_stripped or not city_stripped:
         return {"error": "full_name and city are required"}, 400
+
+    full_name = _normalize_and_validate_allowlist_text(fn_stripped, _MAX_FULL_NAME_LEN)
+    city = _normalize_and_validate_allowlist_text(city_stripped, _MAX_CITY_LEN)
+    province_norm, province_err = _normalize_province_for_query(str(province_raw).strip())
+
+    if full_name is None or city is None:
+        return {"error": "full_name and city must contain only letters, spaces, and limited punctuation"}, 400
+
+    if province_err:
+        return {"error": province_err}, 400
+
+    province = province_norm or ""
 
     print(f"[QueryConstructor] Constructing query for: {full_name}, {city}, {province}")
 
