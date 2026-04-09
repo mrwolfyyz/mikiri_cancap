@@ -56,8 +56,12 @@ CHAT_JSON_OUTPUT_SUFFIX = (
 # Retry configuration for Gemini API calls
 GEMINI_RETRY_CONFIG = RetryConfig(max_attempts=3, base_delay_seconds=1.0, max_delay_seconds=10.0)
 
-# CORS headers - origin set from environment (restrict in production)
-_CORS_ORIGIN = os.environ.get("CORS_ALLOWED_ORIGINS", "*")
+# CORS headers - origin must be explicitly configured (no wildcard fallback)
+_CORS_ORIGIN = (os.environ.get("CORS_ALLOWED_ORIGINS") or "").strip()
+if not _CORS_ORIGIN:
+    raise ValueError(
+        "CORS_ALLOWED_ORIGINS must be explicitly configured. Use '*' only for deliberate development usage."
+    )
 CORS_PREFLIGHT_HEADERS = {
     "Access-Control-Allow-Origin": _CORS_ORIGIN,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
