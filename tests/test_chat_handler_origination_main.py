@@ -5,8 +5,11 @@ Tests the origination-specific build_prompt (5 markdown sections), config
 values, and delegation to handle_chat_request.
 """
 
+import os
 import sys
 from unittest.mock import MagicMock, patch
+
+os.environ.setdefault("CORS_ALLOWED_ORIGINS", "*")
 
 # ---------------------------------------------------------------------------
 # Mock heavy dependencies before loading the module

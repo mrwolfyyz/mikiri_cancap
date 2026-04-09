@@ -5,8 +5,11 @@ in test_chat_handler_base.py.  These tests cover the skip-trace-specific
 build_prompt function, config values, and delegation to handle_chat_request.
 """
 
+import os
 import sys
 from unittest.mock import MagicMock, patch
+
+os.environ.setdefault("CORS_ALLOWED_ORIGINS", "*")
 
 # ---------------------------------------------------------------------------
 # Mock heavy dependencies before loading the module

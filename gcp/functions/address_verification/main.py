@@ -404,8 +404,10 @@ def main(request: Request):
 
     Returns analysis results with fraud detection indicators.
     """
-    # Enable CORS - origin set from environment (restrict in production)
-    cors_origin = os.environ.get("CORS_ALLOWED_ORIGINS", "*")
+    # Enable CORS - origin must be explicitly configured (no wildcard fallback)
+    cors_origin = (os.environ.get("CORS_ALLOWED_ORIGINS") or "").strip()
+    if not cors_origin:
+        return jsonify({"error": "Server misconfiguration"}), 500, {}
     if request.method == "OPTIONS":
         headers = {
             "Access-Control-Allow-Origin": cors_origin,

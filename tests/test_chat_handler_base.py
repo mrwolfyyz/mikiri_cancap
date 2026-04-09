@@ -38,6 +38,10 @@ _mock_google.genai = _mock_genai
 sys.modules["google.genai"] = _mock_genai
 sys.modules["google.genai.types"] = _mock_genai_types
 
+import os
+
+os.environ.setdefault("CORS_ALLOWED_ORIGINS", "*")
+
 # Now safe to import
 import chat_handler_base
 from chat_handler_base import (

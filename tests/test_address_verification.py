@@ -40,6 +40,10 @@ sys.modules["google.genai.types"] = _mock_genai_types
 # ---------------------------------------------------------------------------
 # Load address_verification/main.py
 # ---------------------------------------------------------------------------
+import os
+
+os.environ.setdefault("CORS_ALLOWED_ORIGINS", "*")
+
 from conftest import load_function_module
 
 av_main = load_function_module("address_verification", "address_verification_main")
