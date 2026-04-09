@@ -355,11 +355,26 @@ class TestGetCorsHeaders:
             headers = get_cors_headers(req)
         assert headers["Access-Control-Allow-Origin"] == "https://app.example.com"
 
-    def test_non_matching_origin_falls_back(self):
+    def test_non_matching_origin_returns_no_cors_header(self):
         with patch.object(gw, "CORS_ALLOWED_ORIGINS", "https://app.example.com"):
             req = _make_request(headers={"Origin": "https://evil.com"})
             headers = get_cors_headers(req)
-        assert headers["Access-Control-Allow-Origin"] == "https://app.example.com"
+        assert headers == {}
+        assert "Access-Control-Allow-Origin" not in headers
+
+    def test_empty_allowlist_after_normalization(self):
+        with patch.object(gw, "CORS_ALLOWED_ORIGINS", ", , "):
+            req = _make_request(headers={"Origin": "https://app.example.com"})
+            headers = get_cors_headers(req)
+        assert headers == {}
+        assert "*" not in str(headers.values())
+
+    def test_allowlist_never_emits_wildcard_on_mismatch(self):
+        with patch.object(gw, "CORS_ALLOWED_ORIGINS", "https://app.example.com,https://other.com"):
+            req = _make_request(headers={"Origin": "https://attacker.example"})
+            headers = get_cors_headers(req)
+        assert "Access-Control-Allow-Origin" not in headers
+        assert "*" not in headers.values()
 
 
 # ===========================================================================
@@ -883,6 +898,29 @@ class TestMainRouting:
         body, status, hdrs = resp
         assert status == 204
         assert "Access-Control-Allow-Methods" in hdrs
+
+    def test_options_preflight_allowlist_matching_origin(self):
+        origin = "https://app.example.com"
+        req = _make_request(method="OPTIONS", headers={"Origin": origin})
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", f"{origin},https://other.com"):
+                resp = main_handler(req)
+        _, status, hdrs = resp
+        assert status == 204
+        assert hdrs.get("Access-Control-Allow-Origin") == origin
+        assert "*" not in hdrs.get("Access-Control-Allow-Origin", "")
+
+    def test_options_preflight_allowlist_non_matching_origin(self):
+        req = _make_request(
+            method="OPTIONS",
+            headers={"Origin": "https://evil.com"},
+        )
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "https://app.example.com"):
+                resp = main_handler(req)
+        _, status, hdrs = resp
+        assert status == 204
+        assert "Access-Control-Allow-Origin" not in hdrs
 
     def test_health_check(self):
         req = _make_request(method="GET", path="/health")

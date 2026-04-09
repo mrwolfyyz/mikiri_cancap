@@ -592,16 +592,16 @@ def get_cors_headers(request: Request):
     if CORS_ALLOWED_ORIGINS == "*":
         return {"Access-Control-Allow-Origin": "*"}
 
-    # Split comma-separated origins and check if request origin matches
-    allowed_origins = [o.strip() for o in CORS_ALLOWED_ORIGINS.split(",")]
+    # Split comma-separated origins; omit empty tokens (commas-only / whitespace env values)
+    allowed_origins = [o.strip() for o in CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
+    if not allowed_origins:
+        return {}
 
-    # If request origin is in allowed list, return it (browser requires exact match)
+    # Exact origin match only (browser requires exact match)
     if origin in allowed_origins:
         return {"Access-Control-Allow-Origin": origin}
 
-    # If no match and not "*", return first allowed origin as fallback
-    # (or could return "*" if you want to allow all)
-    return {"Access-Control-Allow-Origin": allowed_origins[0] if allowed_origins else "*"}
+    return {}
 
 
 def verify_job_ownership(request: Request, job_id: str, headers: dict) -> tuple[dict | None, str | None, tuple | None]:
