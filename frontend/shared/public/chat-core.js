@@ -433,11 +433,14 @@ function addMessage(role, content, groundingMetadata = null) {
             htmlContent = scopedStyleTag + htmlContent;
         }
 
-        // Sanitize HTML before rendering (compliance: preserve Google's styling and links)
+        // Sanitize before rendering: style/<style> excluded for XSS surface (audit 2.2). Google's
+        // markup may use inline or block styles; rendering may degrade — acceptable while chat is
+        // hidden; security over untested grounding UI.
         entryPoint.innerHTML = typeof DOMPurify !== "undefined"
             ? DOMPurify.sanitize(htmlContent, {
-                ALLOWED_TAGS: ['style', 'div', 'span', 'a', 'img', 'br', 'p'],
-                ALLOWED_ATTR: ['class', 'href', 'target', 'rel', 'src', 'alt', 'style']
+                ALLOWED_TAGS: ['div', 'span', 'a', 'img', 'br', 'p'],
+                ALLOWED_ATTR: ['class', 'href', 'target', 'rel', 'src', 'alt'],
+                ALLOW_DATA_ATTR: false
             })
             : "";
 
