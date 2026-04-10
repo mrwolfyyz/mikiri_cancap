@@ -3,7 +3,7 @@
 
 set -e
 
-PROJECT_ID="${1:-mikiri-demo-test}"
+PROJECT_ID="${1:-${GCP_PROJECT:?Error: Pass project ID as argument or set GCP_PROJECT env var}}"
 
 echo "==================================="
 echo "Checking Terraform Authentication"
