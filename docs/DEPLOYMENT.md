@@ -33,6 +33,14 @@ You must complete [PREREQUISITES.md](./PREREQUISITES.md) first, including:
 
 ## Initial Setup
 
+### Windows Users (WSL2)
+
+If you are on Windows, run this deployment from **WSL2 (Ubuntu)** instead of PowerShell/CMD. The deployment flow uses Bash scripts and Unix shell behavior.
+
+- Use WSL Bash for all commands in this guide.
+- Ensure `gcloud`, `terraform`, and `firebase-tools` are installed inside WSL.
+- Keep repository script files as LF line endings.
+
 ### 1. Clone the Repository
 
 ```bash

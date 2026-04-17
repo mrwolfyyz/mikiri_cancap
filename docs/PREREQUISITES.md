@@ -124,6 +124,24 @@ gsutil versioning set on gs://${PROJECT_ID}-terraform-state
 
 ## Local Tools
 
+### Windows Setup (Recommended: WSL2)
+
+If you are deploying from Windows, use **WSL2 (Ubuntu)** and run all commands from the WSL terminal. This repository relies on Bash scripts (`.sh`) and Unix shell tools.
+
+1. Install WSL2 and Ubuntu:
+   - In PowerShell (as Administrator): `wsl --install -d Ubuntu`
+2. Open Ubuntu and install required tools in WSL:
+   - `gcloud` CLI
+   - `terraform`
+   - Node.js + npm (for Firebase CLI)
+   - Firebase CLI: `npm install -g firebase-tools`
+3. Clone the repository in WSL and run all commands from Bash.
+
+**Important (Windows)**:
+- Do **not** run deployment scripts from PowerShell/CMD.
+- Keep shell scripts with LF line endings (CRLF can break `.sh` scripts).
+- Prefer working in the WSL filesystem for best reliability.
+
 ### 1. Google Cloud SDK (gcloud)
 
 **Install:**
