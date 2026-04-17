@@ -133,6 +133,7 @@ If you are deploying from Windows, use **WSL2 (Ubuntu)** and run all commands fr
 2. Open Ubuntu and install required tools in WSL:
    - `gcloud` CLI
    - `terraform`
+   - `jq`
    - Node.js + npm (for Firebase CLI)
    - Firebase CLI: `npm install -g firebase-tools`
 3. Clone the repository in WSL and run all commands from Bash.
@@ -229,7 +230,22 @@ firebase --version
 firebase login
 ```
 
-### 4. Python (Optional, for local development)
+### 4. jq
+
+Required by deployment helper scripts such as `scripts/check-terraform-auth.sh` and `scripts/prepare-frontend.sh`.
+
+```bash
+# macOS (Homebrew)
+brew install jq
+
+# Ubuntu/Debian
+sudo apt update && sudo apt install -y jq
+
+# Verify
+jq --version
+```
+
+### 5. Python (Optional, for local development)
 
 ```bash
 # Verify Python 3.11+

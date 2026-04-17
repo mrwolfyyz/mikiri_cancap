@@ -240,7 +240,7 @@ Run the frontend preparation script to copy shared JS/CSS and process HTML templ
   - `styles.css`, `shared.css`, `chat.css`, `results.css`
 - Processes HTML templates from `frontend/shared/templates/` using platform-specific configuration from `platform.json`
 
-**Note**: This must be run before Step 6 (Deploy Firebase Hosting). It can be run at any time before deploying frontends. The script requires `jq` (install with `brew install jq`).
+**Note**: This must be run before Step 6 (Deploy Firebase Hosting). It can be run at any time before deploying frontends. The script requires `jq` (`brew install jq` on macOS or `sudo apt install -y jq` on Ubuntu/WSL).
 
 ### Step 2: Initialize Terraform
 

@@ -32,7 +32,7 @@ echo ""
 # =============================================================================
 if ! command -v jq &> /dev/null; then
   echo "❌ ERROR: jq is required but not installed."
-  echo "   Install with: brew install jq"
+  echo "   Install with: brew install jq (macOS) or sudo apt install -y jq (Ubuntu/WSL)"
   exit 1
 fi
 
