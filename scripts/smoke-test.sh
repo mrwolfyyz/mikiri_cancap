@@ -11,6 +11,8 @@ set -e
 # Configuration
 PROJECT_ID="${1:-$GCP_PROJECT}"
 REGION="${2:-northamerica-northeast1}"
+TEST_ORIGIN="${SMOKE_TEST_ORIGIN:-https://${PROJECT_ID}-skiptrace.web.app}"
+STRICT_CORS="${SMOKE_TEST_STRICT_CORS:-false}"
 
 if [[ -z "$PROJECT_ID" ]]; then
   echo "Usage: $0 <project_id> [region]"
@@ -23,6 +25,7 @@ echo "=========================================="
 echo "Running smoke tests"
 echo "Project: $PROJECT_ID"
 echo "Region:  $REGION"
+echo "Origin:  $TEST_ORIGIN"
 echo "=========================================="
 echo ""
 
@@ -73,13 +76,21 @@ echo ""
 echo "Test 2: CORS headers..."
 
 CORS_RESPONSE=$(curl -s -I -X OPTIONS "$API_URL/health" \
-  -H "Origin: https://example.com" \
+  -H "Origin: $TEST_ORIGIN" \
   -H "Access-Control-Request-Method: GET" 2>/dev/null)
 
-if echo "$CORS_RESPONSE" | grep -qi "access-control-allow-origin"; then
-  echo "  ✓ CORS headers present"
+ALLOWED_ORIGIN=$(echo "$CORS_RESPONSE" | awk -F': ' 'tolower($1) == "access-control-allow-origin" {gsub("\r","",$2); print $2; exit}')
+
+if [[ "$ALLOWED_ORIGIN" == "$TEST_ORIGIN" || "$ALLOWED_ORIGIN" == "*" ]]; then
+  echo "  ✓ CORS headers present and origin allowed"
+  echo "  access-control-allow-origin: $ALLOWED_ORIGIN"
 else
   echo "  ⚠️  CORS headers may not be configured correctly"
+  echo "  Expected origin: $TEST_ORIGIN"
+  echo "  Returned origin: ${ALLOWED_ORIGIN:-<missing>}"
+  if [[ "$STRICT_CORS" == "true" ]]; then
+    ALL_OK=false
+  fi
 fi
 
 echo ""

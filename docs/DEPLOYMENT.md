@@ -418,6 +418,9 @@ Run smoke tests:
 
 ```bash
 ./scripts/smoke-test.sh PROJECT_ID REGION
+
+# Optional: enforce strict CORS validation against a specific frontend origin
+SMOKE_TEST_ORIGIN=https://PROJECT_ID-skiptrace.web.app SMOKE_TEST_STRICT_CORS=true ./scripts/smoke-test.sh PROJECT_ID REGION
 ```
 
 ---
