@@ -164,6 +164,16 @@ process_template() {
   local output="$3"
   local platform=$(jq -r '.platform' "$platform_config")
 
+  # Cross-platform in-place edit helper (works on BSD/macOS and GNU/Linux sed)
+  sed_in_place() {
+    local expression="$1"
+    local target_file="$2"
+    local temp_file
+    temp_file="$(mktemp "${target_file}.tmp.XXXXXX")"
+    sed "$expression" "$target_file" > "$temp_file"
+    mv "$temp_file" "$target_file"
+  }
+
   # Start with a copy of the template
   cp "$template" "$output"
 
@@ -184,19 +194,19 @@ process_template() {
   local viewReportText=$(jq -r '.content.viewReportText' "$platform_config")
 
   # Use sed to replace tokens (using | as delimiter to avoid issues with /)
-  sed -i '' "s|{{pageTitle}}|${pageTitle}|g" "$output"
-  sed -i '' "s|{{headerTitle}}|${headerTitle}|g" "$output"
-  sed -i '' "s|{{headerSubtitle}}|${headerSubtitle}|g" "$output"
-  sed -i '' "s|{{heroText}}|${heroText}|g" "$output"
-  sed -i '' "s|{{submitButtonText}}|${submitButtonText}|g" "$output"
-  sed -i '' "s|{{successMessage}}|${successMessage}|g" "$output"
-  sed -i '' "s|{{chatPageTitle}}|${chatPageTitle}|g" "$output"
-  sed -i '' "s|{{chatHeaderTitle}}|${chatHeaderTitle}|g" "$output"
-  sed -i '' "s|{{chatHeaderSubtitle}}|${chatHeaderSubtitle}|g" "$output"
-  sed -i '' "s|{{chatAssistantTitle}}|${chatAssistantTitle}|g" "$output"
-  sed -i '' "s|{{folderName}}|${folderName}|g" "$output"
-  sed -i '' "s|{{folderAltName}}|${folderAltName}|g" "$output"
-  sed -i '' "s|{{viewReportText}}|${viewReportText}|g" "$output"
+  sed_in_place "s|{{pageTitle}}|${pageTitle}|g" "$output"
+  sed_in_place "s|{{headerTitle}}|${headerTitle}|g" "$output"
+  sed_in_place "s|{{headerSubtitle}}|${headerSubtitle}|g" "$output"
+  sed_in_place "s|{{heroText}}|${heroText}|g" "$output"
+  sed_in_place "s|{{submitButtonText}}|${submitButtonText}|g" "$output"
+  sed_in_place "s|{{successMessage}}|${successMessage}|g" "$output"
+  sed_in_place "s|{{chatPageTitle}}|${chatPageTitle}|g" "$output"
+  sed_in_place "s|{{chatHeaderTitle}}|${chatHeaderTitle}|g" "$output"
+  sed_in_place "s|{{chatHeaderSubtitle}}|${chatHeaderSubtitle}|g" "$output"
+  sed_in_place "s|{{chatAssistantTitle}}|${chatAssistantTitle}|g" "$output"
+  sed_in_place "s|{{folderName}}|${folderName}|g" "$output"
+  sed_in_place "s|{{folderAltName}}|${folderAltName}|g" "$output"
+  sed_in_place "s|{{viewReportText}}|${viewReportText}|g" "$output"
 
   # ---- Conditional blocks: {{#if feature}}...{{/if feature}} ----
 
@@ -204,33 +214,33 @@ process_template() {
   local hasAddrVerif=$(jq -r '.features.addressVerification // false' "$platform_config")
   if [[ "$hasAddrVerif" == "true" ]]; then
     # Keep content, remove markers
-    sed -i '' '/{{#if addressVerification}}/d' "$output"
-    sed -i '' '/{{\/if addressVerification}}/d' "$output"
+    sed_in_place '/{{#if addressVerification}}/d' "$output"
+    sed_in_place '/{{\/if addressVerification}}/d' "$output"
   else
     # Remove entire block including markers
-    sed -i '' '/{{#if addressVerification}}/,/{{\/if addressVerification}}/d' "$output"
+    sed_in_place '/{{#if addressVerification}}/,/{{\/if addressVerification}}/d' "$output"
   fi
 
   # Handle platform-specific blocks
   if [[ "$platform" == "origination" ]]; then
     # Keep origination blocks, remove markers
-    sed -i '' '/{{#if origination}}/d' "$output"
-    sed -i '' '/{{\/if origination}}/d' "$output"
+    sed_in_place '/{{#if origination}}/d' "$output"
+    sed_in_place '/{{\/if origination}}/d' "$output"
     # Remove entire skiptrace blocks
-    sed -i '' '/{{#if skiptrace}}/,/{{\/if skiptrace}}/d' "$output"
+    sed_in_place '/{{#if skiptrace}}/,/{{\/if skiptrace}}/d' "$output"
   elif [[ "$platform" == "skiptrace" ]]; then
     # Keep skiptrace blocks, remove markers
-    sed -i '' '/{{#if skiptrace}}/d' "$output"
-    sed -i '' '/{{\/if skiptrace}}/d' "$output"
+    sed_in_place '/{{#if skiptrace}}/d' "$output"
+    sed_in_place '/{{\/if skiptrace}}/d' "$output"
     # Remove entire origination blocks
-    sed -i '' '/{{#if origination}}/,/{{\/if origination}}/d' "$output"
+    sed_in_place '/{{#if origination}}/,/{{\/if origination}}/d' "$output"
   fi
 
   # Remove the template comment header (first 4 lines if they match)
-  sed -i '' '1{/<!-- =====/d;}' "$output"
-  sed -i '' '1{/THIS IS A TEMPLATE/d;}' "$output"
-  sed -i '' '1{/Processed by scripts/d;}' "$output"
-  sed -i '' '1{/====== -->/d;}' "$output"
+  sed_in_place '1{/<!-- =====/d;}' "$output"
+  sed_in_place '1{/THIS IS A TEMPLATE/d;}' "$output"
+  sed_in_place '1{/Processed by scripts/d;}' "$output"
+  sed_in_place '1{/====== -->/d;}' "$output"
 }
 
 for platform in "${PLATFORMS[@]}"; do
