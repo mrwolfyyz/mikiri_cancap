@@ -124,9 +124,15 @@ gsutil versioning set on gs://${PROJECT_ID}-terraform-state
 
 ## Local Tools
 
-### Windows Setup (Recommended: WSL2)
+### Windows Setup (WSL2 or Google Cloud Shell)
 
-If you are deploying from Windows, use **WSL2 (Ubuntu)** and run all commands from the WSL terminal. This repository relies on Bash scripts (`.sh`) and Unix shell tools.
+If you are deploying from Windows, you have two options to avoid line-ending and compatibility issues:
+
+**Option A: Google Cloud Shell (Easiest)**
+Use [Google Cloud Shell](https://console.cloud.google.com) directly in your browser. It comes with `gcloud`, `terraform`, `jq`, and `npm` pre-installed. You only need to install the Firebase CLI (`npm install -g firebase-tools`) and clone this repository. Note: When logging into Firebase in Cloud Shell, you must use `firebase login --no-localhost`.
+
+**Option B: WSL2 (Ubuntu)**
+Use **WSL2 (Ubuntu)** and run all commands from the WSL terminal. This repository relies on Bash scripts (`.sh`) and Unix shell tools.
 
 1. Install WSL2 and Ubuntu:
    - In PowerShell (as Administrator): `wsl --install -d Ubuntu`
@@ -228,6 +234,9 @@ firebase --version
 
 # Authenticate
 firebase login
+
+# NOTE: If using Google Cloud Shell or a headless environment, use:
+# firebase login --no-localhost
 ```
 
 ### 4. jq
@@ -409,7 +418,7 @@ firebase --version
 gcloud auth login
 gcloud auth application-default login
 gcloud auth application-default set-quota-project YOUR_PROJECT_ID  # Required for Identity Platform API
-firebase login
+firebase login  # Use 'firebase login --no-localhost' in Cloud Shell
 
 # 3. Set project
 export PROJECT_ID="your-project-id"

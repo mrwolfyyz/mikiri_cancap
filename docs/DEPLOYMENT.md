@@ -33,13 +33,12 @@ You must complete [PREREQUISITES.md](./PREREQUISITES.md) first, including:
 
 ## Initial Setup
 
-### Windows Users (WSL2)
+### Windows Users (WSL2 or Cloud Shell)
 
-If you are on Windows, run this deployment from **WSL2 (Ubuntu)** instead of PowerShell/CMD. The deployment flow uses Bash scripts and Unix shell behavior.
+If you are on Windows, run this deployment from **Google Cloud Shell** or **WSL2 (Ubuntu)** instead of PowerShell/CMD. The deployment flow uses Bash scripts and Unix shell behavior.
 
-- Use WSL Bash for all commands in this guide.
-- Ensure `gcloud`, `terraform`, and `firebase-tools` are installed inside WSL.
-- Keep repository script files as LF line endings.
+- **Cloud Shell**: Easiest path. Tools are pre-installed. Remember to use `firebase login --no-localhost`. Keep your browser tab open during the ~20 minute `terraform apply`.
+- **WSL2**: Use WSL Bash for all commands. Ensure `gcloud`, `terraform`, and `firebase-tools` are installed inside WSL. Keep repository script files as LF line endings.
 
 ### 1. Clone the Repository
 
@@ -132,7 +131,7 @@ else
 fi
 
 # Verify Firebase authentication
-firebase projects:list > /dev/null && echo "✓ Firebase authenticated" || echo "✗ Run: firebase login"
+firebase projects:list > /dev/null && echo "✓ Firebase authenticated" || echo "✗ Run: firebase login (or firebase login --no-localhost in Cloud Shell)"
 
 # Verify project is set
 gcloud config get-value project
