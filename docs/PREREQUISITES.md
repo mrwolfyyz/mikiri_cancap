@@ -131,6 +131,8 @@ If you are deploying from Windows, you have two options to avoid line-ending and
 **Option A: Google Cloud Shell (Easiest)**
 Use [Google Cloud Shell](https://console.cloud.google.com) directly in your browser. It comes with `gcloud`, `terraform`, `jq`, and `npm` pre-installed. You only need to install the Firebase CLI (`npm install -g firebase-tools`) and clone this repository. Note: When logging into Firebase in Cloud Shell, you must use `firebase login --no-localhost`.
 
+After you configure Application Default Credentials (ADC) below, read **[Google Cloud Shell: ADC file location](#google-cloud-shell-adc-file-location)**—Cloud Shell may store ADC under `$CLOUDSDK_CONFIG` (often `/tmp/...`), while this guide’s checks and `scripts/check-terraform-auth.sh` expect `~/.config/gcloud/application_default_credentials.json`.
+
 **Option B: WSL2 (Ubuntu)**
 Use **WSL2 (Ubuntu)** and run all commands from the WSL terminal. This repository relies on Bash scripts (`.sh`) and Unix shell tools.
 
@@ -204,6 +206,46 @@ fi
 
 **Note**: The order matters! Always set the project before authenticating ADC (`gcloud auth application-default login`). However, the OAuth client used by ADC may belong to an organization-level or account-level project that cannot be changed by simply setting the active project. If the OAuth client project doesn't match your target project, the Identity Platform API will fail even with quota project set correctly. This is a known limitation when using organization-level OAuth clients. See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for workarounds (manual Firebase Console configuration or service account authentication).
 
+#### Google Cloud Shell: ADC file location
+
+In [Google Cloud Shell](https://console.cloud.google.com), the environment variable **`CLOUDSDK_CONFIG`** is often set to a directory under **`/tmp/...`**. `gcloud` then reads and writes SDK state—including **`application_default_credentials.json`**—under **`$CLOUDSDK_CONFIG`**, not necessarily under **`$HOME/.config/gcloud/`**.
+
+This repository’s verification snippets (above) and **`./scripts/check-terraform-auth.sh`** assume ADC exists at:
+
+`$HOME/.config/gcloud/application_default_credentials.json`
+
+**After** `gcloud auth application-default login` and `gcloud auth application-default set-quota-project YOUR_PROJECT_ID`, check both locations:
+
+```bash
+ls -la ~/.config/gcloud/application_default_credentials.json 2>/dev/null || echo "missing: ~/.config/gcloud/application_default_credentials.json"
+echo "CLOUDSDK_CONFIG=${CLOUDSDK_CONFIG:-<unset>}"
+ls -la "${CLOUDSDK_CONFIG}/application_default_credentials.json" 2>/dev/null || echo "missing: \$CLOUDSDK_CONFIG/application_default_credentials.json"
+```
+
+If the file exists only under **`$CLOUDSDK_CONFIG`**, copy it once to the default path (safe if the destination file is missing or you intend to replace it with the same login):
+
+```bash
+mkdir -p ~/.config/gcloud
+cp "${CLOUDSDK_CONFIG}/application_default_credentials.json" ~/.config/gcloud/application_default_credentials.json
+chmod 600 ~/.config/gcloud/application_default_credentials.json
+```
+
+Re-apply the quota project so the JSON on disk stays consistent with what Identity Platform expects:
+
+```bash
+gcloud auth application-default set-quota-project YOUR_PROJECT_ID
+```
+
+Verify:
+
+```bash
+jq -r '.quota_project_id' ~/.config/gcloud/application_default_credentials.json
+```
+
+**OAuth client check (`✗` mismatch) in Cloud Shell:** The snippet that compares `ADC_CLIENT_ID` to the project number often prints **`✗`** on Cloud Shell because the SDK uses a **shared** OAuth client. That is separate from the **`CLOUDSDK_CONFIG`** path issue. If `quota_project_id` is correct and you still hit Identity Platform errors during `terraform apply`, follow [TROUBLESHOOTING.md](./TROUBLESHOOTING.md).
+
+**Pasting commands:** Run **one command per line**. Pasting multiple lines into a prompt that already contains text can merge commands and corrupt input; open a **new Cloud Shell tab** if your prompt looks wrong.
+
 ### 2. Terraform
 
 **Install:**
@@ -217,7 +259,7 @@ wget -O- https://apt.releases.hashicorp.com/gpg | gpg --dearmor | sudo tee /usr/
 echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] https://apt.releases.hashicorp.com $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/hashicorp.list
 sudo apt update && sudo apt install terraform
 
-# Verify (must be >= 1.5.0)
+# Verify (must be >= 1.14.0; 1.14.8 tested in Cloud Shell)
 terraform version
 ```
 
@@ -353,10 +395,10 @@ Run through this checklist before deployment. **Verify each item with the comman
   # Should show at least one account marked ACTIVE
   ```
 
-- [ ] **Terraform >= 1.5.0 installed**
+- [ ] **Terraform >= 1.14.0 installed**
   ```bash
   terraform version
-  # Should show version >= 1.5.0
+  # Should show version >= 1.14.0
   ```
 
 - [ ] **Firebase CLI installed and authenticated**

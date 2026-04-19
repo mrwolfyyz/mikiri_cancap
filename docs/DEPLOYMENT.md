@@ -37,7 +37,7 @@ You must complete [PREREQUISITES.md](./PREREQUISITES.md) first, including:
 
 If you are on Windows, run this deployment from **Google Cloud Shell** or **WSL2 (Ubuntu)** instead of PowerShell/CMD. The deployment flow uses Bash scripts and Unix shell behavior.
 
-- **Cloud Shell**: Easiest path. Tools are pre-installed. Remember to use `firebase login --no-localhost`. Keep your browser tab open during the ~20 minute `terraform apply`.
+- **Cloud Shell**: Easiest path. Tools are pre-installed. Remember to use `firebase login --no-localhost`. Keep your browser tab open during the ~20 minute `terraform apply`. If `./scripts/check-terraform-auth.sh` reports missing Application Default Credentials after `gcloud auth application-default login`, Cloud Shell may have stored ADC under **`$CLOUDSDK_CONFIG`** (see [PREREQUISITES.md — Google Cloud Shell: ADC file location](./PREREQUISITES.md#google-cloud-shell-adc-file-location)).
 - **WSL2**: Use WSL Bash for all commands. Ensure `gcloud`, `terraform`, and `firebase-tools` are installed inside WSL. Keep repository script files as LF line endings.
 
 ### 1. Clone the Repository

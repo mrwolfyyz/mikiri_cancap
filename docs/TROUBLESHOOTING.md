@@ -170,6 +170,36 @@ This script validates:
 
 ---
 
+### Google Cloud Shell: ADC missing at `~/.config/gcloud/application_default_credentials.json`
+
+**Symptom:** After `gcloud auth application-default login`, this fails:
+
+```bash
+ls ~/.config/gcloud/application_default_credentials.json
+```
+
+but `gcloud auth application-default print-access-token` may still succeed, and `./scripts/check-terraform-auth.sh` exits with **Application Default Credentials not set**.
+
+**Cause:** Cloud Shell sets **`CLOUDSDK_CONFIG`** to a per-session directory (commonly under **`/tmp/...`**). The gcloud CLI stores **`application_default_credentials.json`** under **`$CLOUDSDK_CONFIG`** in that setup. **`check-terraform-auth.sh`** only checks **`$HOME/.config/gcloud/application_default_credentials.json`**.
+
+**Fix (copy ADC to the path this repo expects):**
+
+```bash
+echo "CLOUDSDK_CONFIG=${CLOUDSDK_CONFIG:-<unset>}"
+ls -la "${CLOUDSDK_CONFIG}/application_default_credentials.json"
+mkdir -p ~/.config/gcloud
+cp "${CLOUDSDK_CONFIG}/application_default_credentials.json" ~/.config/gcloud/application_default_credentials.json
+chmod 600 ~/.config/gcloud/application_default_credentials.json
+gcloud auth application-default set-quota-project YOUR_PROJECT_ID
+jq -r '.quota_project_id' ~/.config/gcloud/application_default_credentials.json
+```
+
+Replace **`YOUR_PROJECT_ID`** with your GCP project ID. See also [PREREQUISITES.md — Google Cloud Shell: ADC file location](./PREREQUISITES.md#google-cloud-shell-adc-file-location).
+
+**Tip:** Paste **one command at a time** into Cloud Shell; merged lines can produce confusing errors.
+
+---
+
 ### Error: "Application Default Credentials quota project not set"
 
 **Symptom:**
