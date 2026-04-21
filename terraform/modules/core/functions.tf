@@ -525,6 +525,15 @@ resource "google_cloud_run_service_iam_member" "api_gateway_public" {
   member   = "allUsers"
 }
 
+# Preserve existing IAM binding state across the rename from
+# api_gateway_invoker to api_gateway_public[0]. Without this, Terraform would
+# destroy+recreate the binding on legacy projects, causing a brief window where
+# no allUsers invoker binding exists and the API gateway returns 403.
+moved {
+  from = google_cloud_run_service_iam_member.api_gateway_invoker
+  to   = google_cloud_run_service_iam_member.api_gateway_public[0]
+}
+
 # =============================================================================
 # WORKFLOW-INVOKED FUNCTIONS (OIDC authenticated)
 # =============================================================================

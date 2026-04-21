@@ -146,7 +146,7 @@ resource "local_file" "firebase_config_skiptrace" {
     apiUrl            = google_cloudfunctions2_function.api_gateway.service_config[0].uri
     requireSso        = var.enable_sso
     workspaceDomain   = var.workspace_domain
-    recaptchaSiteKey  = var.enable_sso ? google_recaptcha_enterprise_key.web[0].name : ""
+    recaptchaSiteKey  = try(google_recaptcha_enterprise_key.web[0].name, "")
   })
   filename = "${path.module}/../../../frontend/skiptrace/public/firebase-config.json"
 
@@ -167,7 +167,7 @@ resource "local_file" "firebase_config_origination" {
     apiUrl            = google_cloudfunctions2_function.api_gateway.service_config[0].uri
     requireSso        = var.enable_sso
     workspaceDomain   = var.workspace_domain
-    recaptchaSiteKey  = var.enable_sso ? google_recaptcha_enterprise_key.web[0].name : ""
+    recaptchaSiteKey  = try(google_recaptcha_enterprise_key.web[0].name, "")
   })
   filename = "${path.module}/../../../frontend/origination/public/firebase-config.json"
 
@@ -267,5 +267,31 @@ resource "google_firebase_app_check_recaptcha_enterprise_config" "origination" {
   token_ttl = "3600s"
 
   depends_on = [google_firebase_project.default]
+}
+
+# -----------------------------------------------------------------------------
+# Firebase App Check Enforcement on Firestore
+# -----------------------------------------------------------------------------
+# Frontends read job/chat documents directly from Firestore, so the strict
+# baseline must enforce App Check on Firestore too - not only on the API
+# gateway. Without this, a holder of a valid Firebase ID token could read
+# their Firestore documents from any origin / tool, bypassing the
+# reCAPTCHA-Enterprise origin binding that protects the API path.
+#
+# Gated on app_check_enforced so enforcement and the reCAPTCHA key/config
+# resources above can be toggled independently from SSO in future phases.
+
+resource "google_firebase_app_check_service_config" "firestore" {
+  provider         = google-beta
+  count            = var.app_check_enforced ? 1 : 0
+  project          = var.project_id
+  service_id       = "firestore.googleapis.com"
+  enforcement_mode = "ENFORCED"
+
+  depends_on = [
+    google_project_service.apis["firebaseappcheck.googleapis.com"],
+    google_firebase_app_check_recaptcha_enterprise_config.skiptrace,
+    google_firebase_app_check_recaptcha_enterprise_config.origination,
+  ]
 }
 

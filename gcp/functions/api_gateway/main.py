@@ -117,10 +117,10 @@ def verify_firebase_token(request: Request) -> tuple[str | None, dict | None]:
     try:
         decoded = auth.verify_id_token(token)
     except (auth.InvalidIdTokenError, auth.ExpiredIdTokenError):
-        print("[api_gateway] WARNING: Firebase token verification failed")
+        logger.warning("Firebase token verification failed")
         return None, {"error": "Authentication failed. Please refresh the page."}
     except Exception as e:
-        print(f"[api_gateway] WARNING: token verification error: {e}")
+        logger.error("Token verification error: %s", e)
         return None, {"error": "Authentication failed. Please refresh the page."}
 
     user_id = decoded.get("uid")
@@ -128,31 +128,31 @@ def verify_firebase_token(request: Request) -> tuple[str | None, dict | None]:
     if REQUIRE_SSO:
         provider = decoded.get("firebase", {}).get("sign_in_provider")
         if provider != "google.com":
-            print(f"[api_gateway] WARNING: non-Google sign-in provider: {provider}")
+            logger.warning("Non-Google sign-in provider rejected: %s", provider)
             return None, {"error": "SSO required"}
 
         if not decoded.get("email_verified"):
-            print("[api_gateway] WARNING: email not verified")
+            logger.warning("Unverified email rejected for uid=%s", user_id)
             return None, {"error": "Email not verified"}
 
         email = (decoded.get("email") or "").lower()
         domain = email.rsplit("@", 1)[-1] if "@" in email else ""
         if not ALLOWED_EMAIL_DOMAINS:
-            print("[api_gateway] WARNING: SSO enabled without allowed email domains")
+            logger.error("SSO enabled without ALLOWED_EMAIL_DOMAINS configured")
             return None, {"error": "Authentication configuration error"}
         if domain not in ALLOWED_EMAIL_DOMAINS:
-            print(f"[api_gateway] WARNING: domain not allowed: {domain}")
+            logger.warning("Disallowed email domain rejected: %s", domain)
             return None, {"error": "Account not permitted"}
 
     if APP_CHECK_ENFORCED:
         ac_token = request.headers.get("X-Firebase-AppCheck", "")
         if not ac_token:
-            print("[api_gateway] WARNING: missing App Check token")
+            logger.warning("Missing App Check token on authenticated request")
             return None, {"error": "App Check token required"}
         try:
             app_check.verify_token(ac_token)
         except Exception as e:
-            print(f"[api_gateway] WARNING: App Check verification failed: {e}")
+            logger.warning("App Check verification failed: %s", e)
             return None, {"error": "App Check failed"}
 
     return user_id, None

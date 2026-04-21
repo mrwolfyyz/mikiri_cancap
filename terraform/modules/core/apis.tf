@@ -25,10 +25,10 @@ locals {
     "discoveryengine.googleapis.com", # Vertex AI Search / Discovery Engine
 
     # Firebase
-    "firebase.googleapis.com",        # Firebase
-    "firebasehosting.googleapis.com", # Firebase Hosting
-    "identitytoolkit.googleapis.com", # Firebase Auth / Identity Platform
-    "firebaseappcheck.googleapis.com", # Firebase App Check API
+    "firebase.googleapis.com",            # Firebase
+    "firebasehosting.googleapis.com",     # Firebase Hosting
+    "identitytoolkit.googleapis.com",     # Firebase Auth / Identity Platform
+    "firebaseappcheck.googleapis.com",    # Firebase App Check API
     "recaptchaenterprise.googleapis.com", # reCAPTCHA Enterprise (App Check)
 
     # IAM and project management
