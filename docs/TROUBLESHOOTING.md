@@ -513,6 +513,70 @@ If the Identity Platform config failed due to quota project issues:
 
 ---
 
+### Error: "App Check token required" after first enforcement
+
+**Symptom:**
+
+Immediately after `terraform apply` enables App Check enforcement for a project for the first time, authenticated API calls fail with:
+
+```
+{"error": "App Check token required"}
+```
+
+or:
+
+```
+{"error": "App Check failed"}
+```
+
+Direct Firestore reads from the browser may also fail with "Missing or insufficient permissions" even though the user is signed in with an allowed-domain account.
+
+**Root Cause:**
+
+A newly provisioned reCAPTCHA Enterprise key takes 60–90 seconds to propagate before it will mint App Check tokens that the Firebase backend accepts. During that window the backend correctly rejects requests because the client cannot produce a valid token. The same error appears if the frontend bundle was not redeployed after `terraform apply` and is still running the old anonymous-auth initializer without `firebase.appCheck().activate(...)`.
+
+**Solution:**
+
+1. Wait 60–90 seconds after `terraform apply` completes.
+2. Hard-refresh the browser (forces the Firebase JS SDK to re-run `appCheck.activate()` with the freshly provisioned key).
+3. Retry the request.
+
+If the errors persist beyond ~5 minutes:
+
+1. Confirm the frontend was redeployed after the upgrade (the shared bundle must include `auth.js`):
+
+   ```bash
+   curl -s https://PROJECT_ID-skiptrace.web.app/auth.js | \
+     grep -c "ReCaptchaEnterpriseProvider"
+   # Expect: 1 (or more). If 0, run ./scripts/prepare-frontend.sh and
+   # `firebase deploy --only hosting` for both frontends.
+   ```
+
+2. Confirm `recaptchaSiteKey` in the deployed `firebase-config.json` matches the key Terraform manages:
+
+   ```bash
+   curl -s https://PROJECT_ID-skiptrace.web.app/firebase-config.json | \
+     python -c "import sys, json; print(json.load(sys.stdin)['recaptchaSiteKey'])"
+
+   cd terraform/environments/<env>
+   terraform state show module.core.google_recaptcha_enterprise_key.web | grep '^\s*name'
+   ```
+
+3. Confirm Firestore App Check enforcement is actually on:
+
+   ```bash
+   TOKEN=$(gcloud auth application-default print-access-token)
+   curl -s \
+     -H "Authorization: Bearer $TOKEN" \
+     -H "x-goog-user-project: PROJECT_ID" \
+     "https://firebaseappcheck.googleapis.com/v1/projects/PROJECT_ID/services/firestore.googleapis.com"
+   # Expect: "enforcementMode": "ENFORCED"
+   ```
+
+   The `x-goog-user-project` header is required; without it the Firebase App Check API returns 403 on ADC credentials.
+
+---
+
 ### Error: "Firebase hosting deployment failed"
 
 **Symptom:**

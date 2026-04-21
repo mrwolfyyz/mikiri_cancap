@@ -560,6 +560,93 @@ cd ../origination
 firebase deploy --only hosting
 ```
 
+### Upgrading to the Strict SSO + App Check Baseline
+
+**When to use this**: moving an environment deployed under the previous (anonymous-auth-allowed, App Check unenforced) baseline to the strict SSO + App Check baseline. This is a one-time migration per environment; after it completes, future updates follow the routine "Update Functions" / "Update Frontend" flows above.
+
+#### Step 1: Prerequisites (one-time, per environment)
+
+The strict baseline requires a Google Workspace OAuth client and a Secret Manager secret holding its client secret **before** `terraform plan`:
+
+1. In Google Cloud Console, configure the **OAuth consent screen** as **Internal** (Workspace-only) for the target project.
+2. Create a **Web application** OAuth 2.0 client; copy the Client ID and Client Secret.
+3. Store the client secret in Secret Manager:
+
+   ```bash
+   PROJECT_ID="your-project-id"
+
+   gcloud secrets create workspace-oauth-client-secret \
+     --replication-policy=automatic \
+     --project=$PROJECT_ID
+
+   echo -n "YOUR_OAUTH_CLIENT_SECRET" | \
+     gcloud secrets versions add workspace-oauth-client-secret \
+     --data-file=- --project=$PROJECT_ID
+   ```
+
+See [Required for SSO: OAuth Secret in Secret Manager](#required-for-sso-oauth-secret-in-secret-manager-before-terraform-planapply) above for the full walkthrough.
+
+#### Step 2: Update `terraform.tfvars`
+
+In `terraform/environments/<env>/terraform.tfvars`, set:
+
+```hcl
+enable_sso                              = true
+allowed_email_domains                   = ["yourdomain.com"]
+workspace_domain                        = "yourdomain.com"
+google_workspace_oauth_client_id        = "...apps.googleusercontent.com"
+google_workspace_oauth_client_secret_id = "workspace-oauth-client-secret"
+app_check_enforced                      = true
+```
+
+If `cors_allowed_origins` was previously `*`, tighten it to the explicit Firebase Hosting origins for this project at the same time.
+
+#### Step 3: Apply Terraform
+
+```bash
+cd terraform/environments/<env>
+terraform init -upgrade
+terraform plan
+terraform apply
+```
+
+Expect the plan to show:
+
+- **+ adds**: API enables for `recaptchaenterprise.googleapis.com` and `firebaseappcheck.googleapis.com` (if not already enabled), a `google_recaptcha_enterprise_key.web`, App Check reCAPTCHA Enterprise configs for the `skiptrace` and `origination` web apps, a `google_firebase_app_check_service_config.firestore[0]` enforcing App Check on direct Firestore reads, and the Identity Platform Google provider config.
+- **~ changes**: the `api-gateway` Cloud Function source/env (new SSO + App Check verify code) and regenerated `firebase-config.json` for both frontends (now includes `requireSso`, `recaptchaSiteKey`, and `workspaceDomain`).
+- **moved**: `google_cloud_run_service_iam_member.api_gateway_invoker` → `api_gateway_public[0]` — handled by the `moved {}` block; no destroy/recreate and no 403 window.
+
+#### Step 4: Redeploy the frontends (required)
+
+Terraform regenerates `firebase-config.json`, but the HTML/JS that consumes it is served by Firebase Hosting and must be redeployed separately. This upgrade adds `auth.js` to the shared bundle, so this step is **mandatory** on existing deployments — skipping it leaves pages running the old anonymous-auth initializer.
+
+```bash
+./scripts/prepare-frontend.sh
+( cd frontend/skiptrace   && firebase deploy --only hosting )
+( cd frontend/origination && firebase deploy --only hosting )
+```
+
+#### Step 5: Validate
+
+```bash
+./scripts/smoke-test.sh PROJECT_ID REGION <env>
+```
+
+Then manually:
+
+1. Sign in with an account in `allowed_email_domains` → Firestore reads and API calls succeed.
+2. Sign in with a non-allowed domain → rejected with "Account not permitted".
+3. Call an authenticated API endpoint without the `X-Firebase-AppCheck` header → `401 / "App Check token required"`.
+
+#### Watch for these on existing deployments
+
+- **Anonymous sessions are invalidated.** Users currently on the site under anonymous auth will be signed out and must SSO in. Expect a short spike of auth errors around the cutover.
+- **Stale browser tabs.** Tabs loaded before the cutover may have cached an anonymous session or stale App Check state. A hard refresh resolves it.
+- **Firestore enforcement is global.** External client-like tools that previously read Firestore with a user ID token (admin dashboards, notebooks, ad-hoc scripts) will start being rejected. Server-side SDKs using a service account are automatically exempt from App Check.
+- **reCAPTCHA Enterprise warm-up.** First requests after the key is provisioned can 401/403 for 60–90 seconds while the key propagates. See [TROUBLESHOOTING.md — "App Check token required" after first enforcement](./TROUBLESHOOTING.md#error-app-check-token-required-after-first-enforcement).
+- **OAuth client / ADC quota-project mismatch.** On org-managed GCP setups, `google_identity_platform_config` can 403 during `terraform apply`. See [TROUBLESHOOTING.md — Unable to initialize authentication](./TROUBLESHOOTING.md#error-unable-to-initialize-authentication-frontend-authentication-error).
+- **`enable_iap` stays `false`.** The IAP toggle is a separate phase-2 migration and should not be flipped as part of this upgrade.
+
 ---
 
 ## Rollback
