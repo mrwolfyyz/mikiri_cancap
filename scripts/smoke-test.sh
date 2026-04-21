@@ -172,7 +172,7 @@ if [[ "$ALL_OK" == "true" ]]; then
   echo ""
   echo "To test full functionality:"
   echo "  1. Open the frontend URL in a browser"
-  echo "  2. Sign in anonymously"
+  echo "  2. Sign in with Google SSO (allowed domain account)"
   echo "  3. Submit a test investigation"
   echo "  4. Verify the job completes successfully"
   exit 0

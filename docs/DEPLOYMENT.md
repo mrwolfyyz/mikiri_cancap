@@ -176,6 +176,46 @@ Key variables to configure:
 | `region` | GCP Region | `northamerica-northeast1` |
 | `location` | GCP Location (for Firestore) | `northamerica-northeast1` |
 | `cors_allowed_origins` | CORS origins (required) | `*` (explicit dev choice) or `https://PROJECT-skiptrace.web.app,https://PROJECT-origination.web.app` (prod) |
+| `enable_sso` | Enable Firebase Google SSO | `true` |
+| `allowed_email_domains` | Allowed login domains (required when SSO enabled) | `["cancap.ca"]` |
+| `workspace_domain` | Optional `hd` hint for Google sign-in popup | `"cancap.ca"` |
+| `google_workspace_oauth_client_id` | OAuth client ID for Firebase Google provider | `"123....apps.googleusercontent.com"` |
+| `google_workspace_oauth_client_secret_id` | Secret Manager secret name containing OAuth client secret | `"workspace-oauth-client-secret"` |
+| `app_check_enforced` | Enforce Firebase App Check token verification in API gateway | `true` |
+| `enable_iap` | Phase 2 toggle to remove public `allUsers` invoker | `false` |
+
+### Required for SSO: OAuth Secret in Secret Manager (Before Terraform Plan/Apply)
+
+When `enable_sso = true`, Terraform reads the OAuth client secret from Secret Manager during `terraform plan`.  
+That secret must exist **before** running `terraform plan` or `terraform apply`.
+
+For a new project, this is a required console + CLI sequence:
+
+1. In Google Cloud Console, configure OAuth consent screen for the project
+2. Create a **Web application** OAuth client and copy its Client ID + Client Secret
+3. Put the Client ID into `terraform.tfvars` as `google_workspace_oauth_client_id`
+4. Store the Client Secret in Secret Manager using the commands below
+
+```bash
+# Set your project
+PROJECT_ID="your-project-id"
+
+# Create secret once (safe to run repeatedly; ignore error if it already exists)
+gcloud secrets create workspace-oauth-client-secret \
+  --replication-policy=automatic \
+  --project=$PROJECT_ID
+
+# Add OAuth client secret value (from Google OAuth client setup)
+echo -n "YOUR_GOOGLE_OAUTH_CLIENT_SECRET" | \
+  gcloud secrets versions add workspace-oauth-client-secret \
+  --data-file=- \
+  --project=$PROJECT_ID
+
+# Verify at least one version exists
+gcloud secrets versions list workspace-oauth-client-secret --project=$PROJECT_ID
+```
+
+Also ensure `google_workspace_oauth_client_id` in `terraform.tfvars` matches the same OAuth client.
 
 ### Backend State (GCS)
 
@@ -259,7 +299,9 @@ terraform init
 terraform plan
 ```
 
-**Important**: If the authentication check fails, follow the instructions it provides before proceeding with Terraform commands. This prevents `oauth2: "invalid_grant"` errors. See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md#error-oauth2-invalid_grant---reauth-related-error) for details.
+**Important**:
+- If the authentication check fails, follow the instructions it provides before proceeding with Terraform commands. This prevents `oauth2: "invalid_grant"` errors. See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md#error-oauth2-invalid_grant---reauth-related-error) for details.
+- If `enable_sso = true`, confirm `workspace-oauth-client-secret` already has a version before `terraform plan`.
 
 ### Step 3: Apply Terraform
 
@@ -308,7 +350,7 @@ ls -la chrome-extension/config.js
 
 ### Step 4: Add Secret Values
 
-Terraform creates empty secrets. Add the actual values:
+Terraform creates empty secrets. Add the remaining runtime values:
 
 ```bash
 # Set your project ID (or add --project=PROJECT_ID to each command)

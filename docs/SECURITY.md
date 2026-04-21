@@ -62,17 +62,19 @@ Primary investigation results and chat stay in Firestore in your GCP project. Th
 
 ## Authentication & Authorization
 
-### Current (Beta)
-- **Frontend**: Firebase Anonymous Authentication
-- **API Gateway**: Verifies Firebase ID tokens on investigation (`POST /investigate-skiptrace`, `POST /investigate-origination`), job status (`GET /jobs/{job_id}`), markdown (`GET /get_markdown/{job_id}`), chat (`POST /chat_handler`, `POST /chat_handler_origination`), feedback (`POST /jobs/{job_id}/feedback`), and address verification (`POST /address-verification`); `GET /health`, `GET /`, and `OPTIONS` preflight remain unauthenticated
+### Current (Phase 1 SSO Baseline)
+- **Frontend**: Google sign-in via Firebase Auth (no anonymous auth in dev/prod)
+- **API Gateway**: Verifies Firebase ID tokens on investigation (`POST /investigate-skiptrace`, `POST /investigate-origination`), job status (`GET /jobs/{job_id}`), markdown (`GET /get_markdown/{job_id}`), chat (`POST /chat_handler`, `POST /chat_handler_origination`), feedback (`POST /jobs/{job_id}/feedback`), and address verification (`POST /address-verification`)
+- **SSO Policy**: Requires `firebase.sign_in_provider == google.com`, `email_verified == true`, and email domain in `ALLOWED_EMAIL_DOMAINS`
+- **App Check**: Requests must include a valid `X-Firebase-AppCheck` token when enforcement is enabled
+- **Public Endpoints**: `GET /health`, `GET /`, and `OPTIONS` preflight remain unauthenticated
 - **Firestore Rules**: Job and chat paths require `resource.data.user_id == request.auth.uid` (no cross-tenant reads by job ID)
-- **Rationale**: Keep beta deployment simple
 
-### Production Plan
-- **Implementation Time**: ~1 hour
-- **Provider Flexibility**: Google Workspace, Azure AD, Okta, or any SAML/OIDC provider
-- **Firebase Integration**: Built-in support for all major identity providers
-- **User Attribution**: Investigations tied to specific employee identities
+### Production Controls
+- **SSO Requirement**: Production must set `enable_sso = true` and one or more `allowed_email_domains`
+- **Domain Restriction**: Domain allowlist blocks personal/non-corporate accounts even if OAuth succeeds
+- **App Check Requirement**: Production enforces App Check for browser API calls
+- **Future Hardening**: IAP/load-balancer ingress controls remain phase 2 and are additive
 
 ---
 
@@ -182,8 +184,8 @@ All API keys stored in **Google Secret Manager**:
   - Status (pending, running, complete, failed)
 
 ### Current Limitation
-- Anonymous auth means no correlation to specific CanCap employees
-- **Production Solution**: Add identity provider for full attribution
+- User attribution depends on correct SSO/provider setup in Firebase Identity Platform
+- **Operational Requirement**: Keep Google provider + allowed domain configuration healthy in Terraform/Firebase
 
 ---
 
@@ -212,9 +214,9 @@ All API keys stored in **Google Secret Manager**:
 - **Timeline**: Based on compliance requirements
 
 **4. User Attribution**
-- **Current**: Anonymous auth
-- **Plan**: Add identity provider (1 hour implementation)
-- **Timeline**: When CanCap specifies preferred provider
+- **Current**: Google Workspace SSO with allowed-domain enforcement
+- **Plan**: Add centralized enterprise identity controls (for example IAP) as a Phase 2 hardening step
+- **Timeline**: Post-beta hardening
 
 ### Optional Enhancements
 
@@ -292,7 +294,7 @@ Because everything runs in your GCP environment, **you have full control**:
 A: **Email addresses** go to HIBP for breach checking. **Address strings** may be sent to OpenStreetMap Nominatim for geocoding. **MD5 hashes of email** (Gravatar’s standard) are used for Gravatar lookups. **Domains** are resolved via public WHOIS/DNS. **Investigation text and context** are sent to Vertex AI (Gemini) in your project; flows that use **Google Search grounding** also cause the model to query the public web as part of analysis. Primary structured results remain in Firestore in your project.
 
 **Q: Can we audit who ran which investigation?**
-A: Not in beta (anonymous auth). For production, specify your preferred identity provider (Google Workspace, Azure AD, etc.) and we'll implement it via Firebase in ~1 hour.
+A: Yes. With SSO enabled, each investigation is tied to a Firebase UID and verified email identity from Google sign-in.
 
 **Q: How do we delete borrower data?**  
 A: Firestore documents can be deleted via console or API at any time. TTL on `expire_at` also removes job and chat message documents automatically after the configured retention window. Retention length can be adjusted for compliance requirements.
@@ -321,7 +323,7 @@ Mikiri's security architecture follows **Privacy by Design principles**:
 
 **Identified gaps are addressable**:
 - Penetration testing (your security team)
-- Production auth provider (1 hour to implement)
+- Identity hardening controls (IAP/network restrictions) as Phase 2
 - Other enhancements based on operational learnings
 
 This is **customer-controlled infrastructure**, not vendor SaaS. You own the code, the data, and the security controls.

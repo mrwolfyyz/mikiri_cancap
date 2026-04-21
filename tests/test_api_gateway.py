@@ -58,7 +58,9 @@ _mock_fb_admin = MagicMock()
 _mock_fb_auth = MagicMock()
 _mock_fb_auth.InvalidIdTokenError = _InvalidIdTokenError
 _mock_fb_auth.ExpiredIdTokenError = _ExpiredIdTokenError
+_mock_fb_app_check = MagicMock()
 _mock_fb_admin.auth = _mock_fb_auth
+_mock_fb_admin.app_check = _mock_fb_app_check
 sys.modules.setdefault("firebase_admin", _mock_fb_admin)
 
 # ---------------------------------------------------------------------------
@@ -72,6 +74,9 @@ os.environ.setdefault("ADDRESS_VERIFICATION_URL", "https://addr.example.com")
 os.environ.setdefault("CORS_ALLOWED_ORIGINS", "*")
 os.environ.setdefault("EXTENSION_PREFILL_SECRET", "test-extension-prefill-secret")
 os.environ.setdefault("PREFILL_SESSION_TTL_MINUTES", "10")
+os.environ.setdefault("REQUIRE_SSO", "false")
+os.environ.setdefault("APP_CHECK_ENFORCED", "false")
+os.environ.setdefault("ALLOWED_EMAIL_DOMAINS", "")
 
 # ---------------------------------------------------------------------------
 # Load api_gateway/main.py
@@ -213,6 +218,106 @@ class TestVerifyFirebaseToken:
             uid, err = verify_firebase_token(req)
         assert uid is None
         assert "Authentication failed" in err["error"]
+
+    def test_sso_requires_google_provider(self):
+        req = _make_request(headers={"Authorization": "Bearer good-token"})
+        with (
+            patch.object(gw, "REQUIRE_SSO", True),
+            patch.object(gw, "ALLOWED_EMAIL_DOMAINS", {"cancap.ca"}),
+            patch.object(
+                gw.auth, "verify_id_token", return_value={"uid": "u1", "firebase": {"sign_in_provider": "anonymous"}}
+            ),
+        ):
+            uid, err = verify_firebase_token(req)
+        assert uid is None
+        assert err["error"] == "SSO required"
+
+    def test_sso_rejects_unverified_email(self):
+        req = _make_request(headers={"Authorization": "Bearer good-token"})
+        decoded = {
+            "uid": "u1",
+            "firebase": {"sign_in_provider": "google.com"},
+            "email_verified": False,
+            "email": "user@cancap.ca",
+        }
+        with (
+            patch.object(gw, "REQUIRE_SSO", True),
+            patch.object(gw, "ALLOWED_EMAIL_DOMAINS", {"cancap.ca"}),
+            patch.object(gw.auth, "verify_id_token", return_value=decoded),
+        ):
+            uid, err = verify_firebase_token(req)
+        assert uid is None
+        assert err["error"] == "Email not verified"
+
+    def test_sso_rejects_disallowed_domain(self):
+        req = _make_request(headers={"Authorization": "Bearer good-token"})
+        decoded = {
+            "uid": "u1",
+            "firebase": {"sign_in_provider": "google.com"},
+            "email_verified": True,
+            "email": "user@gmail.com",
+        }
+        with (
+            patch.object(gw, "REQUIRE_SSO", True),
+            patch.object(gw, "ALLOWED_EMAIL_DOMAINS", {"cancap.ca"}),
+            patch.object(gw.auth, "verify_id_token", return_value=decoded),
+        ):
+            uid, err = verify_firebase_token(req)
+        assert uid is None
+        assert err["error"] == "Account not permitted"
+
+    def test_sso_accepts_allowed_domain(self):
+        req = _make_request(headers={"Authorization": "Bearer good-token"})
+        decoded = {
+            "uid": "u1",
+            "firebase": {"sign_in_provider": "google.com"},
+            "email_verified": True,
+            "email": "user@cancap.ca",
+        }
+        with (
+            patch.object(gw, "REQUIRE_SSO", True),
+            patch.object(gw, "ALLOWED_EMAIL_DOMAINS", {"cancap.ca"}),
+            patch.object(gw.auth, "verify_id_token", return_value=decoded),
+        ):
+            uid, err = verify_firebase_token(req)
+        assert uid == "u1"
+        assert err is None
+
+    def test_app_check_missing_header_rejected(self):
+        req = _make_request(headers={"Authorization": "Bearer good-token"})
+        with (
+            patch.object(gw, "APP_CHECK_ENFORCED", True),
+            patch.object(gw.auth, "verify_id_token", return_value={"uid": "u1"}),
+        ):
+            uid, err = verify_firebase_token(req)
+        assert uid is None
+        assert err["error"] == "App Check token required"
+
+    def test_app_check_invalid_token_rejected(self):
+        req = _make_request(
+            headers={"Authorization": "Bearer good-token", "X-Firebase-AppCheck": "bad-app-check-token"}
+        )
+        with (
+            patch.object(gw, "APP_CHECK_ENFORCED", True),
+            patch.object(gw.auth, "verify_id_token", return_value={"uid": "u1"}),
+            patch.object(gw.app_check, "verify_token", side_effect=Exception("bad app check token")),
+        ):
+            uid, err = verify_firebase_token(req)
+        assert uid is None
+        assert err["error"] == "App Check failed"
+
+    def test_app_check_valid_token_accepted(self):
+        req = _make_request(
+            headers={"Authorization": "Bearer good-token", "X-Firebase-AppCheck": "valid-app-check-token"}
+        )
+        with (
+            patch.object(gw, "APP_CHECK_ENFORCED", True),
+            patch.object(gw.auth, "verify_id_token", return_value={"uid": "u1"}),
+            patch.object(gw.app_check, "verify_token", return_value={"sub": "app-id"}),
+        ):
+            uid, err = verify_firebase_token(req)
+        assert uid == "u1"
+        assert err is None
 
 
 # ===========================================================================

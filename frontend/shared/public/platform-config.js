@@ -123,4 +123,19 @@ const PlatformConfig = {
         }
       : null;
   },
+
+  /** Whether SSO is required by environment config */
+  get requireSso() {
+    return this._firebaseConfig?.requireSso === true;
+  },
+
+  /** Optional Google Workspace domain hint for sign-in popup */
+  get workspaceDomain() {
+    return this._firebaseConfig?.workspaceDomain || "";
+  },
+
+  /** Optional reCAPTCHA Enterprise site key for Firebase App Check */
+  get recaptchaSiteKey() {
+    return this._firebaseConfig?.recaptchaSiteKey || "";
+  },
 };

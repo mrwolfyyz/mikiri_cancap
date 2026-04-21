@@ -474,6 +474,9 @@ resource "google_cloudfunctions2_function" "api_gateway" {
       SKIPTRACE_WORKFLOW_NAME      = var.skiptrace_workflow_name
       ORIGINATION_WORKFLOW_NAME    = var.origination_workflow_name
       CORS_ALLOWED_ORIGINS         = var.cors_allowed_origins
+      REQUIRE_SSO                  = var.enable_sso ? "true" : "false"
+      ALLOWED_EMAIL_DOMAINS        = join(",", var.allowed_email_domains)
+      APP_CHECK_ENFORCED           = var.app_check_enforced ? "true" : "false"
       CHAT_HANDLER_URL             = google_cloudfunctions2_function.chat_handler.service_config[0].uri
       CHAT_HANDLER_ORIGINATION_URL = google_cloudfunctions2_function.chat_handler_origination.service_config[0].uri
       ADDRESS_VERIFICATION_URL     = google_cloudfunctions2_function.address_verification.service_config[0].uri
@@ -512,8 +515,9 @@ resource "google_cloudfunctions2_function" "api_gateway" {
   ]
 }
 
-# Allow public access to API Gateway
-resource "google_cloud_run_service_iam_member" "api_gateway_invoker" {
+# Allow public access to API Gateway (phase 2 IAP removes this)
+resource "google_cloud_run_service_iam_member" "api_gateway_public" {
+  count    = var.enable_iap ? 0 : 1
   project  = var.project_id
   location = var.region
   service  = google_cloudfunctions2_function.api_gateway.name

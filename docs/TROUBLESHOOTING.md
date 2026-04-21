@@ -251,7 +251,7 @@ Identity Toolkit (Identity Platform) API requires a quota project to be explicit
    
    **Note**: If re-authentication doesn't fix the OAuth client mismatch, the OAuth client likely belongs to an organization-level or account-level project that cannot be changed. This is common in organizational GCP setups where the OAuth consent screen is configured at the organization level. In this case, you have two options:
    
-   - **Option A (Recommended)**: Configure Identity Platform manually via Firebase Console (see "Firebase Anonymous Authentication Not Enabled" section below)
+   - **Option A (Recommended)**: Configure Identity Platform manually via Firebase Console (see "Unable to initialize authentication" section below)
    - **Option B**: Use a service account key for Terraform authentication instead of user credentials (requires creating and downloading a service account key)
 
 4. **Verify quota project is set**:
@@ -465,53 +465,30 @@ Unable to initialize authentication. Please refresh the page.
 
 **Root Cause:**
 
-The frontend cannot sign in anonymously because anonymous authentication is not enabled in Firebase. This happens when the `google_identity_platform_config` Terraform resource failed to create (typically due to quota project issues) or was never applied.
+The frontend cannot initialize Google SSO because Firebase Identity Platform/Google provider configuration is missing or incomplete. This usually happens when `google_identity_platform_config` and/or `google_identity_platform_default_supported_idp_config` failed during Terraform apply (often due to quota/OAuth client mismatch issues) or were never applied.
 
 **Solution (Choose One):**
 
-**Option A: Enable Anonymous Auth via Firebase Console (Quick Fix)**
+**Option A: Configure Google Sign-In via Firebase Console (Quick Fix)**
 
 1. Navigate to Firebase Console:
    - Go to: https://console.firebase.google.com/project/PROJECT_ID
    - Click "Authentication" in the left menu
    - Click "Sign-in method" tab
 
-2. Enable Anonymous provider:
-   - Find "Anonymous" in the list
-   - Click "Anonymous"
+2. Enable Google provider:
+   - Find "Google" in the list
+   - Click "Google"
    - Toggle "Enable" to ON
+   - Configure support email
+   - If prompted for Web SDK credentials, use your OAuth Client ID/Client Secret
    - Click "Save"
 
 3. Verify the frontend works:
    - Refresh the frontend page
-   - Anonymous authentication should now work
+   - Sign in with an allowed-domain Google account
 
-**Option B: Enable via REST API (Command Line)**
-
-If you need to enable it via command line, you can use the Identity Platform REST API. However, this requires proper authentication. Due to quota project issues with Application Default Credentials, you may need to use a service account key:
-
-```bash
-# Get an access token (if using user credentials)
-PROJECT_ID="YOUR_PROJECT_ID"
-ACCESS_TOKEN=$(gcloud auth print-access-token)
-
-# Enable anonymous auth via REST API
-curl -X PATCH \
-  "https://identitytoolkit.googleapis.com/admin/v2/projects/$PROJECT_ID/config?updateMask=signIn.anonymous.enabled" \
-  -H "Authorization: Bearer $ACCESS_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "signIn": {
-      "anonymous": {
-        "enabled": true
-      }
-    }
-  }'
-```
-
-**Note**: If you get quota project errors with the above, you may need to use a service account key instead of user credentials, or fix the OAuth client mismatch issue.
-
-**Option C: Fix Terraform and Apply (Recommended for Infrastructure as Code)**
+**Option B: Fix Terraform and Apply (Recommended for Infrastructure as Code)**
 
 If the Identity Platform config failed due to quota project issues:
 
@@ -525,15 +502,14 @@ If the Identity Platform config failed due to quota project issues:
 2. **Apply Identity Platform config**:
    ```bash
    cd terraform/environments/dev  # or prod
-   terraform apply -target=module.core.google_identity_platform_config.default
+   terraform apply
    ```
 
 **Note**: 
-- **Option A (Firebase Console)** is the quickest and most reliable workaround, especially when dealing with organizational OAuth client mismatches. It doesn't require fixing the OAuth client issue.
-- **Option B (REST API)** works if authentication is properly configured, but may still fail with quota project errors if using user credentials with an OAuth client mismatch.
-- **Option C (Terraform)** is preferred for infrastructure as code, but will fail if there's an OAuth client project mismatch that prevents the quota project from being used correctly. This is common in organizational GCP setups where the OAuth consent screen is configured at the organization level and the OAuth client belongs to a different project than the target project.
+- **Option A (Firebase Console)** is the quickest and most reliable workaround, especially when dealing with organizational OAuth client mismatches.
+- **Option B (Terraform)** is preferred for infrastructure as code, but can fail if there's an OAuth client project mismatch that prevents the quota project from being used correctly. This is common in organizational GCP setups where the OAuth consent screen is configured at the organization level and the OAuth client belongs to a different project than the target project.
 
-**Organizational OAuth Client Limitation**: If your organization has an OAuth consent screen configured at the organization level, the OAuth client used by `gcloud auth application-default login` may belong to an organization-level project that cannot be changed by the user. Re-authenticating ADC will not fix this. In such cases, Option A (Firebase Console) is the recommended solution, or you can use a service account key for Terraform authentication.
+**Organizational OAuth Client Limitation**: If your organization has an OAuth consent screen configured at the organization level, the OAuth client used by `gcloud auth application-default login` may belong to an organization-level project that cannot be changed by the user. Re-authenticating ADC will not fix this. In such cases, Option A (Firebase Console) is the recommended solution, or use service account-based Terraform auth.
 
 ---
 

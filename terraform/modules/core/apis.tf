@@ -28,6 +28,8 @@ locals {
     "firebase.googleapis.com",        # Firebase
     "firebasehosting.googleapis.com", # Firebase Hosting
     "identitytoolkit.googleapis.com", # Firebase Auth / Identity Platform
+    "firebaseappcheck.googleapis.com", # Firebase App Check API
+    "recaptchaenterprise.googleapis.com", # reCAPTCHA Enterprise (App Check)
 
     # IAM and project management
     "iam.googleapis.com",                  # IAM API

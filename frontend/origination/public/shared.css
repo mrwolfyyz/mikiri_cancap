@@ -138,6 +138,16 @@ header {
     box-shadow: var(--shadow-sm);
 }
 
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.auth-signout-button {
+    white-space: nowrap;
+}
+
 [data-theme="light"] .icon-dark,
 [data-theme="dark"] .icon-light {
     display: none;

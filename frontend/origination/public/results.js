@@ -35,8 +35,9 @@ async function init() {
     try {
         await loadConfig();
 
-        firebase.initializeApp(FIREBASE_CONFIG);
+        initializeFirebase(FIREBASE_CONFIG);
         db = firebase.firestore();
+        initSignOutButton();
 
         initDarkMode();
 
@@ -74,9 +75,14 @@ async function authenticateUser() {
                 resolve(user);
             } else {
                 try {
-                    await firebase.auth().signInAnonymously();
+                    await ensureSignedIn();
                     resolve(firebase.auth().currentUser);
                 } catch (error) {
+                    if (PlatformConfig.requireSso) {
+                        showSignInRequired("Please sign in with Google to view results.", () => {
+                            window.location.reload();
+                        });
+                    }
                     reject(error);
                 }
             }
@@ -97,7 +103,7 @@ async function loadInvestigationData() {
     const jobData = jobDoc.data();
 
     // getAuthToken() is in shared-utils.js (loaded before this file)
-    const markdownReports = await window.ReportRenderer.loadMarkdownReports(API_URL, currentJobId, getAuthToken);
+    const markdownReports = await window.ReportRenderer.loadMarkdownReports(API_URL, currentJobId, authHeaders);
 
     window.ReportRenderer.renderReport(elements.resultsContent, {
         jobId: currentJobId,

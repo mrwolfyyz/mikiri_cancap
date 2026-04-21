@@ -85,25 +85,35 @@ gcloud projects get-iam-policy $PROJECT_ID --flatten="bindings[].members" \
 
 **Note**: Terraform automatically enables these APIs during deployment. You don't need to enable them manually unless you want to verify they're enabled beforehand.
 
-If you want to enable them manually (optional):
+If you want to enable them manually (optional), run in **two batches** (`gcloud services enable` supports max 20 services per command):
 
 ```bash
+# Batch 1 (20 services)
 gcloud services enable \
   cloudfunctions.googleapis.com \
+  run.googleapis.com \
   workflows.googleapis.com \
   firestore.googleapis.com \
   secretmanager.googleapis.com \
   aiplatform.googleapis.com \
-  run.googleapis.com \
   eventarc.googleapis.com \
   cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  storage.googleapis.com \
   drive.googleapis.com \
+  customsearch.googleapis.com \
   discoveryengine.googleapis.com \
   firebase.googleapis.com \
   firebasehosting.googleapis.com \
   identitytoolkit.googleapis.com \
+  firebaseappcheck.googleapis.com \
+  recaptchaenterprise.googleapis.com \
   iam.googleapis.com \
   cloudresourcemanager.googleapis.com
+
+# Batch 2 (remaining service)
+gcloud services enable \
+  serviceusage.googleapis.com
 ```
 
 ### 5. Create Terraform State Bucket
@@ -331,7 +341,49 @@ Required for AI-powered analysis.
    - Look for "Generative Language API" quotas
    - Default quotas are usually sufficient for development/testing
 
-### 3. Google Drive API (Post-Deployment Setup)
+### 3. Google Workspace OAuth Client (Required for SSO)
+
+Required when `enable_sso=true` (default in this deployment model).
+
+For a brand-new project, complete these Console steps first:
+
+1. Open [Google Auth Platform](https://console.cloud.google.com/auth/overview?project=YOUR_PROJECT_ID)
+2. Configure the OAuth consent screen (internal is typical for Workspace-only deployments)
+3. Go to [Credentials](https://console.cloud.google.com/apis/credentials?project=YOUR_PROJECT_ID) and create an OAuth client:
+   - Type: **Web application**
+   - Name: e.g. `workspace-sso`
+   - If prompted for redirect URIs, add:
+     - `https://YOUR_PROJECT_ID.firebaseapp.com/__/auth/handler`
+4. Copy and store:
+   - OAuth **Client ID** (used in `terraform.tfvars`)
+   - OAuth **Client Secret** (stored in Secret Manager)
+
+Then configure it for Terraform:
+
+5. Save the client ID for `google_workspace_oauth_client_id` in `terraform.tfvars`
+6. Add the client secret to Secret Manager **before** Terraform plan/apply:
+
+```bash
+PROJECT_ID="your-project-id"
+
+# Create secret once (ignore error if already exists)
+gcloud secrets create workspace-oauth-client-secret \
+  --replication-policy=automatic \
+  --project=$PROJECT_ID
+
+# Add secret value
+echo -n "YOUR_GOOGLE_OAUTH_CLIENT_SECRET" | \
+  gcloud secrets versions add workspace-oauth-client-secret \
+  --data-file=- \
+  --project=$PROJECT_ID
+
+# Verify at least one version exists
+gcloud secrets versions list workspace-oauth-client-secret --project=$PROJECT_ID
+```
+
+**Why this is required pre-Terraform**: `terraform plan` reads this secret via a data source. If the secret is missing or has no versions, plan/apply fails.
+
+### 4. Google Drive API (Post-Deployment Setup)
 
 **Note**: Drive configuration is **not** part of prerequisites. After deployment, you'll configure Drive access through the web interface.
 
@@ -439,6 +491,17 @@ Run through this checklist before deployment. **Verify each item with the comman
   ```bash
   # Same as above - store securely for later use
   echo "HIBP API key purchased and stored securely"
+  ```
+
+- [ ] **Google Workspace OAuth client configured for SSO**
+  ```bash
+  PROJECT_ID="your-project-id"
+  gcloud secrets versions list workspace-oauth-client-secret --project=$PROJECT_ID
+  # Should show at least one ENABLED version
+  ```
+- [ ] **Google Workspace OAuth client ID captured for Terraform**
+  ```bash
+  echo "Set google_workspace_oauth_client_id in terraform.tfvars"
   ```
 
 ---

@@ -20,24 +20,57 @@ resource "google_firebase_project" "default" {
 }
 
 # -----------------------------------------------------------------------------
-# Enable Anonymous Authentication via Identity Platform
+# Identity Platform Configuration
 # -----------------------------------------------------------------------------
 
 resource "google_identity_platform_config" "default" {
   provider = google-beta
+  count    = var.enable_sso ? 1 : 0
   project  = var.project_id
 
   sign_in {
-    anonymous {
-      enabled = true
-    }
     allow_duplicate_emails = false
+    anonymous {
+      enabled = false
+    }
+    email {
+      enabled           = false
+      password_required = false
+    }
   }
+
+  authorized_domains = [
+    "localhost",
+    "${var.project_id}.firebaseapp.com",
+    "${google_firebase_hosting_site.skiptrace.site_id}.web.app",
+    "${google_firebase_hosting_site.skiptrace.site_id}.firebaseapp.com",
+    "${google_firebase_hosting_site.origination.site_id}.web.app",
+    "${google_firebase_hosting_site.origination.site_id}.firebaseapp.com",
+  ]
 
   depends_on = [
     google_project_service.apis["identitytoolkit.googleapis.com"],
     google_firebase_project.default
   ]
+}
+
+data "google_secret_manager_secret_version" "workspace_oauth" {
+  provider = google-beta
+  count    = var.enable_sso ? 1 : 0
+  project  = var.project_id
+  secret   = var.google_workspace_oauth_client_secret_id
+}
+
+resource "google_identity_platform_default_supported_idp_config" "google" {
+  provider      = google-beta
+  count         = var.enable_sso ? 1 : 0
+  project       = var.project_id
+  idp_id        = "google.com"
+  enabled       = true
+  client_id     = var.google_workspace_oauth_client_id
+  client_secret = data.google_secret_manager_secret_version.workspace_oauth[0].secret_data
+
+  depends_on = [google_identity_platform_config.default]
 }
 
 # -----------------------------------------------------------------------------
@@ -111,6 +144,9 @@ resource "local_file" "firebase_config_skiptrace" {
     messagingSenderId = data.google_firebase_web_app_config.skiptrace.messaging_sender_id
     appId             = google_firebase_web_app.skiptrace.app_id
     apiUrl            = google_cloudfunctions2_function.api_gateway.service_config[0].uri
+    requireSso        = var.enable_sso
+    workspaceDomain   = var.workspace_domain
+    recaptchaSiteKey  = var.enable_sso ? google_recaptcha_enterprise_key.web[0].name : ""
   })
   filename = "${path.module}/../../../frontend/skiptrace/public/firebase-config.json"
 
@@ -129,6 +165,9 @@ resource "local_file" "firebase_config_origination" {
     messagingSenderId = data.google_firebase_web_app_config.origination.messaging_sender_id
     appId             = google_firebase_web_app.origination.app_id
     apiUrl            = google_cloudfunctions2_function.api_gateway.service_config[0].uri
+    requireSso        = var.enable_sso
+    workspaceDomain   = var.workspace_domain
+    recaptchaSiteKey  = var.enable_sso ? google_recaptcha_enterprise_key.web[0].name : ""
   })
   filename = "${path.module}/../../../frontend/origination/public/firebase-config.json"
 
@@ -185,25 +224,48 @@ EOT
 }
 
 # -----------------------------------------------------------------------------
-# Optional: Firebase App Check (Recommended for Production)
+# Firebase App Check (reCAPTCHA Enterprise)
 # -----------------------------------------------------------------------------
-# Uncomment and configure for production to prevent API key abuse.
-# Requires setting up reCAPTCHA v3 in Google Cloud Console.
-#
-# resource "google_firebase_app_check_recaptcha_v3_config" "skiptrace" {
-#   provider    = google-beta
-#   project     = var.project_id
-#   app_id      = google_firebase_web_app.skiptrace.app_id
-#   site_secret = var.recaptcha_site_secret  # Set separately, never in code
-#
-#   depends_on = [google_firebase_project.default]
-# }
-#
-# resource "google_firebase_app_check_recaptcha_v3_config" "origination" {
-#   provider    = google-beta
-#   project     = var.project_id
-#   app_id      = google_firebase_web_app.origination.app_id
-#   site_secret = var.recaptcha_site_secret
-#
-#   depends_on = [google_firebase_project.default]
-# }
+
+resource "google_recaptcha_enterprise_key" "web" {
+  provider     = google-beta
+  count        = var.enable_sso ? 1 : 0
+  display_name = "mikiri-app-check-web"
+  project      = var.project_id
+
+  web_settings {
+    integration_type  = "SCORE"
+    allow_all_domains = false
+    allowed_domains = [
+      "${google_firebase_hosting_site.skiptrace.site_id}.web.app",
+      "${google_firebase_hosting_site.skiptrace.site_id}.firebaseapp.com",
+      "${google_firebase_hosting_site.origination.site_id}.web.app",
+      "${google_firebase_hosting_site.origination.site_id}.firebaseapp.com",
+    ]
+  }
+
+  depends_on = [google_project_service.apis["recaptchaenterprise.googleapis.com"]]
+}
+
+resource "google_firebase_app_check_recaptcha_enterprise_config" "skiptrace" {
+  provider  = google-beta
+  count     = var.enable_sso ? 1 : 0
+  project   = var.project_id
+  app_id    = google_firebase_web_app.skiptrace.app_id
+  site_key  = google_recaptcha_enterprise_key.web[0].name
+  token_ttl = "3600s"
+
+  depends_on = [google_firebase_project.default]
+}
+
+resource "google_firebase_app_check_recaptcha_enterprise_config" "origination" {
+  provider  = google-beta
+  count     = var.enable_sso ? 1 : 0
+  project   = var.project_id
+  app_id    = google_firebase_web_app.origination.app_id
+  site_key  = google_recaptcha_enterprise_key.web[0].name
+  token_ttl = "3600s"
+
+  depends_on = [google_firebase_project.default]
+}
+

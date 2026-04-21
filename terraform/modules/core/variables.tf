@@ -38,6 +38,92 @@ variable "cors_allowed_origins" {
 }
 
 # -----------------------------------------------------------------------------
+# Authentication & App Check
+# -----------------------------------------------------------------------------
+
+variable "enable_sso" {
+  description = "When true, Identity Platform is configured for Google Workspace SSO and anonymous auth is disabled."
+  type        = bool
+  default     = true
+
+  validation {
+    condition = (
+      var.enable_sso ||
+      !contains(["dev", "prod"], var.environment)
+    )
+    error_message = "enable_sso must be true for dev and prod environments."
+  }
+}
+
+variable "allowed_email_domains" {
+  description = "Email domains allowed to authenticate (lowercase, no '@', e.g. [\"cancap.ca\"])."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition = (
+      !var.enable_sso ||
+      length(var.allowed_email_domains) > 0
+    )
+    error_message = "allowed_email_domains must contain at least one domain when enable_sso is true."
+  }
+
+  validation {
+    condition = alltrue([
+      for d in var.allowed_email_domains :
+      d == lower(d) && can(regex("^[a-z0-9.-]+\\.[a-z]{2,}$", d))
+    ])
+    error_message = "Each allowed_email_domains entry must be lowercase and look like a valid domain (example: cancap.ca)."
+  }
+}
+
+variable "workspace_domain" {
+  description = "Google Workspace domain used as the Firebase GoogleAuthProvider 'hd' hint (UX only)."
+  type        = string
+  default     = ""
+}
+
+variable "google_workspace_oauth_client_id" {
+  description = "OAuth 2.0 client ID used by Firebase Auth Google provider."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      !var.enable_sso ||
+      trimspace(var.google_workspace_oauth_client_id) != ""
+    )
+    error_message = "google_workspace_oauth_client_id is required when enable_sso is true."
+  }
+}
+
+variable "google_workspace_oauth_client_secret_id" {
+  description = "Secret Manager secret name containing the OAuth client secret used by Firebase Auth."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      !var.enable_sso ||
+      trimspace(var.google_workspace_oauth_client_secret_id) != ""
+    )
+    error_message = "google_workspace_oauth_client_secret_id is required when enable_sso is true."
+  }
+}
+
+variable "app_check_enforced" {
+  description = "When true, API Gateway enforces valid Firebase App Check tokens."
+  type        = bool
+  default     = true
+}
+
+variable "enable_iap" {
+  description = "Phase 2 toggle: when true, remove public allUsers invoker binding from API Gateway."
+  type        = bool
+  default     = false
+}
+
+# -----------------------------------------------------------------------------
 # Function Configuration
 # -----------------------------------------------------------------------------
 
