@@ -283,6 +283,50 @@ class TestVerifyFirebaseToken:
         assert uid == "u1"
         assert err is None
 
+    def test_sso_empty_allowed_domains_returns_config_error(self):
+        # Safety net: if SSO is enabled but the allow-list was deployed empty
+        # (misconfiguration), the gateway must fail closed with a clear
+        # configuration error rather than accepting every verified Google
+        # email on the internet.
+        req = _make_request(headers={"Authorization": "Bearer good-token"})
+        decoded = {
+            "uid": "u1",
+            "firebase": {"sign_in_provider": "google.com"},
+            "email_verified": True,
+            "email": "user@cancap.ca",
+        }
+        with (
+            patch.object(gw, "REQUIRE_SSO", True),
+            patch.object(gw, "ALLOWED_EMAIL_DOMAINS", set()),
+            patch.object(gw.auth, "verify_id_token", return_value=decoded),
+        ):
+            uid, err = verify_firebase_token(req)
+        assert uid is None
+        assert err["error"] == "Authentication configuration error"
+
+    def test_sso_accepts_mixed_case_email(self):
+        # The allow-list is always lowercase; email from the ID token can
+        # be in any case. verify_firebase_token must normalize before
+        # comparing, or users with e.g. "Alice@CANCAP.CA" would be wrongly
+        # rejected (or - worse, depending on the implementation - a future
+        # refactor could let an unnormalized mixed-case domain slip
+        # through a case-sensitive check).
+        req = _make_request(headers={"Authorization": "Bearer good-token"})
+        decoded = {
+            "uid": "u1",
+            "firebase": {"sign_in_provider": "google.com"},
+            "email_verified": True,
+            "email": "Alice@CANCAP.CA",
+        }
+        with (
+            patch.object(gw, "REQUIRE_SSO", True),
+            patch.object(gw, "ALLOWED_EMAIL_DOMAINS", {"cancap.ca"}),
+            patch.object(gw.auth, "verify_id_token", return_value=decoded),
+        ):
+            uid, err = verify_firebase_token(req)
+        assert uid == "u1"
+        assert err is None
+
     def test_app_check_missing_header_rejected(self):
         req = _make_request(headers={"Authorization": "Bearer good-token"})
         with (

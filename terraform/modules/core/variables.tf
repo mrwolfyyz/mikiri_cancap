@@ -115,6 +115,11 @@ variable "app_check_enforced" {
   description = "When true, API Gateway enforces valid Firebase App Check tokens."
   type        = bool
   default     = true
+
+  validation {
+    condition     = !var.app_check_enforced || var.enable_sso
+    error_message = "app_check_enforced=true requires enable_sso=true. The reCAPTCHA Enterprise key and per-app App Check provider registrations that mint browser tokens are gated on enable_sso, so enabling enforcement without SSO silently breaks all browser clients (no valid App Check token can be produced, but API gateway and Firestore both require one)."
+  }
 }
 
 variable "enable_iap" {
