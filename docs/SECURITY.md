@@ -62,17 +62,25 @@ Primary investigation results and chat stay in Firestore in your GCP project. Th
 
 ## Authentication & Authorization
 
-### Current (Beta)
-- **Frontend**: Firebase Anonymous Authentication
-- **API Gateway**: Verifies Firebase ID tokens on investigation (`POST /investigate-skiptrace`, `POST /investigate-origination`), job status (`GET /jobs/{job_id}`), markdown (`GET /get_markdown/{job_id}`), chat (`POST /chat_handler`, `POST /chat_handler_origination`), feedback (`POST /jobs/{job_id}/feedback`), and address verification (`POST /address-verification`); `GET /health`, `GET /`, and `OPTIONS` preflight remain unauthenticated
-- **Firestore Rules**: Job and chat paths require `resource.data.user_id == request.auth.uid` (no cross-tenant reads by job ID)
-- **Rationale**: Keep beta deployment simple
+### Current (Phase 1 SSO Baseline)
+- **Frontend**: Google sign-in via Firebase Auth (no anonymous auth in dev/prod)
+- **API Gateway**: Verifies Firebase ID tokens on investigation (`POST /investigate-skiptrace`, `POST /investigate-origination`), job status (`GET /jobs/{job_id}`), markdown (`GET /get_markdown/{job_id}`), chat (`POST /chat_handler`, `POST /chat_handler_origination`), feedback (`POST /jobs/{job_id}/feedback`), and address verification (`POST /address-verification`)
+- **SSO Policy**: Requires `firebase.sign_in_provider == google.com`, `email_verified == true`, and email domain in `ALLOWED_EMAIL_DOMAINS`
+- **App Check**: Enforced on browser API calls to the gateway **and** on direct Firestore reads (`firestore.googleapis.com`, via `google_firebase_app_check_service_config`). Tokens are origin-bound to the Firebase Hosting domains via **reCAPTCHA Enterprise**, so scripts running from any other origin cannot mint a token the backend will accept. Server-side SDKs authenticating with a service account are exempt by design (see § Common Questions).
+- **Public Endpoints**: `GET /health`, `GET /`, and `OPTIONS` preflight remain unauthenticated
+- **Firestore Rules**: Job and chat paths require `resource.data.user_id == request.auth.uid` (no cross-tenant reads by job ID). Rules compose with App Check: a client Firestore read requires a valid ID token, a valid App Check token, **and** document ownership; loss of any one fails the request.
 
-### Production Plan
-- **Implementation Time**: ~1 hour
-- **Provider Flexibility**: Google Workspace, Azure AD, Okta, or any SAML/OIDC provider
-- **Firebase Integration**: Built-in support for all major identity providers
-- **User Attribution**: Investigations tied to specific employee identities
+### Production Controls
+- **SSO Requirement**: Production must set `enable_sso = true` and one or more `allowed_email_domains`
+- **Domain Restriction**: Domain allowlist blocks personal/non-corporate accounts even if OAuth succeeds
+- **App Check Requirement**: Production enforces App Check on the API gateway **and** on direct Firestore reads, with tokens origin-bound via reCAPTCHA Enterprise
+- **Current Ingress**: The API gateway Cloud Run service has `roles/run.invoker` granted to `allUsers`; authentication is enforced at the **application layer only** (Firebase ID token + App Check). The `enable_iap` variable today controls exactly one thing: when `true`, that public invoker binding is removed. No HTTPS Load Balancer, Serverless NEG, IAP, or Cloud Armor resources exist in the current Terraform.
+- **Phase 2 Edge Hardening** (additional Terraform, **no application code changes**):
+  - **HTTPS Load Balancer** in front of the API gateway via a Serverless NEG — prerequisite for the controls below; Cloud Run `.a.run.app` URLs cannot have IAP or Cloud Armor attached directly.
+  - **Identity-Aware Proxy (IAP)** on the LB backend service — adds a platform-layer auth gate in front of the application-layer Firebase + App Check check. Defense-in-depth against a regression in gateway auth code.
+  - **Cloud Armor** security policy attached to the backend service — edge WAF rules, per-IP rate limiting, geo / bot controls. The only rate limiting in place today is per-user at the application layer (see Best Practices).
+  - **Cloud Run ingress restriction** (`internal-and-cloud-load-balancing`) — closes the `*.a.run.app` direct-access bypass so all public traffic must traverse the hardened edge.
+  - **Operational side effects**: frontends must be redeployed once to pick up the regenerated `firebase-config.json` (`apiUrl` → LB domain), and a DNS record is required if a custom domain is used. No changes to `api_gateway` Python, frontend JS, Cloud Workflows, or Firestore Security Rules.
 
 ---
 
@@ -154,9 +162,9 @@ All API keys stored in **Google Secret Manager**:
 
 ### Current Configuration
 - Functions run in Google's default network
-- All communication is HTTPS
-- API Gateway is public (requires authentication token)
-- All other functions are private (only invoked by workflows)
+- All communication is HTTPS (HSTS preloaded on Firebase Hosting)
+- The API gateway Cloud Run service has `roles/run.invoker` granted to `allUsers`; **authentication is enforced at the application layer only** (Firebase ID token + App Check). There is no platform-layer auth gate (IAP) and no edge WAF or per-IP rate limiting today. Application-layer rate limiting is per-user (see Best Practices). Platform-layer hardening is scoped as Phase 2 Edge Hardening (see § Identified Gaps & Roadmap).
+- All other functions are private (invoked only by Cloud Workflows or by other functions using OIDC authentication)
 
 ### CORS
 - `CORS_ALLOWED_ORIGINS` is required at startup in api_gateway — the function fails at import if missing or blank; no implicit wildcard default
@@ -173,6 +181,7 @@ All API keys stored in **Google Secret Manager**:
 - All functions generate logs automatically
 - Logs may contain PII (names, emails in function inputs/outputs)
 - Default retention: 30 days
+- **Security events**: SSO and App Check rejection paths in `api_gateway/main.py` emit structured `WARNING` / `ERROR` severity entries via the Python `logging` module, suitable for log-based alerts. Rejection reasons covered: non-Google sign-in provider, unverified email, disallowed email domain, missing or invalid App Check token, and failed ID token verification.
 - **Note**: This is standard GCP behavior
 
 ### Firestore Audit Trail
@@ -182,8 +191,8 @@ All API keys stored in **Google Secret Manager**:
   - Status (pending, running, complete, failed)
 
 ### Current Limitation
-- Anonymous auth means no correlation to specific CanCap employees
-- **Production Solution**: Add identity provider for full attribution
+- User attribution depends on correct SSO/provider setup in Firebase Identity Platform
+- **Operational Requirement**: Keep Google provider + allowed domain configuration healthy in Terraform/Firebase
 
 ---
 
@@ -211,17 +220,22 @@ All API keys stored in **Google Secret Manager**:
   - Accept as standard GCP logging behavior
 - **Timeline**: Based on compliance requirements
 
-**4. User Attribution**
-- **Current**: Anonymous auth
-- **Plan**: Add identity provider (1 hour implementation)
-- **Timeline**: When CanCap specifies preferred provider
+**4. Edge Hardening (IAP + Cloud Armor)**
+- **Current**: Application-layer Firebase token and App Check verification on the API gateway; the gateway Cloud Run service has a public `allUsers` invoker binding; no edge WAF or per-IP rate limiting. User attribution is tied to the Firebase UID from verified Google Workspace SSO.
+- **Plan**: Add a Terraform-only edge module that fronts the API gateway with an external HTTPS Load Balancer (via Serverless NEG) and attaches:
+  - **IAP** on the backend service — platform-layer auth gate; defense-in-depth against an application-layer auth regression
+  - **Cloud Armor** security policy — edge WAF rules, per-IP rate limiting, geo / bot controls
+  - **Cloud Run ingress restriction** (`internal-and-cloud-load-balancing`) — closes the `*.a.run.app` direct-access bypass so all public traffic must traverse the hardened edge
+- **Application impact**: none. No changes required to `api_gateway` Python, frontend JS, Cloud Workflows, or Firestore Security Rules. Operational side effects are a frontend redeploy (to pick up the regenerated `firebase-config.json` with the new `apiUrl`) and a DNS record if a custom domain is used.
+- **Timeline**: Post-beta, driven by exposure and compliance needs.
 
 ### Optional Enhancements
 
 - VPC Service Controls for network isolation
-- Firebase App Check for abuse prevention
-- Cloud Monitoring dashboards for security metrics
-- Automated secret rotation
+- Cloud Monitoring dashboards and log-based alerts for security metrics (e.g. spikes in SSO / App Check rejections; see § Audit & Logging)
+- Automated rotation for OAuth client secret and API keys
+- Content Security Policy (CSP) and `frame-ancestors` headers on Firebase Hosting responses
+- MFA enforcement at the Google Workspace layer (configuration is outside this project's Terraform; relevant to the threat model)
 
 ---
 
@@ -273,6 +287,7 @@ Because everything runs in your GCP environment, **you have full control**:
 - ✅ **Secrets in Secret Manager** (no hardcoded credentials)
 - ✅ **Least-Privilege IAM** (no editor/owner service accounts)
 - ✅ **Firestore Security Rules** (user isolation enforced)
+- ✅ **App Check Enforced** (reCAPTCHA Enterprise origin-bound tokens required on the API gateway and on direct Firestore reads; browsers running from any non-allowed origin cannot mint valid tokens)
 - ✅ **Token Verification** (Firebase ID token required for all user-data API routes; health and CORS preflight are public)
 - ✅ **CORS Restricted** (required at api_gateway startup; Terraform and deploy validation block wildcard in non-dev; hosting URLs in production)
 - ✅ **Server-Side Rate Limiting** (per-user, 5 requests per 5 minutes via Firestore; fails closed on Firestore error (returns 429 rather than allowing unlimited requests through))
@@ -292,7 +307,7 @@ Because everything runs in your GCP environment, **you have full control**:
 A: **Email addresses** go to HIBP for breach checking. **Address strings** may be sent to OpenStreetMap Nominatim for geocoding. **MD5 hashes of email** (Gravatar’s standard) are used for Gravatar lookups. **Domains** are resolved via public WHOIS/DNS. **Investigation text and context** are sent to Vertex AI (Gemini) in your project; flows that use **Google Search grounding** also cause the model to query the public web as part of analysis. Primary structured results remain in Firestore in your project.
 
 **Q: Can we audit who ran which investigation?**
-A: Not in beta (anonymous auth). For production, specify your preferred identity provider (Google Workspace, Azure AD, etc.) and we'll implement it via Firebase in ~1 hour.
+A: Yes. With SSO enabled, each investigation is tied to a Firebase UID and verified email identity from Google sign-in.
 
 **Q: How do we delete borrower data?**  
 A: Firestore documents can be deleted via console or API at any time. TTL on `expire_at` also removes job and chat message documents automatically after the configured retention window. Retention length can be adjusted for compliance requirements.
@@ -302,6 +317,9 @@ A: Investigation continues without breach data. Platform degrades gracefully if 
 
 **Q: Can employees see each other's investigations?**  
 A: No - Firestore security rules enforce user isolation. Each user can only access their own data.
+
+**Q: Does App Check protect against a compromised backend service account reading Firestore?**  
+A: No. App Check applies to client SDK traffic (browsers, mobile apps). Server-side SDKs authenticating with a service account are exempt from App Check enforcement by design — this is required for Cloud Functions and Cloud Workflows to read/write Firestore. As a result, a compromised worker service account with `roles/datastore.user` can read across all tenants' data in the project. This is mitigated by tight IAM scoping on function service accounts (see § IAM & Least Privilege), by short Firestore TTL on job and chat documents, and by Cloud Logging of Firestore access. The correct framing: **App Check raises the bar for browser-origin abuse; service-account IAM is the control for internal-plane abuse.**
 
 **Q: How do we rotate API keys?**  
 A: Add new version to Secret Manager. Functions pick up new version on next invocation. Zero downtime.
@@ -321,7 +339,7 @@ Mikiri's security architecture follows **Privacy by Design principles**:
 
 **Identified gaps are addressable**:
 - Penetration testing (your security team)
-- Production auth provider (1 hour to implement)
+- Identity hardening controls (IAP/network restrictions) as Phase 2
 - Other enhancements based on operational learnings
 
 This is **customer-controlled infrastructure**, not vendor SaaS. You own the code, the data, and the security controls.

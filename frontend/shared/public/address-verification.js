@@ -153,8 +153,6 @@ async function submitAddressVerification(
   postalCode,
   businessName
 ) {
-  const token = await getAuthToken(); // Get fresh token
-
   const requestBody = {
     street_address: streetAddress.trim(),
     suite_unit: suiteUnit ? suiteUnit.trim() : "",
@@ -168,7 +166,7 @@ async function submitAddressVerification(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      ...(await authHeaders()),
     },
     body: JSON.stringify(requestBody),
   });
@@ -177,13 +175,12 @@ async function submitAddressVerification(
     if (response.status === 401) {
       // Token expired or invalid - try to refresh
       try {
-        const newToken = await getAuthToken();
         // Retry once with new token
         const retryResponse = await fetch(`${API_URL}/address-verification`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${newToken}`,
+            ...(await authHeaders()),
           },
           body: JSON.stringify(requestBody),
         });

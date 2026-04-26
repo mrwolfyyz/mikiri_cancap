@@ -12,10 +12,7 @@
  * Firebase SDK handles caching internally, so this doesn't make unnecessary network calls.
  */
 async function getAuthToken() {
-  const user = firebase.auth().currentUser;
-  if (!user) {
-    throw new Error("User not authenticated");
-  }
+  const user = await ensureSignedIn();
   return await user.getIdToken(true);
 }
 

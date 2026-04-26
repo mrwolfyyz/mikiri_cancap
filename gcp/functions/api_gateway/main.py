@@ -29,7 +29,7 @@ from typing import Any
 
 import functions_framework
 import requests
-from firebase_admin import auth, initialize_app
+from firebase_admin import app_check, auth, initialize_app
 from flask import Request, jsonify
 from google.cloud import firestore
 from google.cloud.workflows import executions_v1
@@ -90,6 +90,10 @@ EXTENSION_PREFILL_SECRET = (os.environ.get("EXTENSION_PREFILL_SECRET") or "").st
 PREFILL_SESSION_TTL_MINUTES = int(os.environ.get("PREFILL_SESSION_TTL_MINUTES") or "10")
 PREFILL_SESSION_COLLECTION = "prefill_sessions"
 
+REQUIRE_SSO = os.environ.get("REQUIRE_SSO") == "true"
+APP_CHECK_ENFORCED = os.environ.get("APP_CHECK_ENFORCED") == "true"
+ALLOWED_EMAIL_DOMAINS = {d.strip().lower() for d in os.environ.get("ALLOWED_EMAIL_DOMAINS", "").split(",") if d.strip()}
+
 
 # =============================================================================
 # Authentication & Validation Helpers
@@ -99,6 +103,8 @@ PREFILL_SESSION_COLLECTION = "prefill_sessions"
 def verify_firebase_token(request: Request) -> tuple[str | None, dict | None]:
     """
     Verify Firebase ID token from Authorization header.
+    When REQUIRE_SSO is true, additionally enforce Google sign-in provider and domain allowlist.
+    When APP_CHECK_ENFORCED is true, additionally verify X-Firebase-AppCheck header.
     Returns: (user_id, None) on success or (None, error_dict) on failure
     """
     auth_header = request.headers.get("Authorization", "")
@@ -109,15 +115,47 @@ def verify_firebase_token(request: Request) -> tuple[str | None, dict | None]:
     token = auth_header.split("Bearer ")[1]
 
     try:
-        decoded_token = auth.verify_id_token(token)
-        user_id = decoded_token.get("uid")
-        return user_id, None
+        decoded = auth.verify_id_token(token)
     except (auth.InvalidIdTokenError, auth.ExpiredIdTokenError):
-        logger.warning("Token verification failed")
+        logger.warning("Firebase token verification failed")
         return None, {"error": "Authentication failed. Please refresh the page."}
     except Exception as e:
         logger.error("Token verification error: %s", e)
         return None, {"error": "Authentication failed. Please refresh the page."}
+
+    user_id = decoded.get("uid")
+
+    if REQUIRE_SSO:
+        provider = decoded.get("firebase", {}).get("sign_in_provider")
+        if provider != "google.com":
+            logger.warning("Non-Google sign-in provider rejected: %s", provider)
+            return None, {"error": "SSO required"}
+
+        if not decoded.get("email_verified"):
+            logger.warning("Unverified email rejected for uid=%s", user_id)
+            return None, {"error": "Email not verified"}
+
+        email = (decoded.get("email") or "").lower()
+        domain = email.rsplit("@", 1)[-1] if "@" in email else ""
+        if not ALLOWED_EMAIL_DOMAINS:
+            logger.error("SSO enabled without ALLOWED_EMAIL_DOMAINS configured")
+            return None, {"error": "Authentication configuration error"}
+        if domain not in ALLOWED_EMAIL_DOMAINS:
+            logger.warning("Disallowed email domain rejected: %s", domain)
+            return None, {"error": "Account not permitted"}
+
+    if APP_CHECK_ENFORCED:
+        ac_token = request.headers.get("X-Firebase-AppCheck", "")
+        if not ac_token:
+            logger.warning("Missing App Check token on authenticated request")
+            return None, {"error": "App Check token required"}
+        try:
+            app_check.verify_token(ac_token)
+        except Exception as e:
+            logger.warning("App Check verification failed: %s", e)
+            return None, {"error": "App Check failed"}
+
+    return user_id, None
 
 
 def _id_token_for_url(target_url: str) -> str:
@@ -806,7 +844,7 @@ def main(request: Request):
         headers.update(
             {
                 "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Extension-Prefill-Secret",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Firebase-AppCheck, X-Extension-Prefill-Secret",
                 "Access-Control-Max-Age": "3600",
             }
         )

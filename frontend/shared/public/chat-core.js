@@ -41,18 +41,22 @@ async function loadConfig() {
 // ===========================
 async function initializeAuth() {
     try {
-        // Initialize Firebase
-        firebase.initializeApp(FIREBASE_CONFIG);
+        initializeFirebase(FIREBASE_CONFIG);
 
         // Initialize Firestore
         const db = firebase.firestore();
 
-        // Sign in anonymously
-        await firebase.auth().signInAnonymously();
+        await ensureSignedIn();
 
         return db;
     } catch (error) {
         console.error("Authentication error:", error);
+        if (PlatformConfig.requireSso) {
+            showSignInRequired("Please sign in with Google to use chat.", () => {
+                window.location.reload();
+            });
+            throw error;
+        }
         alert("Unable to initialize authentication. Please refresh the page.");
         throw error;
     }
@@ -233,20 +237,14 @@ async function loadChatHistory(jobId) {
 // ===========================
 async function getMarkdown(jobId) {
     try {
-        const token = await getAuthToken();
         const response = await fetch(`${API_URL}/get_markdown/${jobId}`, {
-            headers: {
-                "Authorization": `Bearer ${token}`
-            }
+            headers: await authHeaders(),
         });
         if (!response.ok) {
             if (response.status === 401) {
                 // Try refresh
-                const newToken = await getAuthToken();
                 const retryResponse = await fetch(`${API_URL}/get_markdown/${jobId}`, {
-                    headers: {
-                        "Authorization": `Bearer ${newToken}`
-                    }
+                    headers: await authHeaders(),
                 });
                 if (!retryResponse.ok) {
                     throw new Error("Authentication failed. Please refresh the page.");
@@ -265,8 +263,6 @@ async function getMarkdown(jobId) {
 
 async function sendChatMessage(payload) {
     try {
-        const token = await getAuthToken();
-
         // Add job_id to payload for ownership verification
         if (jobId) {
             payload.job_id = jobId;
@@ -278,7 +274,7 @@ async function sendChatMessage(payload) {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`
+                ...(await authHeaders()),
             },
             body: JSON.stringify(payload),
         });
@@ -286,12 +282,11 @@ async function sendChatMessage(payload) {
         if (!response.ok) {
             if (response.status === 401) {
                 // Try refresh
-                const newToken = await getAuthToken();
                 const retryResponse = await fetch(`${API_URL}${chatEndpoint}`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        "Authorization": `Bearer ${newToken}`
+                        ...(await authHeaders()),
                     },
                     body: JSON.stringify(payload),
                 });
@@ -627,6 +622,7 @@ async function init() {
     }
 
     // Initialize Firebase authentication and Firestore
+    initSignOutButton();
     db = await initializeAuth();
     initEventListeners();
 

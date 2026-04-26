@@ -164,14 +164,16 @@ const storage = {
 // ===========================
 async function initializeAuth() {
   try {
-    // Initialize Firebase
-    firebase.initializeApp(FIREBASE_CONFIG);
-
-    // Sign in anonymously
-    await firebase.auth().signInAnonymously();
+    initializeFirebase(FIREBASE_CONFIG);
+    await ensureSignedIn();
   } catch (error) {
     console.error("Authentication error:", error);
-    // Show user-friendly error message
+    if (PlatformConfig.requireSso) {
+      showSignInRequired("Please sign in with your Google account.", () => {
+        window.location.reload();
+      });
+      throw error;
+    }
     alert("Unable to initialize authentication. Please refresh the page.");
     throw error;
   }
@@ -393,8 +395,6 @@ function checkDriveConfiguration() {
 async function submitInvestigation(fullName, city, email, companyName = "", province = "") {
   const driveFolderId = storage.getDriveFolderId() || "";
 
-  const token = await getAuthToken(); // Get fresh token
-
   const requestBody = {
     full_name: fullName.trim(),
     city: city.trim(),
@@ -410,7 +410,7 @@ async function submitInvestigation(fullName, city, email, companyName = "", prov
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      ...(await authHeaders()),
     },
     body: JSON.stringify(requestBody),
   });
@@ -419,7 +419,6 @@ async function submitInvestigation(fullName, city, email, companyName = "", prov
     if (response.status === 401) {
       // Token expired or invalid - try to refresh
       try {
-        const newToken = await getAuthToken();
         // Retry once with new token
         const retryResponse = await fetch(
           `${API_URL}${endpoint}`,
@@ -427,7 +426,7 @@ async function submitInvestigation(fullName, city, email, companyName = "", prov
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${newToken}`,
+              ...(await authHeaders()),
             },
             body: JSON.stringify(requestBody),
           }
@@ -454,23 +453,16 @@ async function submitInvestigation(fullName, city, email, companyName = "", prov
 }
 
 async function pollJobStatus(jobId) {
-  const token = await getAuthToken(); // Get fresh token
-
   const response = await fetch(`${API_URL}/jobs/${jobId}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: await authHeaders(),
   });
 
   if (!response.ok) {
     if (response.status === 401) {
       // Token expired - try to refresh
       try {
-        const newToken = await getAuthToken();
         const retryResponse = await fetch(`${API_URL}/jobs/${jobId}`, {
-          headers: {
-            Authorization: `Bearer ${newToken}`,
-          },
+          headers: await authHeaders(),
         });
         if (!retryResponse.ok) {
           throw new Error("Authentication failed. Please refresh the page.");
@@ -657,7 +649,7 @@ async function showResults(job) {
   elements.progressStatus.textContent = "Loading report...";
 
   try {
-    const getToken = () => getAuthToken();
+    const getToken = () => authHeaders();
     const markdownReports = await window.ReportRenderer.loadMarkdownReports(
       API_URL,
       currentJobId,
@@ -678,12 +670,11 @@ async function showResults(job) {
     elements.resultsSection.style.display = "block";
 
     async function submitFeedback(jobId, rating, comment) {
-      const token = await getAuthToken();
       const response = await fetch(`${API_URL}/jobs/${jobId}/feedback`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          ...(await authHeaders()),
         },
         body: JSON.stringify({ rating, comment }),
       });
@@ -1158,6 +1149,8 @@ async function init() {
     console.error("Failed to load configuration. Application cannot start.");
     return;
   }
+
+  initSignOutButton();
 
   // Initialize Firebase authentication
   await initializeAuth();

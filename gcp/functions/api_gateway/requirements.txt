@@ -4,4 +4,4 @@ google-auth==2.*
 google-cloud-firestore==2.*
 google-cloud-workflows==1.*
 requests==2.*
-firebase-admin==6.*
+firebase-admin>=6.3.0,<7.0.0

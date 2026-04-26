@@ -60,6 +60,68 @@ variable "cors_allowed_origins" {
   # Example: "https://your-project-skiptrace.web.app,https://your-project-origination.web.app"
 }
 
+variable "enable_sso" {
+  description = "Enable Google Workspace SSO."
+  type        = bool
+  default     = true
+
+  validation {
+    condition     = var.enable_sso
+    error_message = "Production requires enable_sso=true."
+  }
+}
+
+variable "allowed_email_domains" {
+  description = "Allowed email domains for SSO users."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = length(var.allowed_email_domains) > 0
+    error_message = "Production requires one or more allowed_email_domains."
+  }
+}
+
+variable "workspace_domain" {
+  description = "Workspace domain hint for Google sign-in popup."
+  type        = string
+  default     = ""
+}
+
+variable "google_workspace_oauth_client_id" {
+  description = "OAuth client ID for Firebase Google provider."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = trimspace(var.google_workspace_oauth_client_id) != ""
+    error_message = "google_workspace_oauth_client_id is required in production."
+  }
+}
+
+variable "google_workspace_oauth_client_secret_id" {
+  description = "Secret Manager secret ID storing OAuth client secret."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = trimspace(var.google_workspace_oauth_client_secret_id) != ""
+    error_message = "google_workspace_oauth_client_secret_id is required in production."
+  }
+}
+
+variable "app_check_enforced" {
+  description = "Whether to enforce Firebase App Check tokens."
+  type        = bool
+  default     = true
+}
+
+variable "enable_iap" {
+  description = "Phase 2 toggle for IAP-protected ingress."
+  type        = bool
+  default     = false
+}
+
 # -----------------------------------------------------------------------------
 # Core Module
 # -----------------------------------------------------------------------------
@@ -67,10 +129,17 @@ variable "cors_allowed_origins" {
 module "core" {
   source = "../../modules/core"
 
-  project_id           = var.project_id
-  region               = var.region
-  environment          = "prod"
-  cors_allowed_origins = var.cors_allowed_origins
+  project_id                              = var.project_id
+  region                                  = var.region
+  environment                             = "prod"
+  cors_allowed_origins                    = var.cors_allowed_origins
+  enable_sso                              = var.enable_sso
+  allowed_email_domains                   = var.allowed_email_domains
+  workspace_domain                        = var.workspace_domain
+  google_workspace_oauth_client_id        = var.google_workspace_oauth_client_id
+  google_workspace_oauth_client_secret_id = var.google_workspace_oauth_client_secret_id
+  app_check_enforced                      = var.app_check_enforced
+  enable_iap                              = var.enable_iap
 }
 
 # -----------------------------------------------------------------------------

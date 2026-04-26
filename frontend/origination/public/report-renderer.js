@@ -220,16 +220,16 @@
   // ===========================
   // Public API
   // ===========================
-  async function loadMarkdownReports(apiUrl, jobId, getToken) {
-    const token = await getToken();
+  async function loadMarkdownReports(apiUrl, jobId, getAuthHeaders) {
+    const headers = await getAuthHeaders();
     const response = await fetch(`${apiUrl}/get_markdown/${jobId}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers,
     });
     if (!response.ok) {
       if (response.status === 401) {
-        const newToken = await getToken();
+        const retryHeaders = await getAuthHeaders();
         const retryResponse = await fetch(`${apiUrl}/get_markdown/${jobId}`, {
-          headers: { Authorization: `Bearer ${newToken}` },
+          headers: retryHeaders,
         });
         if (!retryResponse.ok) {
           const err = await retryResponse.json().catch(() => ({}));
