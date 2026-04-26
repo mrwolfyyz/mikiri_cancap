@@ -348,8 +348,8 @@ Required when `enable_sso=true` (default in this deployment model).
 For a brand-new project, complete these Console steps first:
 
 1. Open [Google Auth Platform](https://console.cloud.google.com/auth/overview?project=YOUR_PROJECT_ID)
-2. Configure the OAuth consent screen (internal is typical for Workspace-only deployments)
-3. Go to [Credentials](https://console.cloud.google.com/apis/credentials?project=YOUR_PROJECT_ID) and create an OAuth client:
+2. Click **Get started** in Google Auth Platform and complete app setup (this is the OAuth consent/app configuration step in the current Console UI). Internal is typical for Workspace-only deployments.
+3. In Google Auth Platform, choose **Create OAuth client** (you may also reach the same flow from [APIs & Services > Credentials](https://console.cloud.google.com/apis/credentials?project=YOUR_PROJECT_ID)):
    - Type: **Web application**
    - Name: e.g. `workspace-sso`
    - If prompted for redirect URIs, add:
@@ -357,6 +357,7 @@ For a brand-new project, complete these Console steps first:
 4. Copy and store:
    - OAuth **Client ID** (used in `terraform.tfvars`)
    - OAuth **Client Secret** (stored in Secret Manager)
+   - **Do not continue until both values are captured**
 
 Then configure it for Terraform:
 

@@ -302,6 +302,7 @@ terraform plan
 **Important**:
 - If the authentication check fails, follow the instructions it provides before proceeding with Terraform commands. This prevents `oauth2: "invalid_grant"` errors. See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md#error-oauth2-invalid_grant---reauth-related-error) for details.
 - If `enable_sso = true`, confirm `workspace-oauth-client-secret` already has a version before `terraform plan`.
+- If Terraform reports `Backend configuration changed` during `terraform init`, run `terraform init -reconfigure` and continue.
 
 ### Step 3: Apply Terraform
 
