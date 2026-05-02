@@ -117,6 +117,7 @@ def _make_request(
     headers=None,
     content_length=0,
     bad_json=False,
+    query_args=None,
 ):
     """Build a mock Flask-like request."""
     req = MagicMock(spec=flask.Request)
@@ -124,6 +125,7 @@ def _make_request(
     req.path = path
     req.content_length = content_length
     req.headers = headers or {}
+    req.args = query_args or {}
     if bad_json:
         req.get_json.side_effect = Exception("bad JSON")
     else:
@@ -141,6 +143,15 @@ def _authed_request(user_id="user-123", **kwargs):
 def _stub_auth(user_id="user-123"):
     """Patch verify_id_token to return a decoded token with the given uid."""
     return patch.object(gw.auth, "verify_id_token", return_value={"uid": user_id})
+
+
+def _stub_auth_claims(user_id="user-123", email="user@example.com", name="Test User"):
+    """Patch verify_id_token to return decoded token claims with display fields."""
+    return patch.object(
+        gw.auth,
+        "verify_id_token",
+        return_value={"uid": user_id, "email": email, "name": name, "email_verified": True},
+    )
 
 
 def _stub_rate_limit(allowed=True):
@@ -176,6 +187,62 @@ def _parse_response(resp):
     else:
         data = body
     return data, status, hdrs
+
+
+class _HistoryDoc:
+    def __init__(self, doc_id, data):
+        self.id = doc_id
+        self._data = data
+
+    def to_dict(self):
+        return self._data
+
+
+class _HistoryQuery:
+    def __init__(self, docs):
+        self.docs = docs
+        self.filters = []
+        self.limit_value = None
+        self.orders = []
+        self.cursor = None
+
+    def where(self, *args):
+        self.filters.append(args)
+        return self
+
+    def order_by(self, *args, **kwargs):
+        self.orders.append((args, kwargs))
+        return self
+
+    def start_after(self, cursor):
+        self.cursor = cursor
+        return self
+
+    def limit(self, value):
+        self.limit_value = value
+        return self
+
+    def stream(self):
+        docs = sorted(
+            self.docs,
+            key=lambda doc: (doc.to_dict().get("created_at"), doc.id),
+            reverse=True,
+        )
+        if self.cursor:
+            cursor_created = self.cursor["created_at"]
+            cursor_id = self.cursor["__name__"]
+            docs = [doc for doc in docs if (doc.to_dict().get("created_at"), doc.id) < (cursor_created, cursor_id)]
+        if self.limit_value is not None:
+            docs = docs[: self.limit_value]
+        return docs
+
+
+class _HistoryCollection:
+    def __init__(self, docs):
+        self.query = _HistoryQuery(docs)
+
+    def where(self, *args):
+        return self.query.where(*args)
 
 
 # ===========================================================================
@@ -608,13 +675,20 @@ class TestHandleInvestigation:
             body=self._valid_body(),
         )
         with _app.test_request_context():
-            with _stub_auth(), _stub_rate_limit(), _stub_create_job("j1") as mock_create_job, _stub_trigger_workflow():
+            with (
+                _stub_auth_claims("u1", "agent@example.com", "Agent Smith"),
+                _stub_rate_limit(),
+                _stub_create_job("j1") as mock_create_job,
+                _stub_trigger_workflow(),
+            ):
                 gw.db.collection.return_value.document.return_value.update = MagicMock()
                 data, status, _ = _parse_response(handle_investigation(req, {}, "investigate-skiptrace"))
         assert status == 202
         assert data["job_id"] == "j1"
         mock_create_job.assert_called_once()
         assert mock_create_job.call_args.args[6] == "ABCDE123"
+        assert mock_create_job.call_args.kwargs["user_email"] == "agent@example.com"
+        assert mock_create_job.call_args.kwargs["user_name"] == "Agent Smith"
 
     def test_optional_company_name_omitted(self):
         body = {k: v for k, v in self._valid_body().items() if k != "company_name"}
@@ -1218,6 +1292,247 @@ class TestMainRouting:
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 404
 
+    def test_history_requires_auth(self):
+        req = _make_request(method="GET", path="/jobs/history")
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 401
+        assert "Authentication required" in data["error"]
+
+    def test_history_returns_skiptrace_rows(self):
+        docs = [
+            _HistoryDoc(
+                "j1",
+                {
+                    "status": "complete",
+                    "created_at": datetime(2026, 5, 1, 12, 0, 0),
+                    "completed_at": datetime(2026, 5, 1, 12, 2, 0),
+                    "user_id": "u1",
+                    "user_email": "john@example.com",
+                    "user_name": "John Agent",
+                    "input": {"full_name": "John Smith", "cars_reference_number": "ABCDE123"},
+                    "feedback_entries": [
+                        {"rating": "positive", "comment": "Good", "submitted_at": datetime(2026, 5, 1), "user_id": "u2"}
+                    ],
+                },
+            )
+        ]
+        collection = _HistoryCollection(docs)
+        req = _authed_request(method="GET", path="/jobs/history", query_args={"user_id": "u1", "limit": "50"})
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u2"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert data["rows"][0]["job_id"] == "j1"
+        assert data["rows"][0]["cars_reference_number"] == "ABCDE123"
+        assert data["rows"][0]["user_display"] == "john@example.com"
+        assert data["rows"][0]["feedback_count"] == 1
+        assert ("user_id", "==", "u1") in collection.query.filters
+        assert collection.query.limit_value == 51
+        assert data["has_more"] is False
+        assert data["next_page_token"] is None
+
+    def test_history_user_filter_accepts_email(self):
+        collection = _HistoryCollection([])
+        req = _authed_request(
+            method="GET", path="/jobs/history", query_args={"user_id": "JOHN@EXAMPLE.COM", "limit": "50"}
+        )
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u2"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert ("user_email", "==", "john@example.com") in collection.query.filters
+
+    def test_history_returns_next_page_token_when_more_rows_exist(self):
+        docs = [
+            _HistoryDoc(
+                f"j{i}",
+                {
+                    "status": "complete",
+                    "created_at": datetime(2026, 5, 1, 12, i, 0),
+                    "user_id": "u1",
+                    "input": {"full_name": f"Person {i}", "cars_reference_number": f"ABCDE{i:03d}"},
+                },
+            )
+            for i in range(3)
+        ]
+        collection = _HistoryCollection(docs)
+        req = _authed_request(method="GET", path="/jobs/history", query_args={"limit": "2"})
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert [row["job_id"] for row in data["rows"]] == ["j2", "j1"]
+        assert data["has_more"] is True
+        assert data["next_page_token"]
+        assert collection.query.limit_value == 3
+
+    def test_history_page_token_returns_next_rows_with_duplicate_created_at(self):
+        created = datetime(2026, 5, 1, 12, 0, 0)
+        docs = [
+            _HistoryDoc(
+                doc_id,
+                {
+                    "status": "complete",
+                    "created_at": created,
+                    "user_id": "u1",
+                    "input": {"full_name": doc_id, "cars_reference_number": "ABCDE123"},
+                },
+            )
+            for doc_id in ["j3", "j2", "j1"]
+        ]
+        collection = _HistoryCollection(docs)
+        first_req = _authed_request(method="GET", path="/jobs/history", query_args={"limit": "1"})
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                first_data, first_status, _ = _parse_response(main_handler(first_req))
+        assert first_status == 200
+        assert first_data["rows"][0]["job_id"] == "j3"
+
+        second_req = _authed_request(
+            method="GET",
+            path="/jobs/history",
+            query_args={"limit": "1", "page_token": first_data["next_page_token"]},
+        )
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                second_data, second_status, _ = _parse_response(main_handler(second_req))
+        assert second_status == 200
+        assert second_data["rows"][0]["job_id"] == "j2"
+        assert collection.query.cursor["__name__"] == "j3"
+
+    def test_history_rejects_malformed_page_token(self):
+        req = _authed_request(method="GET", path="/jobs/history", query_args={"limit": "1", "page_token": "bad-token"})
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=_HistoryCollection([])),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 400
+        assert data["error"] == "Invalid history page token"
+
+    def test_history_rejects_page_token_when_filters_change(self):
+        docs = [
+            _HistoryDoc(
+                "j2",
+                {
+                    "status": "complete",
+                    "created_at": datetime(2026, 5, 1, 12, 1, 0),
+                    "user_id": "u1",
+                    "input": {"full_name": "John Smith", "cars_reference_number": "ABCDE123"},
+                },
+            ),
+            _HistoryDoc(
+                "j1",
+                {
+                    "status": "complete",
+                    "created_at": datetime(2026, 5, 1, 12, 0, 0),
+                    "user_id": "u1",
+                    "input": {"full_name": "Jane Smith", "cars_reference_number": "ABCDE123"},
+                },
+            ),
+        ]
+        collection = _HistoryCollection(docs)
+        first_req = _authed_request(method="GET", path="/jobs/history", query_args={"limit": "1"})
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                first_data, first_status, _ = _parse_response(main_handler(first_req))
+        assert first_status == 200
+
+        changed_filter_req = _authed_request(
+            method="GET",
+            path="/jobs/history",
+            query_args={"limit": "1", "user_id": "u1", "page_token": first_data["next_page_token"]},
+        )
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                data, status, _ = _parse_response(main_handler(changed_filter_req))
+        assert status == 400
+        assert data["error"] == "Invalid history page token"
+
+    def test_history_csv_exports_all_matching_rows(self):
+        docs = [
+            _HistoryDoc(
+                "j1",
+                {
+                    "status": "complete",
+                    "created_at": datetime(2026, 5, 1, 12, 0, 0),
+                    "user_id": "u1",
+                    "user_email": "john@example.com",
+                    "input": {"full_name": "John Smith", "cars_reference_number": "ABCDE123"},
+                },
+            ),
+            _HistoryDoc(
+                "j2",
+                {
+                    "status": "failed",
+                    "created_at": datetime(2026, 5, 2, 12, 0, 0),
+                    "user_id": "u2",
+                    "input": {"full_name": "Jane Smith", "cars_reference_number": "FGHIJ456"},
+                },
+            ),
+        ]
+        req = _authed_request(method="GET", path="/jobs/history/export.csv")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=_HistoryCollection(docs)),
+            ):
+                body, status, _ = main_handler(req)
+        assert status == 200
+        csv_text = body.get_data(as_text=True)
+        assert "ABCDE123" in csv_text
+        assert "FGHIJ456" in csv_text
+        assert "john@example.com" in csv_text
+        assert "attachment" in body.headers["Content-Disposition"]
+
+    def test_skiptrace_result_data_allows_authenticated_non_owner(self):
+        job = {
+            "user_id": "owner",
+            "workflow_type": "skiptrace",
+            "input": {"full_name": "John Smith", "cars_reference_number": "ABCDE123"},
+            "markdown_reports": {"identity": "# Identity"},
+        }
+        req = _authed_request(method="GET", path="/jobs/j1/result-data")
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("viewer"), _stub_get_job(job):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert data["job_data"]["input"]["full_name"] == "John Smith"
+        assert data["markdown_reports"]["identity"] == "# Identity"
+
     def test_post_chat_handler_routes_to_proxy(self):
         req = _authed_request(method="POST", path="/chat_handler", body={"message": "hi"})
         with _app.test_request_context():
@@ -1248,11 +1563,20 @@ class TestMainRouting:
             body={"rating": "positive", "comment": "Great results"},
         )
         with _app.test_request_context():
-            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u1"), _stub_get_job(job):
-                gw.db.collection.return_value.document.return_value.update = MagicMock()
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth_claims("u1", "agent@example.com", "Agent Smith"),
+                _stub_get_job(job),
+            ):
+                update_mock = MagicMock()
+                gw.db.collection.return_value.document.return_value.update = update_mock
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 200
         assert data["status"] == "ok"
+        update_payload = update_mock.call_args.args[0]
+        assert update_payload["feedback"]["comment"] == "Great results"
+        assert update_payload["feedback"]["user_email"] == "agent@example.com"
+        assert update_payload["feedback_entries"][0]["comment"] == "Great results"
 
     def test_post_feedback_invalid_rating(self):
         job = {"user_id": "u1", "status": "complete"}
@@ -1290,6 +1614,30 @@ class TestMainRouting:
             with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u-other"), _stub_get_job(job):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 403
+
+    def test_post_feedback_non_owner_allowed_for_skiptrace(self):
+        job = {
+            "user_id": "u-owner",
+            "workflow_type": "skiptrace",
+            "status": "complete",
+            "feedback_entries": [
+                {"rating": "positive", "comment": "Existing", "submitted_at": datetime.utcnow(), "user_id": "u-owner"}
+            ],
+        }
+        req = _authed_request(
+            method="POST",
+            path="/jobs/j1/feedback",
+            body={"rating": "negative", "comment": "Needs review"},
+        )
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u-other"), _stub_get_job(job):
+                update_mock = MagicMock()
+                gw.db.collection.return_value.document.return_value.update = update_mock
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        update_payload = update_mock.call_args.args[0]
+        assert len(update_payload["feedback_entries"]) == 2
+        assert update_payload["feedback_entries"][1]["comment"] == "Needs review"
 
     def test_post_address_verification_happy_path(self):
         req = _authed_request(
@@ -1527,10 +1875,12 @@ class TestCreateJobRetry:
             "Toronto",
             "ON",
             cars_reference_number="ABCDE123",
+            workflow_type="skiptrace",
         )
 
         assert job_id is not None
         assert captured_job_data[0]["input"]["cars_reference_number"] == "ABCDE123"
+        assert captured_job_data[0]["workflow_type"] == "skiptrace"
 
         # Restore
         gw.db.collection.return_value.document.return_value.set.side_effect = None

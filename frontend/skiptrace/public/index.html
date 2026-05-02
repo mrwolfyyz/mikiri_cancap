@@ -33,6 +33,7 @@
         <!-- Tab Navigation -->
         <nav class="tabs">
             <button class="tab-button active" data-tab="main">Investigation</button>
+            <button class="tab-button" data-tab="history">Search History</button>
             <button class="tab-button" data-tab="setup">Setup & Help</button>
         </nav>
 
@@ -182,6 +183,93 @@
             </div>
         </div>
 
+
+        <!-- Search History Tab -->
+        <div id="history-tab" class="tab-content">
+            <div class="history-header">
+                <div>
+                    <h2>Search History</h2>
+                    <p class="section-description">Review skip trace searches across all signed-in users.</p>
+                </div>
+                <button id="historyExportButton" class="secondary-button">Export CSV</button>
+            </div>
+
+            <section class="history-filters" aria-label="Search history filters">
+                <div class="form-group">
+                    <label for="historyStartDate">Start Date</label>
+                    <input type="date" id="historyStartDate">
+                </div>
+                <div class="form-group">
+                    <label for="historyEndDate">End Date</label>
+                    <input type="date" id="historyEndDate">
+                </div>
+                <div class="form-group">
+                    <label for="historyUserFilter">User</label>
+                    <input type="text" id="historyUserFilter" placeholder="Email or Firebase user ID">
+                </div>
+                <div class="form-group">
+                    <label for="historyCarsFilter">CARS Reference Number</label>
+                    <input type="text" id="historyCarsFilter" placeholder="ABCDE123" autocomplete="off">
+                </div>
+                <div class="history-filter-actions">
+                    <button id="historyApplyFiltersButton" class="secondary-button">Apply Filters</button>
+                    <button id="historyClearFiltersButton" class="secondary-button">Clear</button>
+                </div>
+            </section>
+
+            <div id="historyStatus" class="status-message" style="display: none;"></div>
+
+            <div class="history-table-wrap">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>CARS Reference Number</th>
+                            <th>Date/Time of Search</th>
+                            <th>Full Name</th>
+                            <th>User</th>
+                            <th>Feedback</th>
+                            <th>Results</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTableBody">
+                        <tr>
+                            <td colspan="6" class="history-empty">Open Search History to load recent searches.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="history-pagination" aria-label="Search history pagination">
+                <span id="historyPaginationStatus" class="history-pagination-status">No rows loaded.</span>
+                <div class="history-pagination-actions">
+                    <button id="historyPrevPageButton" class="secondary-button" disabled>Previous</button>
+                    <button id="historyNextPageButton" class="secondary-button" disabled>Next</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="feedbackModal" class="modal-backdrop is-hidden" role="dialog" aria-modal="true" aria-labelledby="feedbackModalTitle">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <div>
+                        <h3 id="feedbackModalTitle">Feedback</h3>
+                        <p id="feedbackModalSubtitle" class="modal-subtitle"></p>
+                    </div>
+                    <button id="feedbackModalClose" class="modal-close" aria-label="Close feedback modal">&times;</button>
+                </div>
+                <div id="feedbackEntries" class="feedback-entry-list"></div>
+                <div class="feedback-add">
+                    <label for="feedbackRating">Add Feedback</label>
+                    <select id="feedbackRating">
+                        <option value="positive">Positive</option>
+                        <option value="negative">Negative</option>
+                    </select>
+                    <textarea id="feedbackComment" rows="4" maxlength="1000" placeholder="Enter additional feedback"></textarea>
+                    <div class="feedback-modal-actions">
+                        <button id="feedbackSubmitButton" class="submit-button">Submit Feedback</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Setup & Help Tab -->
         <div id="setup-tab" class="tab-content">

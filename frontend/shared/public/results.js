@@ -94,16 +94,34 @@ async function authenticateUser() {
 // Data Loading
 // ===========================
 async function loadInvestigationData() {
-    const jobDoc = await db.collection('jobs').doc(currentJobId).get();
+    let jobData;
+    let markdownReports;
 
-    if (!jobDoc.exists) {
-        throw new Error('Investigation not found');
+    if (currentWorkflow === 'skiptrace') {
+        const response = await fetch(`${API_URL}/jobs/${encodeURIComponent(currentJobId)}/result-data`, {
+            headers: await authHeaders(),
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to load investigation results');
+        }
+
+        const payload = await response.json();
+        jobData = payload.job_data;
+        markdownReports = payload.markdown_reports;
+    } else {
+        const jobDoc = await db.collection('jobs').doc(currentJobId).get();
+
+        if (!jobDoc.exists) {
+            throw new Error('Investigation not found');
+        }
+
+        jobData = jobDoc.data();
+
+        // getAuthToken() is in shared-utils.js (loaded before this file)
+        markdownReports = await window.ReportRenderer.loadMarkdownReports(API_URL, currentJobId, authHeaders);
     }
-
-    const jobData = jobDoc.data();
-
-    // getAuthToken() is in shared-utils.js (loaded before this file)
-    const markdownReports = await window.ReportRenderer.loadMarkdownReports(API_URL, currentJobId, authHeaders);
 
     window.ReportRenderer.renderReport(elements.resultsContent, {
         jobId: currentJobId,

@@ -22,6 +22,7 @@ const POLL_INTERVAL_MS = 3000; // Poll every 3 seconds
 const THROTTLE_MS = 30000; // 30 seconds between submissions
 const MAX_POLL_ATTEMPTS = 150; // Stop polling after 7.5 minutes (to handle identity function retries)
 const STATUS_UPDATE_INTERVAL_MS = 1000; // Update status message every second
+const HISTORY_PAGE_SIZE = 50;
 
 // Load configuration from platform.json + firebase-config.json via PlatformConfig
 async function loadConfig() {
@@ -52,6 +53,15 @@ let lastRequestTime = 0;
 let statusMessageTimer = null;
 let statusMessageStartTime = null;
 let currentStatusMessage = "";
+let historyLoaded = false;
+let historyRows = [];
+let activeFeedbackJobId = null;
+let historyPageTokens = [null];
+let historyPageIndex = 0;
+let historyNextPageToken = null;
+let historyAppliedFilters = null;
+let historyLoading = false;
+let historyRequestSequence = 0;
 
 // ===========================
 // DOM Elements
@@ -103,6 +113,28 @@ const elements = {
   driveStatus: document.getElementById("driveStatus"),
   driveWarning: document.getElementById("driveWarning"),
   setupLink: document.getElementById("setupLink"),
+
+  // Search History (skiptrace only)
+  historyStartDate: document.getElementById("historyStartDate"),
+  historyEndDate: document.getElementById("historyEndDate"),
+  historyUserFilter: document.getElementById("historyUserFilter"),
+  historyCarsFilter: document.getElementById("historyCarsFilter"),
+  historyApplyFiltersButton: document.getElementById("historyApplyFiltersButton"),
+  historyClearFiltersButton: document.getElementById("historyClearFiltersButton"),
+  historyExportButton: document.getElementById("historyExportButton"),
+  historyStatus: document.getElementById("historyStatus"),
+  historyTableBody: document.getElementById("historyTableBody"),
+  historyPaginationStatus: document.getElementById("historyPaginationStatus"),
+  historyPrevPageButton: document.getElementById("historyPrevPageButton"),
+  historyNextPageButton: document.getElementById("historyNextPageButton"),
+  feedbackModal: document.getElementById("feedbackModal"),
+  feedbackModalTitle: document.getElementById("feedbackModalTitle"),
+  feedbackModalSubtitle: document.getElementById("feedbackModalSubtitle"),
+  feedbackModalClose: document.getElementById("feedbackModalClose"),
+  feedbackEntries: document.getElementById("feedbackEntries"),
+  feedbackRating: document.getElementById("feedbackRating"),
+  feedbackComment: document.getElementById("feedbackComment"),
+  feedbackSubmitButton: document.getElementById("feedbackSubmitButton"),
 
   // Address Verification (elements will be null if feature is not enabled)
   addressVerificationForm: document.getElementById("addressVerificationForm"),
@@ -236,6 +268,26 @@ function switchTab(tabName) {
   elements.tabContents.forEach((content) => {
     content.classList.toggle("active", content.id === `${tabName}-tab`);
   });
+
+  if (tabName === "history" && !historyLoaded) {
+    loadSearchHistory();
+  }
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatHistoryDate(value) {
+  if (!value) return "Not available";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
 }
 
 // ===========================
@@ -1025,6 +1077,290 @@ function loadDriveConfiguration() {
 }
 
 // ===========================
+// Search History
+// ===========================
+function hasHistoryUi() {
+  return !!elements.historyTableBody;
+}
+
+function setHistoryStatus(message, type = "info") {
+  if (!elements.historyStatus) return;
+  elements.historyStatus.textContent = message;
+  elements.historyStatus.className = `status-message ${type}`;
+  elements.historyStatus.style.display = message ? "block" : "none";
+}
+
+function historyFilterParams() {
+  const params = new URLSearchParams();
+  const startDate = elements.historyStartDate?.value || "";
+  const endDate = elements.historyEndDate?.value || "";
+  const userId = elements.historyUserFilter?.value.trim() || "";
+  const carsReferenceNumber = elements.historyCarsFilter?.value.trim().toUpperCase() || "";
+
+  if (startDate) params.set("start_date", startDate);
+  if (endDate) params.set("end_date", endDate);
+  if (userId) params.set("user_id", userId);
+  if (carsReferenceNumber) params.set("cars_reference_number", carsReferenceNumber);
+  return params;
+}
+
+function resetHistoryPagination() {
+  historyPageTokens = [null];
+  historyPageIndex = 0;
+  historyNextPageToken = null;
+}
+
+function updateHistoryPaginationStatus(rowCount = historyRows.length) {
+  if (!elements.historyPaginationStatus) return;
+
+  if (historyLoading) {
+    elements.historyPaginationStatus.textContent = `Loading page ${historyPageIndex + 1}...`;
+  } else if (!rowCount) {
+    elements.historyPaginationStatus.textContent = "No rows to show.";
+  } else {
+    const rowLabel = rowCount === 1 ? "row" : "rows";
+    elements.historyPaginationStatus.textContent = `Page ${historyPageIndex + 1}: showing ${rowCount} ${rowLabel}`;
+  }
+}
+
+function updateHistoryPaginationControls() {
+  updateHistoryPaginationStatus();
+  if (elements.historyPrevPageButton) {
+    elements.historyPrevPageButton.disabled = historyLoading || historyPageIndex === 0;
+  }
+  if (elements.historyNextPageButton) {
+    elements.historyNextPageButton.disabled = historyLoading || !historyNextPageToken;
+  }
+}
+
+function renderHistoryRows(rows) {
+  if (!elements.historyTableBody) return;
+
+  if (!rows.length) {
+    elements.historyTableBody.innerHTML = '<tr><td colspan="6" class="history-empty">No searches match these filters.</td></tr>';
+    return;
+  }
+
+  elements.historyTableBody.innerHTML = rows
+    .map((row) => {
+      const feedback = row.feedback || {};
+      const feedbackText = feedback.comment_summary || (row.feedback_count ? "Feedback submitted" : "No feedback yet");
+      const resultsUrl = row.results_url || `results.html?job_id=${encodeURIComponent(row.job_id)}&workflow=skiptrace`;
+      const userDisplay = row.user_display || row.user_email || row.user_name || row.user_id || "Not available";
+      return `
+        <tr>
+          <td>${escapeHtml(row.cars_reference_number || "Not available")}</td>
+          <td>${escapeHtml(formatHistoryDate(row.created_at))}</td>
+          <td>${escapeHtml(row.full_name || "Not available")}</td>
+          <td>${escapeHtml(userDisplay)}</td>
+          <td>
+            <div class="history-feedback-summary">${escapeHtml(feedbackText)}</div>
+            <button class="history-action-link" data-feedback-job-id="${escapeHtml(row.job_id)}">View / Add Feedback</button>
+          </td>
+          <td><a class="history-result-link" href="${escapeHtml(resultsUrl)}" target="_blank" rel="noopener">Open Report</a></td>
+        </tr>`;
+    })
+    .join("");
+}
+
+async function loadSearchHistory({ resetPage = false } = {}) {
+  if (!hasHistoryUi()) return;
+
+  if (resetPage || !historyAppliedFilters) {
+    historyAppliedFilters = historyFilterParams();
+    resetHistoryPagination();
+  }
+
+  setHistoryStatus("Loading search history...", "info");
+  if (elements.historyApplyFiltersButton) elements.historyApplyFiltersButton.disabled = true;
+  historyLoading = true;
+  updateHistoryPaginationControls();
+  const requestSequence = ++historyRequestSequence;
+
+  try {
+    const params = new URLSearchParams(historyAppliedFilters.toString());
+    params.set("limit", String(HISTORY_PAGE_SIZE));
+    const pageToken = historyPageTokens[historyPageIndex];
+    if (pageToken) params.set("page_token", pageToken);
+    const response = await fetch(`${API_URL}/jobs/history?${params.toString()}`, {
+      headers: await authHeaders(),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || "Failed to load search history");
+    }
+    const data = await response.json();
+    if (requestSequence !== historyRequestSequence) return;
+    historyRows = data.rows || [];
+    historyNextPageToken = data.next_page_token || null;
+    historyPageTokens = historyPageTokens.slice(0, historyPageIndex + 1);
+    if (historyNextPageToken) historyPageTokens.push(historyNextPageToken);
+    historyLoaded = true;
+    renderHistoryRows(historyRows);
+    setHistoryStatus("", "info");
+  } catch (error) {
+    if (requestSequence !== historyRequestSequence) return;
+    console.error("Search history load failed:", error);
+    historyRows = [];
+    historyNextPageToken = null;
+    renderHistoryRows([]);
+    setHistoryStatus(error.message || "Failed to load search history", "error");
+  } finally {
+    if (requestSequence === historyRequestSequence) {
+      historyLoading = false;
+      updateHistoryPaginationControls();
+      if (elements.historyApplyFiltersButton) elements.historyApplyFiltersButton.disabled = false;
+    }
+  }
+}
+
+function clearSearchHistoryFilters() {
+  if (elements.historyStartDate) elements.historyStartDate.value = "";
+  if (elements.historyEndDate) elements.historyEndDate.value = "";
+  if (elements.historyUserFilter) elements.historyUserFilter.value = "";
+  if (elements.historyCarsFilter) elements.historyCarsFilter.value = "";
+  loadSearchHistory({ resetPage: true });
+}
+
+function loadNextHistoryPage() {
+  if (!historyNextPageToken || historyLoading) return;
+  historyPageIndex += 1;
+  loadSearchHistory();
+}
+
+function loadPreviousHistoryPage() {
+  if (historyPageIndex === 0 || historyLoading) return;
+  historyPageIndex -= 1;
+  historyNextPageToken = null;
+  loadSearchHistory();
+}
+
+async function exportSearchHistoryCsv() {
+  if (!hasHistoryUi()) return;
+
+  if (elements.historyExportButton) elements.historyExportButton.disabled = true;
+  setHistoryStatus("Preparing CSV export...", "info");
+
+  try {
+    const params = historyFilterParams();
+    const response = await fetch(`${API_URL}/jobs/history/export.csv?${params.toString()}`, {
+      headers: await authHeaders(),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || "Failed to export CSV");
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `skiptrace-search-history-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    setHistoryStatus("", "info");
+  } catch (error) {
+    console.error("CSV export failed:", error);
+    setHistoryStatus(error.message || "Failed to export CSV", "error");
+  } finally {
+    if (elements.historyExportButton) elements.historyExportButton.disabled = false;
+  }
+}
+
+function closeFeedbackModal() {
+  activeFeedbackJobId = null;
+  if (elements.feedbackModal) elements.feedbackModal.classList.add("is-hidden");
+  if (elements.feedbackEntries) elements.feedbackEntries.innerHTML = "";
+  if (elements.feedbackComment) elements.feedbackComment.value = "";
+}
+
+function renderFeedbackEntries(entries) {
+  if (!elements.feedbackEntries) return;
+  if (!entries.length) {
+    elements.feedbackEntries.innerHTML = '<p class="history-empty">No feedback has been submitted yet.</p>';
+    return;
+  }
+
+  elements.feedbackEntries.innerHTML = entries
+    .map(
+      (entry) => `
+        <div class="feedback-entry">
+          <div class="feedback-entry-meta">
+            ${escapeHtml(entry.rating || "feedback")} by ${escapeHtml(entry.user_email || entry.user_id || "unknown user")}
+            on ${escapeHtml(formatHistoryDate(entry.submitted_at))}
+          </div>
+          <div>${escapeHtml(entry.comment || "No comment provided.")}</div>
+        </div>`
+    )
+    .join("");
+}
+
+async function openFeedbackModal(jobId) {
+  activeFeedbackJobId = jobId;
+  const row = historyRows.find((item) => item.job_id === jobId);
+  if (elements.feedbackModalTitle) elements.feedbackModalTitle.textContent = "Feedback";
+  if (elements.feedbackModalSubtitle) {
+    elements.feedbackModalSubtitle.textContent = row
+      ? `${row.cars_reference_number || "No CARS reference"} - ${row.full_name || "Unknown name"}`
+      : jobId;
+  }
+  if (elements.feedbackModal) elements.feedbackModal.classList.remove("is-hidden");
+  if (elements.feedbackEntries) elements.feedbackEntries.innerHTML = '<p class="history-empty">Loading feedback...</p>';
+
+  try {
+    const response = await fetch(`${API_URL}/jobs/${encodeURIComponent(jobId)}/feedback`, {
+      headers: await authHeaders(),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || "Failed to load feedback");
+    }
+    const data = await response.json();
+    renderFeedbackEntries(data.entries || []);
+  } catch (error) {
+    console.error("Feedback load failed:", error);
+    if (elements.feedbackEntries) {
+      elements.feedbackEntries.innerHTML = `<p class="history-empty">${escapeHtml(error.message || "Failed to load feedback")}</p>`;
+    }
+  }
+}
+
+async function submitHistoryFeedback() {
+  if (!activeFeedbackJobId || !elements.feedbackSubmitButton) return;
+
+  elements.feedbackSubmitButton.disabled = true;
+  elements.feedbackSubmitButton.textContent = "Submitting...";
+  try {
+    const response = await fetch(`${API_URL}/jobs/${encodeURIComponent(activeFeedbackJobId)}/feedback`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(await authHeaders()),
+      },
+      body: JSON.stringify({
+        rating: elements.feedbackRating?.value || "positive",
+        comment: elements.feedbackComment?.value.trim() || "",
+      }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || "Failed to submit feedback");
+    }
+    if (elements.feedbackComment) elements.feedbackComment.value = "";
+    await openFeedbackModal(activeFeedbackJobId);
+    await loadSearchHistory();
+  } catch (error) {
+    console.error("Feedback submit failed:", error);
+    alert(error.message || "Failed to submit feedback");
+  } finally {
+    elements.feedbackSubmitButton.disabled = false;
+    elements.feedbackSubmitButton.textContent = "Submit Feedback";
+  }
+}
+
+// ===========================
 // Event Listeners
 // ===========================
 function initEventListeners() {
@@ -1063,6 +1399,27 @@ function initEventListeners() {
   // Drive configuration
   elements.saveDriveButton.addEventListener("click", saveDriveConfiguration);
   elements.clearDriveButton.addEventListener("click", clearDriveConfiguration);
+
+  if (hasHistoryUi()) {
+    elements.historyApplyFiltersButton?.addEventListener("click", () => loadSearchHistory({ resetPage: true }));
+    elements.historyClearFiltersButton?.addEventListener("click", clearSearchHistoryFilters);
+    elements.historyExportButton?.addEventListener("click", exportSearchHistoryCsv);
+    elements.historyPrevPageButton?.addEventListener("click", loadPreviousHistoryPage);
+    elements.historyNextPageButton?.addEventListener("click", loadNextHistoryPage);
+    elements.historyTableBody?.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-feedback-job-id]");
+      if (button) {
+        openFeedbackModal(button.dataset.feedbackJobId);
+      }
+    });
+    elements.feedbackModalClose?.addEventListener("click", closeFeedbackModal);
+    elements.feedbackModal?.addEventListener("click", (event) => {
+      if (event.target === elements.feedbackModal) {
+        closeFeedbackModal();
+      }
+    });
+    elements.feedbackSubmitButton?.addEventListener("click", submitHistoryFeedback);
+  }
 
   // Conditionally init address verification if feature is enabled and module is loaded
   if (

@@ -85,6 +85,137 @@ resource "google_firestore_index" "jobs_user_created" {
   }
 }
 
+resource "google_firestore_index" "jobs_workflow_created_desc" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "workflow_type"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "created_at"
+    order      = "DESCENDING"
+  }
+}
+
+resource "google_firestore_index" "jobs_workflow_user_created_desc" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "workflow_type"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "user_id"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "created_at"
+    order      = "DESCENDING"
+  }
+}
+
+resource "google_firestore_index" "jobs_workflow_user_email_created_desc" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "workflow_type"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "user_email"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "created_at"
+    order      = "DESCENDING"
+  }
+}
+
+resource "google_firestore_index" "jobs_workflow_cars_created_desc" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "workflow_type"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "input.cars_reference_number"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "created_at"
+    order      = "DESCENDING"
+  }
+}
+
+resource "google_firestore_index" "jobs_workflow_user_email_cars_created_desc" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "workflow_type"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "user_email"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "input.cars_reference_number"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "created_at"
+    order      = "DESCENDING"
+  }
+}
+
+resource "google_firestore_index" "jobs_workflow_user_cars_created_desc" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "workflow_type"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "user_id"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "input.cars_reference_number"
+    order      = "ASCENDING"
+  }
+
+  fields {
+    field_path = "created_at"
+    order      = "DESCENDING"
+  }
+}
+
 # -----------------------------------------------------------------------------
 # NOTE: Firestore Security Rules
 # -----------------------------------------------------------------------------

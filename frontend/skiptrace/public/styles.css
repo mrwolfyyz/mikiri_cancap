@@ -88,6 +88,234 @@
     }
 }
 
+/* ===========================
+   Search History
+   =========================== */
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+}
+
+.history-filters {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-md);
+    align-items: end;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: var(--space-lg);
+    margin-bottom: var(--space-md);
+    box-shadow: var(--shadow-sm);
+}
+
+.history-filters .form-group {
+    margin-bottom: 0;
+}
+
+.history-filter-actions {
+    display: flex;
+    gap: var(--space-xs);
+}
+
+.history-table-wrap {
+    overflow-x: auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+}
+
+.history-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 860px;
+}
+
+.history-table th,
+.history-table td {
+    padding: var(--space-sm);
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+    font-size: var(--font-sm);
+}
+
+.history-table th {
+    color: var(--text-secondary);
+    background: var(--bg-muted);
+    font-weight: 700;
+}
+
+.history-table tr:last-child td {
+    border-bottom: none;
+}
+
+.history-empty {
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.history-feedback-summary {
+    color: var(--text-secondary);
+    margin-bottom: var(--space-xs);
+    max-width: 240px;
+}
+
+.history-action-link {
+    background: transparent;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    font-weight: 600;
+    padding: 0;
+    text-decoration: underline;
+}
+
+.history-result-link {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.history-pagination {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-md);
+    margin-top: var(--space-md);
+    color: var(--text-secondary);
+    font-size: var(--font-sm);
+}
+
+.history-pagination-actions {
+    display: flex;
+    gap: var(--space-xs);
+}
+
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-lg);
+    background: rgba(15, 23, 42, 0.55);
+}
+
+.modal-backdrop.is-hidden {
+    display: none;
+}
+
+.modal-card {
+    width: min(680px, 100%);
+    max-height: 88vh;
+    overflow: auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    padding: var(--space-lg);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+}
+
+.modal-subtitle {
+    color: var(--text-secondary);
+    font-size: var(--font-sm);
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 1.75rem;
+    line-height: 1;
+}
+
+.feedback-entry-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-lg);
+}
+
+.feedback-entry {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: var(--space-sm);
+    background: var(--bg-muted);
+}
+
+.feedback-entry-meta {
+    color: var(--text-secondary);
+    font-size: var(--font-xs);
+    margin-bottom: var(--space-xs);
+}
+
+.feedback-add {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.feedback-add label {
+    font-weight: 600;
+}
+
+.feedback-add select,
+.feedback-add textarea {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.feedback-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+    .history-header {
+        flex-direction: column;
+    }
+
+    .history-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 560px) {
+    .history-filters {
+        grid-template-columns: 1fr;
+    }
+
+    .history-filter-actions {
+        flex-direction: column;
+    }
+
+    .history-pagination {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .history-pagination-actions {
+        flex-direction: column;
+    }
+}
+
 .form-group label {
     display: block;
     font-weight: 600;

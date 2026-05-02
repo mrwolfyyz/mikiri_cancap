@@ -17,7 +17,11 @@ Note: This version has hardcoded values removed for deployment flexibility.
 Configuration is loaded from environment variables set by Terraform.
 """
 
+import base64
+import csv
+import hashlib
 import hmac
+import io
 import json
 import logging
 import os
@@ -30,7 +34,7 @@ from typing import Any
 import functions_framework
 import requests
 from firebase_admin import app_check, auth, initialize_app
-from flask import Request, jsonify
+from flask import Request, Response, jsonify
 from google.cloud import firestore
 from google.cloud.workflows import executions_v1
 
@@ -100,17 +104,17 @@ ALLOWED_EMAIL_DOMAINS = {d.strip().lower() for d in os.environ.get("ALLOWED_EMAI
 # =============================================================================
 
 
-def verify_firebase_token(request: Request) -> tuple[str | None, dict | None]:
+def verify_firebase_token_with_claims(request: Request) -> tuple[str | None, dict[str, Any] | None, dict | None]:
     """
     Verify Firebase ID token from Authorization header.
     When REQUIRE_SSO is true, additionally enforce Google sign-in provider and domain allowlist.
     When APP_CHECK_ENFORCED is true, additionally verify X-Firebase-AppCheck header.
-    Returns: (user_id, None) on success or (None, error_dict) on failure
+    Returns: (user_id, decoded_claims, None) on success or (None, None, error_dict) on failure
     """
     auth_header = request.headers.get("Authorization", "")
 
     if not auth_header.startswith("Bearer "):
-        return None, {"error": "Authentication required"}
+        return None, None, {"error": "Authentication required"}
 
     token = auth_header.split("Bearer ")[1]
 
@@ -118,10 +122,10 @@ def verify_firebase_token(request: Request) -> tuple[str | None, dict | None]:
         decoded = auth.verify_id_token(token)
     except (auth.InvalidIdTokenError, auth.ExpiredIdTokenError):
         logger.warning("Firebase token verification failed")
-        return None, {"error": "Authentication failed. Please refresh the page."}
+        return None, None, {"error": "Authentication failed. Please refresh the page."}
     except Exception as e:
         logger.error("Token verification error: %s", e)
-        return None, {"error": "Authentication failed. Please refresh the page."}
+        return None, None, {"error": "Authentication failed. Please refresh the page."}
 
     user_id = decoded.get("uid")
 
@@ -129,33 +133,197 @@ def verify_firebase_token(request: Request) -> tuple[str | None, dict | None]:
         provider = decoded.get("firebase", {}).get("sign_in_provider")
         if provider != "google.com":
             logger.warning("Non-Google sign-in provider rejected: %s", provider)
-            return None, {"error": "SSO required"}
+            return None, None, {"error": "SSO required"}
 
         if not decoded.get("email_verified"):
             logger.warning("Unverified email rejected for uid=%s", user_id)
-            return None, {"error": "Email not verified"}
+            return None, None, {"error": "Email not verified"}
 
         email = (decoded.get("email") or "").lower()
         domain = email.rsplit("@", 1)[-1] if "@" in email else ""
         if not ALLOWED_EMAIL_DOMAINS:
             logger.error("SSO enabled without ALLOWED_EMAIL_DOMAINS configured")
-            return None, {"error": "Authentication configuration error"}
+            return None, None, {"error": "Authentication configuration error"}
         if domain not in ALLOWED_EMAIL_DOMAINS:
             logger.warning("Disallowed email domain rejected: %s", domain)
-            return None, {"error": "Account not permitted"}
+            return None, None, {"error": "Account not permitted"}
 
     if APP_CHECK_ENFORCED:
         ac_token = request.headers.get("X-Firebase-AppCheck", "")
         if not ac_token:
             logger.warning("Missing App Check token on authenticated request")
-            return None, {"error": "App Check token required"}
+            return None, None, {"error": "App Check token required"}
         try:
             app_check.verify_token(ac_token)
         except Exception as e:
             logger.warning("App Check verification failed: %s", e)
-            return None, {"error": "App Check failed"}
+            return None, None, {"error": "App Check failed"}
 
-    return user_id, None
+    return user_id, decoded, None
+
+
+def verify_firebase_token(request: Request) -> tuple[str | None, dict | None]:
+    """
+    Verify Firebase ID token from Authorization header.
+    Returns: (user_id, None) on success or (None, error_dict) on failure
+    """
+    user_id, _decoded, error = verify_firebase_token_with_claims(request)
+    return user_id, error
+
+
+def _user_profile_from_claims(decoded: dict[str, Any] | None) -> dict[str, str | None]:
+    """Extract displayable user fields from verified Firebase token claims."""
+    if not decoded:
+        return {"user_email": None, "user_name": None}
+
+    email = (decoded.get("email") or "").strip().lower() or None
+    name = (decoded.get("name") or decoded.get("display_name") or "").strip() or None
+    return {"user_email": email, "user_name": name}
+
+
+def _request_args(request: Request) -> dict[str, str]:
+    """Return query parameters as a plain dict for Flask requests and tests."""
+    args = getattr(request, "args", None)
+    if not args:
+        return {}
+    if hasattr(args, "to_dict"):
+        return args.to_dict(flat=True)
+    return dict(args)
+
+
+def _isoformat(value: Any) -> str | None:
+    """Format Firestore datetime-like values for JSON responses."""
+    if not value:
+        return None
+    if hasattr(value, "isoformat"):
+        suffix = "Z" if getattr(value, "tzinfo", None) is None else ""
+        return value.isoformat() + suffix
+    return str(value)
+
+
+def _json_safe(value: Any) -> Any:
+    """Convert Firestore values to JSON-safe values."""
+    if isinstance(value, dict):
+        return {key: _json_safe(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if hasattr(value, "isoformat"):
+        return _isoformat(value)
+    return value
+
+
+def _parse_date_param(value: str | None, end_of_day: bool = False) -> datetime | None:
+    """Parse YYYY-MM-DD or ISO-ish dates from query params."""
+    if not value:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized):
+        parsed = datetime.fromisoformat(normalized)
+        if end_of_day:
+            return parsed.replace(hour=23, minute=59, second=59, microsecond=999999)
+        return parsed
+    return datetime.fromisoformat(normalized.replace("Z", "+00:00")).replace(tzinfo=None)
+
+
+def _history_filter_signature(params: dict[str, str], limit: int) -> str:
+    """Stable signature used to keep page tokens bound to one filtered result set."""
+    user_filter = (params.get("user_id") or "").strip()
+    user_field = "user_email" if "@" in user_filter else "user_id"
+    normalized = {
+        "start_date": _isoformat(_parse_date_param(params.get("start_date"))),
+        "end_date": _isoformat(_parse_date_param(params.get("end_date"), end_of_day=True)),
+        "user_field": user_field if user_filter else None,
+        "user_filter": user_filter.lower() if user_field == "user_email" else user_filter,
+        "cars_reference_number": (params.get("cars_reference_number") or "").strip().upper() or None,
+        "limit": limit,
+    }
+    payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _encode_history_page_token(created_at: Any, job_id: str, filter_signature: str) -> str:
+    payload = {
+        "created_at": _isoformat(created_at),
+        "job_id": job_id,
+        "filter_signature": filter_signature,
+    }
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def _decode_history_page_token(token: str, expected_filter_signature: str) -> dict[str, Any]:
+    try:
+        padded = token + ("=" * (-len(token) % 4))
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+    except Exception as exc:
+        raise ValueError("Invalid history page token") from exc
+
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid history page token")
+    if payload.get("filter_signature") != expected_filter_signature:
+        raise ValueError("Invalid history page token")
+
+    created_at = _parse_date_param(payload.get("created_at"))
+    job_id = (payload.get("job_id") or "").strip()
+    if not created_at or not job_id:
+        raise ValueError("Invalid history page token")
+    return {"created_at": created_at, "job_id": job_id}
+
+
+def _feedback_entries(job: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return feedback history, falling back to the legacy single feedback field."""
+    entries = job.get("feedback_entries") or []
+    if entries:
+        return entries
+    legacy = job.get("feedback")
+    return [legacy] if legacy else []
+
+
+def _feedback_summary(job: dict[str, Any]) -> dict[str, Any] | None:
+    entries = _feedback_entries(job)
+    if not entries:
+        return None
+    latest = entries[-1]
+    comment = (latest.get("comment") or "").strip()
+    return {
+        "rating": latest.get("rating"),
+        "comment_summary": comment[:140] + ("..." if len(comment) > 140 else ""),
+        "submitted_at": _isoformat(latest.get("submitted_at")),
+        "user_id": latest.get("user_id"),
+        "count": len(entries),
+    }
+
+
+def _is_skiptrace_job(job: dict[str, Any]) -> bool:
+    """Identify skiptrace jobs, including older docs created before workflow_type was stored."""
+    if job.get("workflow_type") == "skiptrace":
+        return True
+    input_data = job.get("input") or {}
+    return bool(input_data.get("cars_reference_number"))
+
+
+def _format_history_row(job_id: str, job: dict[str, Any]) -> dict[str, Any]:
+    input_data = job.get("input") or {}
+    feedback = _feedback_summary(job)
+    user_email = job.get("user_email")
+    user_name = job.get("user_name")
+    return {
+        "job_id": job_id,
+        "status": job.get("status"),
+        "created_at": _isoformat(job.get("created_at")),
+        "completed_at": _isoformat(job.get("completed_at")),
+        "user_id": job.get("user_id"),
+        "user_email": user_email,
+        "user_name": user_name,
+        "user_display": user_email or user_name or job.get("user_id"),
+        "full_name": input_data.get("full_name"),
+        "cars_reference_number": input_data.get("cars_reference_number"),
+        "feedback": feedback,
+        "feedback_count": feedback["count"] if feedback else 0,
+        "results_url": f"results.html?job_id={job_id}&workflow=skiptrace",
+    }
 
 
 def _id_token_for_url(target_url: str) -> str:
@@ -504,6 +672,9 @@ def create_job(
     company_name: str = None,
     cars_reference_number: str = None,
     user_id: str = None,
+    workflow_type: str = None,
+    user_email: str = None,
+    user_name: str = None,
 ) -> str:
     """Create a new job in Firestore."""
     job_id = uuid.uuid4().hex[:12]
@@ -517,6 +688,9 @@ def create_job(
         "completed_at": None,
         "expire_at": expire_at,
         "user_id": user_id,  # Store user_id for ownership verification
+        "user_email": user_email,
+        "user_name": user_name,
+        "workflow_type": workflow_type,
         "input": {
             "email": email,
             "full_name": full_name,
@@ -688,6 +862,181 @@ def verify_job_ownership(request: Request, job_id: str, headers: dict) -> tuple[
     return job, user_id, None
 
 
+def _history_query_from_request(request: Request):
+    params = _request_args(request)
+    query = db.collection("jobs").where("workflow_type", "==", "skiptrace")
+
+    start_date = _parse_date_param(params.get("start_date"))
+    end_date = _parse_date_param(params.get("end_date"), end_of_day=True)
+    user_filter = (params.get("user_id") or "").strip()
+    cars_reference_number = (params.get("cars_reference_number") or "").strip().upper()
+
+    if start_date:
+        query = query.where("created_at", ">=", start_date)
+    if end_date:
+        query = query.where("created_at", "<=", end_date)
+    if user_filter:
+        if "@" in user_filter:
+            query = query.where("user_email", "==", user_filter.lower())
+        else:
+            query = query.where("user_id", "==", user_filter)
+    if cars_reference_number:
+        query = query.where("input.cars_reference_number", "==", cars_reference_number)
+
+    return (
+        query.order_by("created_at", direction=firestore.Query.DESCENDING).order_by(
+            "__name__", direction=firestore.Query.DESCENDING
+        ),
+        params,
+    )
+
+
+def handle_history_list(request: Request, headers: dict):
+    """Return paginated skiptrace history rows for any authenticated SSO user."""
+    _user_id, auth_error = verify_firebase_token(request)
+    if auth_error:
+        return jsonify(auth_error), 401, headers
+
+    try:
+        query, params = _history_query_from_request(request)
+        raw_limit = int(params.get("limit") or "50")
+        limit = max(1, min(raw_limit, 200))
+        filter_signature = _history_filter_signature(params, limit)
+        page_token = (params.get("page_token") or "").strip()
+        if page_token:
+            cursor = _decode_history_page_token(page_token, filter_signature)
+            query = query.start_after({"created_at": cursor["created_at"], "__name__": cursor["job_id"]})
+
+        docs = list(query.limit(limit + 1).stream())
+        page_docs = docs[:limit]
+        rows = [_format_history_row(doc.id, doc.to_dict()) for doc in page_docs]
+        has_more = len(docs) > limit
+        next_page_token = None
+        if has_more and page_docs:
+            last_doc = page_docs[-1]
+            next_page_token = _encode_history_page_token(
+                (last_doc.to_dict() or {}).get("created_at"), last_doc.id, filter_signature
+            )
+        return (
+            jsonify(
+                {
+                    "rows": rows,
+                    "limit": limit,
+                    "page_size": limit,
+                    "has_more": has_more,
+                    "next_page_token": next_page_token,
+                }
+            ),
+            200,
+            headers,
+        )
+    except ValueError as e:
+        if "history page token" in str(e):
+            return jsonify({"error": "Invalid history page token"}), 400, headers
+        return jsonify({"error": "Invalid history filter"}), 400, headers
+    except Exception as e:
+        logger.error("Search history list failed: %s", e)
+        return jsonify({"error": f"Failed to load search history: {str(e)}"}), 500, headers
+
+
+def handle_history_csv_export(request: Request, headers: dict):
+    """Return CSV for all skiptrace history rows matching filters."""
+    _user_id, auth_error = verify_firebase_token(request)
+    if auth_error:
+        return jsonify(auth_error), 401, headers
+
+    try:
+        query, _params = _history_query_from_request(request)
+        rows = [_format_history_row(doc.id, doc.to_dict()) for doc in query.stream()]
+    except ValueError:
+        return jsonify({"error": "Invalid history filter"}), 400, headers
+    except Exception as e:
+        logger.error("Search history CSV export failed: %s", e)
+        return jsonify({"error": f"Failed to export search history: {str(e)}"}), 500, headers
+
+    output = io.StringIO()
+    writer = csv.DictWriter(
+        output,
+        fieldnames=[
+            "CARS Reference Number",
+            "Date/Time of Search",
+            "Full Name",
+            "User",
+            "Job ID",
+            "Status",
+            "Feedback Summary",
+            "Feedback Count",
+            "Results URL",
+        ],
+    )
+    writer.writeheader()
+    for row in rows:
+        feedback = row.get("feedback") or {}
+        writer.writerow(
+            {
+                "CARS Reference Number": row.get("cars_reference_number") or "",
+                "Date/Time of Search": row.get("created_at") or "",
+                "Full Name": row.get("full_name") or "",
+                "User": row.get("user_display") or "",
+                "Job ID": row.get("job_id") or "",
+                "Status": row.get("status") or "",
+                "Feedback Summary": feedback.get("comment_summary") or "",
+                "Feedback Count": row.get("feedback_count") or 0,
+                "Results URL": row.get("results_url") or "",
+            }
+        )
+
+    filename = f"skiptrace-search-history-{datetime.utcnow().strftime('%Y-%m-%d')}.csv"
+    response = Response(output.getvalue(), mimetype="text/csv")
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response, 200, headers
+
+
+def handle_history_feedback_get(request: Request, job_id: str, headers: dict):
+    """Return full feedback history for a skiptrace job."""
+    _user_id, auth_error = verify_firebase_token(request)
+    if auth_error:
+        return jsonify(auth_error), 401, headers
+
+    job = get_job(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404, headers
+    if not _is_skiptrace_job(job):
+        return jsonify({"error": "Unauthorized"}), 403, headers
+
+    entries = []
+    for entry in _feedback_entries(job):
+        entries.append(
+            {
+                "rating": entry.get("rating"),
+                "comment": entry.get("comment") or "",
+                "submitted_at": _isoformat(entry.get("submitted_at")),
+                "user_id": entry.get("user_id"),
+                "user_email": entry.get("user_email"),
+            }
+        )
+    return jsonify({"entries": entries}), 200, headers
+
+
+def handle_skiptrace_result_data(request: Request, job_id: str, headers: dict):
+    """Return data needed to render a skiptrace result for any authenticated SSO user."""
+    _user_id, auth_error = verify_firebase_token(request)
+    if auth_error:
+        return jsonify(auth_error), 401, headers
+
+    job = get_job(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404, headers
+    if not _is_skiptrace_job(job):
+        return jsonify({"error": "Unauthorized"}), 403, headers
+
+    markdown_reports = job.get("markdown_reports", {})
+    if not markdown_reports:
+        return jsonify({"error": "Markdown reports not available for this job"}), 404, headers
+
+    return jsonify({"job_data": _json_safe(job), "markdown_reports": markdown_reports}), 200, headers
+
+
 # =============================================================================
 # Route Handlers
 # =============================================================================
@@ -696,9 +1045,10 @@ def verify_job_ownership(request: Request, job_id: str, headers: dict) -> tuple[
 def handle_investigation(request: Request, headers: dict, workflow_name: str):
     """Handle POST /investigate-skiptrace and /investigate-origination."""
     # Verify authentication
-    user_id, auth_error = verify_firebase_token(request)
+    user_id, decoded_claims, auth_error = verify_firebase_token_with_claims(request)
     if auth_error:
         return jsonify(auth_error), 401, headers
+    user_profile = _user_profile_from_claims(decoded_claims)
 
     # H3: Reject oversized request bodies early
     content_length = request.content_length or 0
@@ -785,6 +1135,9 @@ def handle_investigation(request: Request, headers: dict, workflow_name: str):
         company_name,
         cars_reference_number,
         user_id=user_id,
+        workflow_type="skiptrace" if is_skiptrace else "origination",
+        user_email=user_profile["user_email"],
+        user_name=user_profile["user_name"],
     )
 
     # Trigger workflow (async), then mark job as pending
@@ -905,6 +1258,28 @@ def main(request: Request):
     # POST /investigate-origination
     if request.method == "POST" and path == "/investigate-origination":
         return handle_investigation(request, headers, ORIGINATION_WORKFLOW_NAME)
+
+    # GET /jobs/history/export.csv
+    if request.method == "GET" and path == "/jobs/history/export.csv":
+        return handle_history_csv_export(request, headers)
+
+    # GET /jobs/history
+    if request.method == "GET" and path == "/jobs/history":
+        return handle_history_list(request, headers)
+
+    # GET /jobs/{job_id}/feedback
+    if request.method == "GET" and "/jobs/" in path and path.endswith("/feedback"):
+        path_parts = path.strip("/").split("/")
+        if len(path_parts) != 3 or path_parts[0] != "jobs" or path_parts[2] != "feedback":
+            return jsonify({"error": "Invalid feedback path"}), 400, headers
+        return handle_history_feedback_get(request, path_parts[1], headers)
+
+    # GET /jobs/{job_id}/result-data
+    if request.method == "GET" and "/jobs/" in path and path.endswith("/result-data"):
+        path_parts = path.strip("/").split("/")
+        if len(path_parts) != 3 or path_parts[0] != "jobs" or path_parts[2] != "result-data":
+            return jsonify({"error": "Invalid result path"}), 400, headers
+        return handle_skiptrace_result_data(request, path_parts[1], headers)
 
     # GET /jobs/{job_id}
     if request.method == "GET" and path.startswith("/jobs/"):
@@ -1033,11 +1408,13 @@ def main(request: Request):
             return jsonify({"error": "Job ID required"}), 400, headers
 
         # Verify authentication (always required for feedback - need user_id)
-        user_id, auth_error = verify_firebase_token(request)
+        user_id, decoded_claims, auth_error = verify_firebase_token_with_claims(request)
         if auth_error:
             return jsonify(auth_error), 401, headers
+        user_profile = _user_profile_from_claims(decoded_claims)
 
-        # Get job and verify ownership
+        # Get job. Skiptrace feedback can be appended by any authenticated SSO
+        # user via Search History; other workflow feedback remains owner-only.
         job = get_job(job_id)
         if not job:
             return jsonify({"error": "Job not found"}), 404, headers
@@ -1045,7 +1422,7 @@ def main(request: Request):
         job_user_id = job.get("user_id")
         if job_user_id is None:
             return jsonify({"error": "Job has no owner; access denied"}), 403, headers
-        if job_user_id != user_id:
+        if job_user_id != user_id and not _is_skiptrace_job(job):
             return jsonify({"error": "Unauthorized"}), 403, headers
 
         # Parse and validate request body
@@ -1070,8 +1447,12 @@ def main(request: Request):
                 "comment": comment,
                 "submitted_at": datetime.utcnow(),
                 "user_id": user_id,
+                "user_email": user_profile["user_email"],
             }
-            db.collection("jobs").document(job_id).update({"feedback": feedback_data})
+            existing_entries = _feedback_entries(job)
+            db.collection("jobs").document(job_id).update(
+                {"feedback": feedback_data, "feedback_entries": [*existing_entries, feedback_data]}
+            )
             return jsonify({"status": "ok"}), 200, headers
         except Exception as e:
             return jsonify({"error": f"Failed to save feedback: {str(e)}"}), 500, headers
