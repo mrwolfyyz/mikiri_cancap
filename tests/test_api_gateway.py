@@ -9,6 +9,7 @@ already tested in test_api_gateway_validation.py.  These tests focus on
 the routing, authentication, rate limiting, job lifecycle, and proxy logic.
 """
 
+import base64
 import json
 import os
 import sys
@@ -16,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import flask
+import pytest
 
 # ---------------------------------------------------------------------------
 # Mock heavy GCP dependencies BEFORE loading the module.
@@ -1904,3 +1906,232 @@ class TestCreateJobRetry:
 
         # Restore
         gw.db.collection.return_value.document.return_value.set.side_effect = None
+
+
+# ===========================================================================
+# api_gateway helper coverage (keeps aggregate coverage >= CI threshold)
+# ===========================================================================
+class TestApiGatewayHelpers:
+    """Direct tests for small helpers and branches in api_gateway/main.py."""
+
+    def test_user_profile_from_claims_none_and_display_name(self):
+        assert gw._user_profile_from_claims(None) == {"user_email": None, "user_name": None}
+        out = gw._user_profile_from_claims({"email": "Agent@Example.com", "display_name": "  Jane  "})
+        assert out["user_email"] == "agent@example.com"
+        assert out["user_name"] == "Jane"
+
+    def test_request_args_branches(self):
+        req = MagicMock()
+        req.args = None
+        assert gw._request_args(req) == {}
+
+        req.args = MagicMock()
+        req.args.to_dict = MagicMock(return_value={"a": "1"})
+        assert gw._request_args(req) == {"a": "1"}
+
+        req.args = {"x": "y"}
+        assert gw._request_args(req) == {"x": "y"}
+
+    def test_isoformat_and_json_safe(self):
+        assert gw._isoformat(None) is None
+        dt = datetime(2026, 5, 1, 12, 0, 0)
+        assert gw._isoformat(dt).endswith("Z")
+
+        nested = {"t": dt, "n": 1}
+        out = gw._json_safe(nested)
+        assert isinstance(out["t"], str)
+        assert out["n"] == 1
+        assert gw._isoformat("no_iso_attr") == "no_iso_attr"
+
+    def test_parse_date_param_iso_z(self):
+        parsed = gw._parse_date_param("2026-05-02T12:00:00Z")
+        assert parsed.year == 2026 and parsed.month == 5
+
+    def test_history_filter_signature_stable(self):
+        params = {"start_date": "2026-05-01", "user_id": "a@b.com", "cars_reference_number": "abcde1"}
+        a = gw._history_filter_signature(params, 50)
+        b = gw._history_filter_signature(params, 50)
+        assert a == b
+        assert a != gw._history_filter_signature(params, 51)
+
+    def test_history_page_token_roundtrip(self):
+        fs = gw._history_filter_signature({}, 50)
+        created = datetime(2026, 5, 1, 12, 0, 0)
+        tok = gw._encode_history_page_token(created, "jobid12", fs)
+        dec = gw._decode_history_page_token(tok, fs)
+        assert dec["job_id"] == "jobid12"
+        assert dec["created_at"].year == 2026
+
+    def test_feedback_entries_legacy_only(self):
+        legacy = {"rating": "positive", "comment": "old", "user_id": "u1"}
+        assert gw._feedback_entries({"feedback_entries": [], "feedback": legacy}) == [legacy]
+
+    def test_is_skiptrace_job_by_cars(self):
+        assert gw._is_skiptrace_job({"workflow_type": "origination", "input": {"cars_reference_number": "ABCDE1"}})
+
+    def test_format_history_row_minimal(self):
+        row = gw._format_history_row(
+            "jid",
+            {
+                "user_id": "u1",
+                "user_email": None,
+                "created_at": datetime(2026, 5, 1),
+                "input": {"full_name": "A B", "cars_reference_number": "ABCDE1"},
+            },
+        )
+        assert row["job_id"] == "jid"
+        assert "results.html" in row["results_url"]
+
+    def test_prefill_doc_expired_naive_datetime(self):
+        assert gw._prefill_doc_expired(datetime(2010, 1, 1)) is True
+
+    def test_decode_history_page_token_wrong_signature(self):
+        fs = gw._history_filter_signature({}, 50)
+        tok = gw._encode_history_page_token(datetime(2026, 5, 1, 12, 0, 0), "jid", fs)
+        with pytest.raises(ValueError, match="history page token"):
+            gw._decode_history_page_token(tok, "not-the-same-signature")
+
+    def test_decode_history_page_token_not_a_dict_payload(self):
+        fs = gw._history_filter_signature({}, 50)
+        raw = base64.urlsafe_b64encode(b"[1,2,3]").decode("ascii").rstrip("=")
+        with pytest.raises(ValueError, match="history page token"):
+            gw._decode_history_page_token(raw, fs)
+
+
+class TestHistoryRoutesEdgeCases:
+    """Extra routing and error paths for Search History endpoints."""
+
+    def test_history_list_invalid_limit_returns_400(self):
+        req = _authed_request(method="GET", path="/jobs/history", query_args={"limit": "not-a-number"})
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u1"):
+                data, status, _ = _parse_response(gw.handle_history_list(req, {}))
+        assert status == 400
+        assert "filter" in data["error"].lower()
+
+    def test_history_list_stream_raises_500(self):
+        q = MagicMock()
+        q.limit.return_value.stream.side_effect = RuntimeError("firestore down")
+        req = _authed_request(method="GET", path="/jobs/history")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw, "_history_query_from_request", return_value=(q, {"limit": "50"})),
+            ):
+                data, status, _ = _parse_response(gw.handle_history_list(req, {}))
+        assert status == 500
+        assert "search history" in data["error"].lower()
+
+    def test_history_csv_stream_raises_500(self):
+        q = MagicMock()
+        q.stream.side_effect = RuntimeError("firestore down")
+        req = _authed_request(method="GET", path="/jobs/history/export.csv")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw, "_history_query_from_request", return_value=(q, {})),
+            ):
+                data, status, _ = _parse_response(gw.handle_history_csv_export(req, {}))
+        assert status == 500
+        assert "export" in data["error"].lower()
+
+    def test_get_feedback_invalid_path_four_segments(self):
+        req = _authed_request(method="GET", path="/jobs/j1/extra/feedback")
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u1"):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 400
+        assert "feedback path" in data["error"].lower()
+
+    def test_get_result_data_invalid_path_four_segments(self):
+        req = _authed_request(method="GET", path="/jobs/j1/extra/result-data")
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u1"):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 400
+        assert "result path" in data["error"].lower()
+
+    def test_get_result_data_no_markdown_404(self):
+        job = {"user_id": "owner", "workflow_type": "skiptrace", "input": {"cars_reference_number": "ABCDE1"}}
+        req = _authed_request(method="GET", path="/jobs/j1/result-data")
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u1"), _stub_get_job(job):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 404
+        assert "not available" in data["error"].lower()
+
+    def test_get_result_data_requires_auth(self):
+        req = _make_request(method="GET", path="/jobs/j1/result-data")
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 401
+
+    def test_get_result_data_job_not_found(self):
+        req = _authed_request(method="GET", path="/jobs/missing/result-data")
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u1"), _stub_get_job(None):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 404
+
+    def test_get_result_data_non_skiptrace_forbidden(self):
+        job = {"workflow_type": "origination", "input": {}}
+        req = _authed_request(method="GET", path="/jobs/j1/result-data")
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u1"), _stub_get_job(job):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 403
+
+    def test_post_feedback_invalid_path_four_segments(self):
+        req = _authed_request(method="POST", path="/jobs/j1/extra/feedback", body={"rating": "positive", "comment": ""})
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u1"):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 400
+        assert "feedback path" in data["error"].lower()
+
+    def test_get_feedback_returns_entries_via_main(self):
+        job = {
+            "workflow_type": "skiptrace",
+            "feedback_entries": [
+                {
+                    "rating": "positive",
+                    "comment": "ok",
+                    "submitted_at": datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
+                    "user_id": "u1",
+                    "user_email": "a@b.com",
+                }
+            ],
+        }
+        req = _authed_request(method="GET", path="/jobs/j1/feedback")
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("viewer-1"), _stub_get_job(job):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert len(data["entries"]) == 1
+        assert data["entries"][0]["rating"] == "positive"
+        assert data["entries"][0]["comment"] == "ok"
+
+    def test_get_feedback_requires_auth(self):
+        req = _make_request(method="GET", path="/jobs/j1/feedback")
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 401
+
+    def test_get_feedback_job_not_found(self):
+        req = _authed_request(method="GET", path="/jobs/missing/feedback")
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u1"), _stub_get_job(None):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 404
+
+    def test_get_feedback_non_skiptrace_forbidden(self):
+        job = {"workflow_type": "origination", "input": {}}
+        req = _authed_request(method="GET", path="/jobs/j1/feedback")
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u1"), _stub_get_job(job):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 403
