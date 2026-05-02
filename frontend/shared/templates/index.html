@@ -51,6 +51,23 @@
 
             <!-- Investigation Form -->
             <form id="investigationForm" class="investigation-form">
+{{#if skiptrace}}
+                <div class="form-group">
+                    <label for="carsReferenceNumber">CARS Reference Number *</label>
+                    <input
+                        type="text"
+                        id="carsReferenceNumber"
+                        name="carsReferenceNumber"
+                        placeholder="e.g., ABCDE123"
+                        required
+                        pattern="[A-Za-z]{5}[0-9]+"
+                        title="Enter 5 letters followed by one or more numbers"
+                        autocomplete="off"
+                    >
+                    <span class="error-message" id="carsReferenceNumberError"></span>
+                </div>
+
+{{/if skiptrace}}
                 <div class="form-group">
                     <label for="fullName">Full Name *</label>
                     <input 

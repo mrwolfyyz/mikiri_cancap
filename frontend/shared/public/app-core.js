@@ -63,6 +63,7 @@ const elements = {
 
   // Form
   form: document.getElementById("investigationForm"),
+  carsReferenceNumberInput: document.getElementById("carsReferenceNumber"),
   fullNameInput: document.getElementById("fullName"),
   cityInput: document.getElementById("city"),
   provinceInput: document.getElementById("province"),
@@ -88,6 +89,7 @@ const elements = {
   // Errors
   errorMessage: document.getElementById("errorMessage"),
   retryButton: document.getElementById("retryButton"),
+  carsReferenceNumberError: document.getElementById("carsReferenceNumberError"),
   fullNameError: document.getElementById("fullNameError"),
   cityError: document.getElementById("cityError"),
   provinceError: document.getElementById("provinceError"),
@@ -239,6 +241,19 @@ function switchTab(tabName) {
 // ===========================
 // Form Validation
 // ===========================
+function validateCarsReferenceNumber(carsReferenceNumber) {
+  const trimmed = (carsReferenceNumber || "").trim();
+  if (!trimmed) {
+    return "CARS Reference Number is required";
+  }
+
+  if (!/^[A-Za-z]{5}\d+$/.test(trimmed)) {
+    return "CARS Reference Number must start with 5 letters followed by numbers";
+  }
+
+  return null;
+}
+
 function validateFullName(name) {
   if (!name || name.trim().length < 2) {
     return "Full name is required";
@@ -392,7 +407,7 @@ function checkDriveConfiguration() {
 // ===========================
 // API Calls
 // ===========================
-async function submitInvestigation(fullName, city, email, companyName = "", province = "") {
+async function submitInvestigation(fullName, city, email, companyName = "", province = "", carsReferenceNumber = "") {
   const driveFolderId = storage.getDriveFolderId() || "";
 
   const requestBody = {
@@ -403,6 +418,11 @@ async function submitInvestigation(fullName, city, email, companyName = "", prov
     company_name: companyName.trim(),
     province: province.trim(),
   };
+
+  const normalizedCarsReferenceNumber = carsReferenceNumber.trim().toUpperCase();
+  if (normalizedCarsReferenceNumber) {
+    requestBody.cars_reference_number = normalizedCarsReferenceNumber;
+  }
 
   const endpoint = PlatformConfig.get("investigateEndpoint");
 
@@ -843,6 +863,9 @@ async function handleSubmit(e) {
   e.preventDefault();
 
   // Clear previous errors
+  if (elements.carsReferenceNumberError) {
+    showFieldError(elements.carsReferenceNumberError, null);
+  }
   showFieldError(elements.fullNameError, null);
   showFieldError(elements.cityError, null);
   showFieldError(elements.provinceError, null);
@@ -850,6 +873,7 @@ async function handleSubmit(e) {
   showFieldError(elements.companyNameError, null);
 
   // Get values
+  const carsReferenceNumber = elements.carsReferenceNumberInput?.value || "";
   const fullName = elements.fullNameInput.value;
   const city = elements.cityInput.value;
   const province = elements.provinceInput.value;
@@ -857,6 +881,9 @@ async function handleSubmit(e) {
   const companyName = elements.companyNameInput.value;
 
   // Validate
+  const carsReferenceNumberError = elements.carsReferenceNumberInput
+    ? validateCarsReferenceNumber(carsReferenceNumber)
+    : null;
   const fullNameError = validateFullName(fullName);
   const cityError = validateCity(city);
   const provinceError = validateProvince(province);
@@ -864,6 +891,11 @@ async function handleSubmit(e) {
   const companyNameError = validateCompanyName(companyName);
 
   let hasErrors = false;
+
+  if (carsReferenceNumberError) {
+    showFieldError(elements.carsReferenceNumberError, carsReferenceNumberError);
+    hasErrors = true;
+  }
 
   if (fullNameError) {
     showFieldError(elements.fullNameError, fullNameError);
@@ -911,7 +943,8 @@ async function handleSubmit(e) {
       city,
       finalEmail,
       companyName,
-      province
+      province,
+      carsReferenceNumber
     );
 
     // Update last request time

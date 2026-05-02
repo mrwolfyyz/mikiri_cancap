@@ -46,6 +46,7 @@ for fn_name in (
     "validate_city",
     "_province_validation_message",
     "validate_province",
+    "validate_cars_reference_number",
 ):
     lines = _source.splitlines()
     start = None
@@ -64,6 +65,7 @@ validate_email = _namespace["validate_email"]
 validate_full_name = _namespace["validate_full_name"]
 validate_city = _namespace["validate_city"]
 validate_province = _namespace["validate_province"]
+validate_cars_reference_number = _namespace["validate_cars_reference_number"]
 VALID_PROVINCES = _namespace["VALID_PROVINCES"]
 
 
@@ -297,3 +299,37 @@ class TestValidProvinces:
     def test_count(self):
         # 10 provinces + 3 territories = 13
         assert len(VALID_PROVINCES) == 13
+
+
+class TestValidateCarsReferenceNumber:
+    """Tests for the CARS reference number validator."""
+
+    def test_valid_reference_number(self):
+        valid, norm = validate_cars_reference_number("ABCDE123")
+        assert valid is True
+        assert norm == "ABCDE123"
+
+    def test_lowercase_normalized_to_uppercase(self):
+        valid, norm = validate_cars_reference_number("abcde123")
+        assert valid is True
+        assert norm == "ABCDE123"
+
+    def test_empty_reference_number(self):
+        valid, msg = validate_cars_reference_number("")
+        assert valid is False
+        assert "required" in msg.lower()
+
+    def test_too_few_letters(self):
+        valid, msg = validate_cars_reference_number("ABCD123")
+        assert valid is False
+        assert "5 letters" in msg
+
+    def test_non_alpha_prefix_rejected(self):
+        valid, msg = validate_cars_reference_number("AB1DE123")
+        assert valid is False
+        assert "5 letters" in msg
+
+    def test_non_numeric_suffix_rejected(self):
+        valid, msg = validate_cars_reference_number("ABCDE12X")
+        assert valid is False
+        assert "followed by numbers" in msg

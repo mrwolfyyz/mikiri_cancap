@@ -232,6 +232,16 @@ def validate_province(province: str) -> tuple[bool, str]:
     return True, norm
 
 
+def validate_cars_reference_number(cars_reference_number: str) -> tuple[bool, str]:
+    """Validate and normalize CARS reference number. On success returns uppercase value."""
+    normalized = (cars_reference_number or "").strip().upper()
+    if not normalized:
+        return False, "CARS Reference Number is required"
+    if not re.fullmatch(r"[A-Z]{5}\d+", normalized):
+        return False, "CARS Reference Number must start with 5 letters followed by numbers"
+    return True, normalized
+
+
 def validate_prefill_province_optional(province: str) -> tuple[bool, str]:
     """Province optional; if set, must be a valid code or allow-listed free text."""
     if not province or not str(province).strip():
@@ -492,6 +502,7 @@ def create_job(
     province: str = None,
     drive_folder_id: str = None,
     company_name: str = None,
+    cars_reference_number: str = None,
     user_id: str = None,
 ) -> str:
     """Create a new job in Firestore."""
@@ -513,6 +524,7 @@ def create_job(
             "province": province or None,
             "drive_folder_id": drive_folder_id,
             "company_name": company_name or None,
+            "cars_reference_number": cars_reference_number or None,
         },
         "result": None,
         "result_summary": None,
@@ -708,6 +720,8 @@ def handle_investigation(request: Request, headers: dict, workflow_name: str):
     province = (data.get("province") or "").strip()
     drive_folder_id = (data.get("drive_folder_id") or "").strip()
     company_name = (data.get("company_name") or "").strip()
+    cars_reference_number = (data.get("cars_reference_number") or "").strip()
+    is_skiptrace = workflow_name == SKIPTRACE_WORKFLOW_NAME
 
     # Validate
     errors = []
@@ -745,11 +759,33 @@ def handle_investigation(request: Request, headers: dict, workflow_name: str):
     if company_name and len(company_name) > 200:
         errors.append({"field": "company_name", "message": "Company name must be 200 characters or less"})
 
+    if is_skiptrace:
+        valid, msg = validate_cars_reference_number(cars_reference_number)
+        if not valid:
+            errors.append({"field": "cars_reference_number", "message": msg})
+        else:
+            cars_reference_number = msg
+    elif cars_reference_number:
+        valid, msg = validate_cars_reference_number(cars_reference_number)
+        if not valid:
+            errors.append({"field": "cars_reference_number", "message": msg})
+        else:
+            cars_reference_number = msg
+
     if errors:
         return jsonify({"error": "validation_error", "details": errors}), 400, headers
 
     # Create job with user_id (initial status "triggering" until workflow starts)
-    job_id = create_job(email, full_name, city, province, drive_folder_id, company_name, user_id=user_id)
+    job_id = create_job(
+        email,
+        full_name,
+        city,
+        province,
+        drive_folder_id,
+        company_name,
+        cars_reference_number,
+        user_id=user_id,
+    )
 
     # Trigger workflow (async), then mark job as pending
     try:

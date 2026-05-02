@@ -598,6 +598,7 @@ class TestHandleInvestigation:
             "city": "Toronto",
             "province": "ON",
             "company_name": "Acme Inc",
+            "cars_reference_number": "abcde123",
         }
 
     def test_happy_path(self):
@@ -607,11 +608,13 @@ class TestHandleInvestigation:
             body=self._valid_body(),
         )
         with _app.test_request_context():
-            with _stub_auth(), _stub_rate_limit(), _stub_create_job("j1"), _stub_trigger_workflow():
+            with _stub_auth(), _stub_rate_limit(), _stub_create_job("j1") as mock_create_job, _stub_trigger_workflow():
                 gw.db.collection.return_value.document.return_value.update = MagicMock()
                 data, status, _ = _parse_response(handle_investigation(req, {}, "investigate-skiptrace"))
         assert status == 202
         assert data["job_id"] == "j1"
+        mock_create_job.assert_called_once()
+        assert mock_create_job.call_args.args[6] == "ABCDE123"
 
     def test_optional_company_name_omitted(self):
         body = {k: v for k, v in self._valid_body().items() if k != "company_name"}
@@ -636,6 +639,39 @@ class TestHandleInvestigation:
         assert data["error"] == "validation_error"
         fields = {d["field"]: d["message"] for d in data["details"]}
         assert fields.get("company_name") == "Company name must be 200 characters or less"
+
+    def test_skiptrace_requires_cars_reference_number(self):
+        body = {k: v for k, v in self._valid_body().items() if k != "cars_reference_number"}
+        req = _authed_request(method="POST", path="/investigate-skiptrace", body=body)
+        with _app.test_request_context():
+            with _stub_auth(), _stub_rate_limit():
+                data, status, _ = _parse_response(handle_investigation(req, {}, "investigate-skiptrace"))
+        assert status == 400
+        assert data["error"] == "validation_error"
+        fields = {d["field"]: d["message"] for d in data["details"]}
+        assert fields.get("cars_reference_number") == "CARS Reference Number is required"
+
+    def test_skiptrace_rejects_invalid_cars_reference_number(self):
+        body = self._valid_body()
+        body["cars_reference_number"] = "AB12E345"
+        req = _authed_request(method="POST", path="/investigate-skiptrace", body=body)
+        with _app.test_request_context():
+            with _stub_auth(), _stub_rate_limit():
+                data, status, _ = _parse_response(handle_investigation(req, {}, "investigate-skiptrace"))
+        assert status == 400
+        assert data["error"] == "validation_error"
+        fields = {d["field"]: d["message"] for d in data["details"]}
+        assert "5 letters followed by numbers" in fields.get("cars_reference_number", "")
+
+    def test_origination_does_not_require_cars_reference_number(self):
+        body = {k: v for k, v in self._valid_body().items() if k != "cars_reference_number"}
+        req = _authed_request(method="POST", path="/investigate-origination", body=body)
+        with _app.test_request_context():
+            with _stub_auth(), _stub_rate_limit(), _stub_create_job("j1"), _stub_trigger_workflow():
+                gw.db.collection.return_value.document.return_value.update = MagicMock()
+                data, status, _ = _parse_response(handle_investigation(req, {}, "investigate-origination"))
+        assert status == 202
+        assert data["job_id"] == "j1"
 
     def test_auth_failure(self):
         req = _make_request(method="POST", headers={})
@@ -1475,6 +1511,29 @@ class TestTriggerWorkflowRetry:
 
 class TestCreateJobRetry:
     """Tests for retry logic in create_job."""
+
+    def test_stores_cars_reference_number_in_input(self):
+        """create_job stores the normalized CARS reference number in Firestore input."""
+        captured_job_data = []
+
+        def set_side_effect(job_data):
+            captured_job_data.append(job_data)
+
+        gw.db.collection.return_value.document.return_value.set.side_effect = set_side_effect
+
+        job_id = create_job(
+            "a@b.com",
+            "John Smith",
+            "Toronto",
+            "ON",
+            cars_reference_number="ABCDE123",
+        )
+
+        assert job_id is not None
+        assert captured_job_data[0]["input"]["cars_reference_number"] == "ABCDE123"
+
+        # Restore
+        gw.db.collection.return_value.document.return_value.set.side_effect = None
 
     def test_firestore_transient_failure_retried(self):
         """create_job retries Firestore set on transient failure."""
