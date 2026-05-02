@@ -928,20 +928,31 @@
     /* Hide UI elements */
     header,
     .breadcrumb,
+    .report-header,
     .action-bar,
     .report-tabs,
-    .dark-mode-toggle {
+    .dark-mode-toggle,
+    .tabs,
+    .hero,
+    .results-actions {
         display: none !important;
     }
 
     /* Expand all content */
     .tab-panel {
         display: block !important;
-        page-break-inside: avoid;
+        page-break-inside: auto;
+        break-inside: auto;
     }
 
     .tab-panel:not(:last-child) {
-        page-break-after: always;
+        page-break-after: auto;
+        break-after: auto;
+    }
+
+    /* Screen-only min-height must not reserve blank space in print */
+    .tab-panels {
+        min-height: 0 !important;
     }
 
     /* Show all checkboxes as static */
@@ -949,10 +960,20 @@
         pointer-events: none;
     }
 
-    /* Ensure callouts print well */
+    /*
+     * Callouts must be able to split across pages. Identity tab opens with an H2 then a long
+     * Rationale callout; page-break-inside: avoid strands the heading alone on the prior page.
+     */
     .callout {
-        page-break-inside: avoid;
+        page-break-inside: auto;
+        break-inside: auto;
         border: 1px solid;
+    }
+
+    .markdown-content h2,
+    .markdown-content h3 {
+        page-break-after: avoid;
+        break-after: avoid;
     }
 
     /* Use light colors for print */
@@ -991,11 +1012,6 @@
         background: white !important;
         border: none !important;
         padding: 0 !important;
-    }
-
-    /* Add report title at top of each page */
-    .report-header {
-        page-break-after: avoid;
     }
 
     /* Expand hits collapsibles so all content prints */
