@@ -132,7 +132,7 @@
 .history-table {
     width: 100%;
     border-collapse: collapse;
-    min-width: 860px;
+    table-layout: fixed;
 }
 
 .history-table th,
@@ -142,6 +142,7 @@
     border-bottom: 1px solid var(--border);
     vertical-align: top;
     font-size: var(--font-sm);
+    overflow-wrap: break-word;
 }
 
 .history-table th {
@@ -162,7 +163,7 @@
 .history-feedback-summary {
     color: var(--text-secondary);
     margin-bottom: var(--space-xs);
-    max-width: 240px;
+    max-width: 100%;
 }
 
 .history-action-link {
