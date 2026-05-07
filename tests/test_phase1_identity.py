@@ -853,8 +853,8 @@ class TestRunIdentityResolution:
         # LinkedIn called for company query (returns []), then city fallback
         assert mock_linkedin.call_count >= 2
 
-    def test_company_name_linkedin_guardrail_inserts_first_hit(self):
-        """If company_name_linkedin has hits and LLM omits it, first hit is inserted at top with high confidence."""
+    def test_company_name_linkedin_hits_do_not_mutate_top_handles(self):
+        """company_name_linkedin hits are query context only; they do not mutate LLM top_handles."""
         body = self._base_body(company_name="Acme Corp")
         scored = self._make_scored()
         scored["top_handles"] = [
@@ -878,53 +878,13 @@ class TestRunIdentityResolution:
         result, status, _, _ = self._run_main(body, scored, linkedin_results=linkedin_results)
 
         assert status == 200
-        top_handles = result["top_handles"]
-        assert top_handles[0]["url"] == "https://linkedin.com/in/john-doe-acme"
-        assert top_handles[0]["platform"] == "linkedin"
-        assert top_handles[0]["handle"] == "john-doe-acme"
-        assert top_handles[0]["confidence"] == "high"
+        assert result["top_handles"] == scored["top_handles"]
+        company_query = [q for q in result["queries"] if q["id"] == "company_name_linkedin"]
+        assert len(company_query) == 1
+        assert len(company_query[0]["hits"]) == 2
 
-    def test_company_name_linkedin_guardrail_does_not_duplicate_existing(self):
-        """If company_name_linkedin first hit is already present, guardrail does not insert a duplicate."""
-        body = self._base_body(company_name="Acme Corp")
-        scored = self._make_scored()
-        scored["top_handles"] = [
-            {
-                "platform": "linkedin",
-                "handle": "john-doe-acme",
-                "url": "https://linkedin.com/in/john-doe-acme",
-                "confidence": "medium",
-            }
-        ]
-        linkedin_results = [
-            {
-                "url": "https://linkedin.com/in/john-doe-acme",
-                "title": "John Doe - Acme",
-                "snippet": "Profile at Acme",
-                "relevance_score": 0.0,
-            }
-        ]
-
-        result, status, _, _ = self._run_main(body, scored, linkedin_results=linkedin_results)
-
-        assert status == 200
-        handle_urls = [h["url"] for h in result["top_handles"] if isinstance(h, dict) and h.get("url")]
-        assert handle_urls.count("https://linkedin.com/in/john-doe-acme") == 1
-
-    def test_company_name_linkedin_guardrail_noop_when_query_absent(self):
-        """Without company_name, guardrail does nothing because company_name_linkedin query is absent."""
-        scored = self._make_scored()
-        original_urls = [h["url"] for h in scored["top_handles"]]
-
-        result, status, _, _ = self._run_main(self._base_body(), scored, linkedin_results=[])
-
-        assert status == 200
-        result_urls = [h["url"] for h in result["top_handles"]]
-        assert result_urls == original_urls
-        assert not any(q["id"] == "company_name_linkedin" for q in result["queries"])
-
-    def test_company_name_linkedin_guardrail_noop_when_no_hits(self):
-        """With company_name but zero company_name_linkedin hits, guardrail does not insert anything."""
+    def test_company_name_linkedin_query_present_even_when_no_hits(self):
+        """company_name_linkedin query entry is still emitted when company_name is provided."""
         body = self._base_body(company_name="Acme Corp")
         scored = self._make_scored()
         original_urls = [h["url"] for h in scored["top_handles"]]

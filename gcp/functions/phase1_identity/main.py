@@ -1120,42 +1120,6 @@ def _run_identity_resolution(
             print(f"[Phase1] HIBP lookup failed: {e}")
             breaches = []
 
-    # Guardrail: ensure deterministic company_name_linkedin hit is represented
-    # in top_handles when the query produced results.
-    if not scored_error:
-        if not isinstance(scored.get("top_handles"), list):
-            scored["top_handles"] = []
-
-        company_linkedin_entry = next((q for q in queries_payload if q.get("id") == "company_name_linkedin"), None)
-        company_hits = company_linkedin_entry.get("hits", []) if isinstance(company_linkedin_entry, dict) else []
-
-        if company_linkedin_entry and company_hits:
-            first_hit = company_hits[0] if isinstance(company_hits[0], dict) else {}
-            first_hit_url = first_hit.get("url", "")
-
-            existing_urls = {
-                h.get("url") for h in scored.get("top_handles", []) if isinstance(h, dict) and h.get("url")
-            }
-
-            if first_hit_url and first_hit_url not in existing_urls:
-                location = scored.get("location") if isinstance(scored.get("location"), dict) else {}
-                inferred_city = (location.get("city") or "").strip() or city
-                scored["top_handles"].insert(
-                    0,
-                    {
-                        "platform": infer_platform_from_url(first_hit_url),
-                        "handle": extract_handle_from_url(first_hit_url),
-                        "url": first_hit_url,
-                        "city": inferred_city,
-                        "confidence": "high",
-                    },
-                )
-                print(f"[Phase1] Guardrail inserted company_name_linkedin handle: {first_hit_url}")
-            elif first_hit_url:
-                print(f"[Phase1] Guardrail skipped: company_name_linkedin already in top_handles ({first_hit_url})")
-        elif company_linkedin_entry:
-            print("[Phase1] Guardrail skipped: company_name_linkedin had zero hits")
-
     # -------------------------
     # Location-based name search rerun
     # -------------------------
