@@ -109,6 +109,17 @@ _prefill_doc_expired = gw._prefill_doc_expired
 # ---------------------------------------------------------------------------
 _app = flask.Flask(__name__)
 
+# Default mock: endpoint rate limit events always within limit (count=0).
+# This lets existing tests for history/feedback handlers pass without needing
+# to patch check_and_record_endpoint_rate_limit individually. The 3-where
+# chain (user_id, endpoint, ts) is distinct from the 2-where chain used by
+# check_rate_limit, so this setup does not affect TestCheckRateLimit tests.
+_mock_rl_zero = MagicMock()
+_mock_rl_zero.value = 0
+gw.db.collection.return_value.where.return_value.where.return_value.where.return_value.count.return_value.get.return_value = [
+    [_mock_rl_zero]
+]
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -161,6 +172,10 @@ def _stub_rate_limit(allowed=True):
     return patch.object(gw, "check_rate_limit", return_value=allowed)
 
 
+def _stub_endpoint_rate_limit(allowed=True):
+    return patch.object(gw, "check_and_record_endpoint_rate_limit", return_value=allowed)
+
+
 def _stub_get_job(job=None):
     return patch.object(gw, "get_job", return_value=job)
 
@@ -210,7 +225,7 @@ class _HistoryQuery:
         self.orders = []
         self.cursor = None
 
-    def where(self, *args):
+    def where(self, *args, **kwargs):
         self.filters.append(args)
         return self
 
@@ -257,8 +272,8 @@ class _HistoryCollection:
     def __init__(self, docs, count_override=None):
         self.query = _HistoryQuery(docs, count_override=count_override)
 
-    def where(self, *args):
-        return self.query.where(*args)
+    def where(self, *args, **kwargs):
+        return self.query.where(*args, **kwargs)
 
 
 # ===========================================================================
@@ -2169,6 +2184,7 @@ class TestHistoryRoutesEdgeCases:
             with (
                 patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
                 _stub_auth("u1"),
+                _stub_endpoint_rate_limit(),
                 patch.object(gw.db, "collection", return_value=_HistoryCollection(docs, count_override=5001)),
             ):
                 data, status, _ = _parse_response(main_handler(req))
@@ -2322,3 +2338,148 @@ class TestHistoryRoutesEdgeCases:
             with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u1"), _stub_get_job(job):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 403
+
+
+# ===========================================================================
+# check_and_record_endpoint_rate_limit
+# ===========================================================================
+class TestCheckAndRecordEndpointRateLimit:
+    def test_allows_within_limit(self):
+        mock_count = MagicMock()
+        mock_count.value = 5
+        col_mock = MagicMock()
+        col_mock.where.return_value.where.return_value.where.return_value.count.return_value.get.return_value = [
+            [mock_count]
+        ]
+        with patch.object(gw.db, "collection", return_value=col_mock):
+            result = gw.check_and_record_endpoint_rate_limit("u1", "history_list", 120, 3600)
+        assert result is True
+        col_mock.add.assert_called_once()
+
+    def test_blocks_at_limit(self):
+        mock_count = MagicMock()
+        mock_count.value = 10
+        col_mock = MagicMock()
+        col_mock.where.return_value.where.return_value.where.return_value.count.return_value.get.return_value = [
+            [mock_count]
+        ]
+        with patch.object(gw.db, "collection", return_value=col_mock):
+            result = gw.check_and_record_endpoint_rate_limit("u1", "history_csv_export", 10, 3600)
+        assert result is False
+        col_mock.add.assert_not_called()
+
+    def test_fails_closed_on_count_error(self):
+        col_mock = MagicMock()
+        col_mock.where.side_effect = Exception("firestore down")
+        with patch.object(gw.db, "collection", return_value=col_mock):
+            result = gw.check_and_record_endpoint_rate_limit("u1", "history_list", 120, 3600)
+        assert result is False
+
+
+# ===========================================================================
+# Rate-limit enforcement on history / feedback read endpoints
+# ===========================================================================
+class TestEndpointRateLimitEnforcement:
+    def test_history_list_rate_limited_returns_429(self):
+        req = _authed_request(method="GET", path="/jobs/history")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                _stub_endpoint_rate_limit(allowed=False),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 429
+        assert "error" in data
+
+    def test_history_csv_export_rate_limited_returns_429(self):
+        req = _authed_request(method="GET", path="/jobs/history/export.csv")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                _stub_endpoint_rate_limit(allowed=False),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 429
+        assert "error" in data
+
+    def test_feedback_get_rate_limited_returns_429(self):
+        req = _authed_request(method="GET", path="/jobs/j1/feedback")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                _stub_endpoint_rate_limit(allowed=False),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 429
+        assert "error" in data
+
+
+# ===========================================================================
+# Audit logging on history / feedback endpoints
+# ===========================================================================
+class TestEndpointAuditLogging:
+    def test_history_list_emits_audit_log(self, capsys):
+        docs = [
+            _HistoryDoc(
+                "j1",
+                {"status": "complete", "created_at": datetime(2026, 5, 1), "user_id": "u1", "input": {}},
+            )
+        ]
+        req = _authed_request(user_id="u1", method="GET", path="/jobs/history")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                _stub_endpoint_rate_limit(),
+                patch.object(gw.db, "collection", return_value=_HistoryCollection(docs)),
+            ):
+                _parse_response(main_handler(req))
+        out = capsys.readouterr().out
+        assert "[ApiGateway] history_list user=u1" in out
+        assert "row_count=" in out
+
+    def test_history_csv_export_emits_audit_log(self, capsys):
+        docs = [
+            _HistoryDoc(
+                "j1",
+                {"status": "complete", "created_at": datetime(2026, 5, 1), "user_id": "u1", "input": {}},
+            )
+        ]
+        req = _authed_request(user_id="u1", method="GET", path="/jobs/history/export.csv")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                _stub_endpoint_rate_limit(),
+                patch.object(gw.db, "collection", return_value=_HistoryCollection(docs, count_override=1)),
+            ):
+                _body, status, _ = main_handler(req)
+        assert status == 200
+        out = capsys.readouterr().out
+        assert "[ApiGateway] history_csv_export user=u1" in out
+        assert "row_count=" in out
+        assert "bytes=" in out
+
+    def test_feedback_post_emits_audit_log_without_comment_text(self, capsys):
+        job = {"workflow_type": "skiptrace", "user_id": "u1", "input": {}, "feedback_entries": []}
+        req = _authed_request(
+            user_id="u1",
+            method="POST",
+            path="/jobs/j1/feedback",
+            body={"rating": "positive", "comment": "great result"},
+        )
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth_claims("u1", "u1@example.com", "User One"),
+                _stub_get_job(job),
+                patch.object(gw.db, "collection", return_value=MagicMock()),
+            ):
+                _parse_response(main_handler(req))
+        out = capsys.readouterr().out
+        assert "[ApiGateway] feedback_post user=u1" in out
+        assert "comment_len=" in out
+        assert "great result" not in out

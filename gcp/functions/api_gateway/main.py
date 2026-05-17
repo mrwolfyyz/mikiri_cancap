@@ -676,6 +676,12 @@ RATE_LIMIT_MAX_REQUESTS = 5
 RATE_LIMIT_WINDOW_SECONDS = 300  # 5 minutes
 FEEDBACK_RATE_LIMIT_MAX = 5
 FEEDBACK_RATE_LIMIT_WINDOW_HOURS = 1
+HISTORY_LIST_RATE_LIMIT_MAX = 120
+HISTORY_LIST_RATE_LIMIT_WINDOW_SECONDS = 3600
+CSV_EXPORT_RATE_LIMIT_MAX = 10
+CSV_EXPORT_RATE_LIMIT_WINDOW_SECONDS = 3600
+FEEDBACK_GET_RATE_LIMIT_MAX = 120
+FEEDBACK_GET_RATE_LIMIT_WINDOW_SECONDS = 3600
 
 
 def check_rate_limit(user_id: str) -> bool:
@@ -708,6 +714,55 @@ def check_rate_limit(user_id: str) -> bool:
     except Exception as e:
         logger.error("Rate limit check failed; rejecting request: %s", e)
         return False
+
+
+def check_and_record_endpoint_rate_limit(user_id: str, endpoint: str, max_requests: int, window_seconds: int) -> bool:
+    """Rate-limit read endpoints via a Firestore event log.
+
+    Returns True (allowed) and records the event; False if the user has exceeded
+    max_requests within window_seconds. The count check fails closed; the event
+    write is best-effort (failures are logged but do not block the request).
+    """
+    from google.cloud.firestore_v1.base_query import FieldFilter
+
+    def _count_recent() -> int:
+        window_start = datetime.utcnow() - timedelta(seconds=window_seconds)
+        col = db.collection("endpoint_rate_limit_events")
+        recent = (
+            col.where(filter=FieldFilter("user_id", "==", user_id))
+            .where(filter=FieldFilter("endpoint", "==", endpoint))
+            .where(filter=FieldFilter("ts", ">=", window_start))
+            .count()
+            .get()
+        )
+        return recent[0][0].value
+
+    try:
+        count = retry_with_backoff(
+            _count_recent,
+            RetryConfig(max_attempts=2, base_delay_seconds=0.2, max_delay_seconds=1.0),
+            operation_name=f"endpoint rate limit count ({endpoint})",
+        )
+    except Exception as e:
+        print(f"[ApiGateway] WARNING: endpoint rate limit check failed for {endpoint}, failing closed: {e}")
+        return False
+
+    if count >= max_requests:
+        return False
+
+    try:
+        db.collection("endpoint_rate_limit_events").add(
+            {
+                "user_id": user_id,
+                "endpoint": endpoint,
+                "ts": datetime.utcnow(),
+                "expires_at": datetime.utcnow() + timedelta(seconds=window_seconds * 2),
+            }
+        )
+    except Exception as e:
+        print(f"[ApiGateway] WARNING: failed to record endpoint rate limit event for {endpoint}: {e}")
+
+    return True
 
 
 # =============================================================================
@@ -945,9 +1000,14 @@ def _history_query_from_request(request: Request):
 
 def handle_history_list(request: Request, headers: dict):
     """Return paginated skiptrace history rows for any authenticated SSO user."""
-    _user_id, auth_error = verify_firebase_token(request)
+    uid, auth_error = verify_firebase_token(request)
     if auth_error:
         return jsonify(auth_error), 401, headers
+
+    if not check_and_record_endpoint_rate_limit(
+        uid, "history_list", HISTORY_LIST_RATE_LIMIT_MAX, HISTORY_LIST_RATE_LIMIT_WINDOW_SECONDS
+    ):
+        return jsonify({"error": "Too many requests. Please wait before loading more history."}), 429, headers
 
     try:
         query, params = _history_query_from_request(request)
@@ -969,6 +1029,9 @@ def handle_history_list(request: Request, headers: dict):
             next_page_token = _encode_history_page_token(
                 (last_doc.to_dict() or {}).get("created_at"), last_doc.id, filter_signature
             )
+        print(
+            f"[ApiGateway] history_list user={uid} filter_sig={filter_signature} row_count={len(rows)} has_more={has_more}"
+        )
         return (
             jsonify(
                 {
@@ -993,9 +1056,14 @@ def handle_history_list(request: Request, headers: dict):
 
 def handle_history_csv_export(request: Request, headers: dict):
     """Return CSV for all skiptrace history rows matching filters."""
-    _user_id, auth_error = verify_firebase_token(request)
+    uid, auth_error = verify_firebase_token(request)
     if auth_error:
         return jsonify(auth_error), 401, headers
+
+    if not check_and_record_endpoint_rate_limit(
+        uid, "history_csv_export", CSV_EXPORT_RATE_LIMIT_MAX, CSV_EXPORT_RATE_LIMIT_WINDOW_SECONDS
+    ):
+        return jsonify({"error": "CSV export rate limit exceeded. Maximum 10 exports per hour."}), 429, headers
 
     try:
         query, _params = _history_query_from_request(request)
@@ -1042,6 +1110,8 @@ def handle_history_csv_export(request: Request, headers: dict):
             }
         )
 
+    csv_bytes = len(output.getvalue().encode())
+    print(f"[ApiGateway] history_csv_export user={uid} row_count={len(rows)} bytes={csv_bytes}")
     filename = f"skiptrace-search-history-{datetime.utcnow().strftime('%Y-%m-%d')}.csv"
     response = Response(output.getvalue(), mimetype="text/csv")
     response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -1050,9 +1120,14 @@ def handle_history_csv_export(request: Request, headers: dict):
 
 def handle_history_feedback_get(request: Request, job_id: str, headers: dict):
     """Return full feedback history for a skiptrace job."""
-    _user_id, auth_error = verify_firebase_token(request)
+    uid, auth_error = verify_firebase_token(request)
     if auth_error:
         return jsonify(auth_error), 401, headers
+
+    if not check_and_record_endpoint_rate_limit(
+        uid, "feedback_get", FEEDBACK_GET_RATE_LIMIT_MAX, FEEDBACK_GET_RATE_LIMIT_WINDOW_SECONDS
+    ):
+        return jsonify({"error": "Too many requests."}), 429, headers
 
     job = get_job(job_id)
     if not job:
@@ -1071,6 +1146,7 @@ def handle_history_feedback_get(request: Request, job_id: str, headers: dict):
                 "user_email": entry.get("user_email"),
             }
         )
+    print(f"[ApiGateway] feedback_get user={uid} job_id={job_id} entry_count={len(entries)}")
     return jsonify({"entries": entries}), 200, headers
 
 
@@ -1520,6 +1596,7 @@ def main(request: Request):
         updated_job = dict(job)
         updated_job["feedback_entries"] = [*existing_entries, feedback_data]
         row = _format_history_row(job_id, updated_job)
+        print(f"[ApiGateway] feedback_post user={user_id} job_id={job_id} rating={rating} comment_len={len(comment)}")
         return jsonify({"status": "ok", "row": row}), 200, headers
 
     # Health check
