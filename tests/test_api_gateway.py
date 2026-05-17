@@ -2069,16 +2069,28 @@ class TestApiGatewayHelpers:
         assert out["n"] == 1
         assert gw._isoformat("no_iso_attr") == "no_iso_attr"
 
-    def test_parse_date_param_iso_z(self):
-        parsed = gw._parse_date_param("2026-05-02T12:00:00Z")
-        assert parsed.year == 2026 and parsed.month == 5
+    def test_parse_date_query_param_iso_z_rejected(self):
+        with pytest.raises(ValueError, match="Expected YYYY-MM-DD"):
+            gw._parse_date_query_param("2026-05-02T12:00:00Z")
 
-    def test_parse_date_param_end_of_day(self):
-        parsed = gw._parse_date_param("2026-05-01", end_of_day=True)
+    def test_parse_date_query_param_invalid_format(self):
+        with pytest.raises(ValueError, match="Expected YYYY-MM-DD"):
+            gw._parse_date_query_param("not-a-date")
+
+    def test_parse_date_query_param_midnight(self):
+        parsed = gw._parse_date_query_param("2026-05-01")
+        assert parsed.hour == 0 and parsed.minute == 0 and parsed.second == 0
+
+    def test_parse_date_query_param_end_of_day(self):
+        parsed = gw._parse_date_query_param("2026-05-01", end_of_day=True)
         assert parsed.hour == 23
         assert parsed.minute == 59
         assert parsed.second == 59
         assert parsed.microsecond == 999999
+
+    def test_parse_date_param_iso_z_still_works_internally(self):
+        parsed = gw._parse_date_param("2026-05-02T12:00:00Z")
+        assert parsed.year == 2026 and parsed.month == 5
 
     def test_decode_history_page_token_expired(self):
         fs = gw._history_filter_signature({}, 50)

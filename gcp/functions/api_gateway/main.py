@@ -219,7 +219,7 @@ def _json_safe(value: Any) -> Any:
 
 
 def _parse_date_param(value: str | None, end_of_day: bool = False) -> datetime | None:
-    """Parse YYYY-MM-DD or ISO-ish dates from query params."""
+    """Parse YYYY-MM-DD or ISO 8601 datetime strings. Used internally (page tokens, DB values)."""
     if not value:
         return None
     normalized = value.strip()
@@ -233,14 +233,31 @@ def _parse_date_param(value: str | None, end_of_day: bool = False) -> datetime |
     return datetime.fromisoformat(normalized.replace("Z", "+00:00")).replace(tzinfo=None)
 
 
+def _parse_date_query_param(value: str | None, end_of_day: bool = False) -> datetime | None:
+    """Parse a YYYY-MM-DD date from an HTTP query parameter.
+
+    Accepts only YYYY-MM-DD. Raises ValueError for any other non-empty input.
+    Returns None for None or empty string.
+    end_of_day=True returns 23:59:59.999999 on that date; otherwise midnight.
+    """
+    if not value:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", normalized):
+        raise ValueError(f"Invalid date format: {normalized!r}. Expected YYYY-MM-DD.")
+    return _parse_date_param(normalized, end_of_day=end_of_day)
+
+
 def _history_filter_signature(params: dict[str, str], limit: int) -> str:
     """Stable signature used to keep page tokens bound to one filtered result set."""
     user_filter = (params.get("user_id") or "").strip()
     user_field = "user_email" if "@" in user_filter else "user_id"
     cars_ref = (params.get("cars_reference_number") or "").strip().upper() or None
     normalized = {
-        "start_date": _isoformat(_parse_date_param(params.get("start_date"))),
-        "end_date": _isoformat(_parse_date_param(params.get("end_date"), end_of_day=True)),
+        "start_date": _isoformat(_parse_date_query_param(params.get("start_date"))),
+        "end_date": _isoformat(_parse_date_query_param(params.get("end_date"), end_of_day=True)),
         "user_field": user_field if user_filter else None,
         "user_filter": user_filter.lower() if user_field == "user_email" else user_filter,
         "cars_reference_number": cars_ref,
@@ -1001,8 +1018,8 @@ def _history_query_from_request(request: Request) -> tuple[Any, dict[str, str], 
     params = _request_args(request)
     query = db.collection("jobs").where("workflow_type", "==", "skiptrace")
 
-    start_date = _parse_date_param(params.get("start_date"))
-    end_date = _parse_date_param(params.get("end_date"), end_of_day=True)
+    start_date = _parse_date_query_param(params.get("start_date"))
+    end_date = _parse_date_query_param(params.get("end_date"), end_of_day=True)
     user_filter = (params.get("user_id") or "").strip()
     cars_reference_number = (params.get("cars_reference_number") or "").strip().upper()
 
@@ -1122,12 +1139,13 @@ def handle_history_list(request: Request, headers: dict):
         print(
             f"[ApiGateway] history_list user={uid} mode={mode} filter_sig={filter_signature} row_count={len(rows)} has_more={has_more}"
         )
+        headers["Cache-Control"] = "no-store, must-revalidate"
         return (
             jsonify(
                 {
                     "rows": rows,
                     "limit": limit,
-                    "page_size": limit,
+                    # has_more == (next_page_token is not None); both kept — has_more is clearer for callers
                     "has_more": has_more,
                     "next_page_token": next_page_token,
                     "total_count": total_count,
@@ -1164,8 +1182,8 @@ def handle_history_csv_export(request: Request, headers: dict):
             return jsonify({"error": "Result set too large; narrow your filters."}), 413, headers
         rows_raw = [_format_history_row(doc.id, doc.to_dict()) for doc in query.limit(5000).stream()]
         if csv_mode == "cars":
-            csv_start = _parse_date_param(csv_params.get("start_date"))
-            csv_end = _parse_date_param(csv_params.get("end_date"), end_of_day=True)
+            csv_start = _parse_date_query_param(csv_params.get("start_date"))
+            csv_end = _parse_date_query_param(csv_params.get("end_date"), end_of_day=True)
             rows = [r for r in rows_raw if _in_date_range(r.get("created_at"), csv_start, csv_end)]
         else:
             rows = rows_raw
@@ -1212,6 +1230,7 @@ def handle_history_csv_export(request: Request, headers: dict):
     filename = f"skiptrace-search-history-{datetime.utcnow().strftime('%Y-%m-%d')}.csv"
     response = Response(output.getvalue(), mimetype="text/csv")
     response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    headers["Cache-Control"] = "no-store, must-revalidate"
     return response, 200, headers
 
 
@@ -1244,6 +1263,7 @@ def handle_history_feedback_get(request: Request, job_id: str, headers: dict):
             }
         )
     print(f"[ApiGateway] feedback_get user={uid} job_id={job_id} entry_count={len(entries)}")
+    headers["Cache-Control"] = "no-store, must-revalidate"
     return jsonify({"entries": entries}), 200, headers
 
 
