@@ -101,6 +101,9 @@ REQUIRE_SSO = os.environ.get("REQUIRE_SSO") == "true"
 APP_CHECK_ENFORCED = os.environ.get("APP_CHECK_ENFORCED") == "true"
 ALLOWED_EMAIL_DOMAINS = {d.strip().lower() for d in os.environ.get("ALLOWED_EMAIL_DOMAINS", "").split(",") if d.strip()}
 
+# Frontend base URL for absolute links in CSV exports (empty = relative path fallback)
+FRONTEND_RESULTS_BASE_URL = os.environ.get("FRONTEND_RESULTS_BASE_URL", "").strip().rstrip("/")
+
 
 # =============================================================================
 # Authentication & Validation Helpers
@@ -335,6 +338,14 @@ def _feedback_summary(job: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+_FORMULA_CHARS = frozenset("=+-@\t\r")
+
+
+def _csv_safe(value: str | None) -> str:
+    s = value or ""
+    return f"'{s}" if s and s[0] in _FORMULA_CHARS else s
+
+
 def _is_skiptrace_job(job: dict[str, Any]) -> bool:
     """Identify skiptrace jobs, including older docs created before workflow_type was stored."""
     if job.get("workflow_type") == "skiptrace":
@@ -361,7 +372,7 @@ def _format_history_row(job_id: str, job: dict[str, Any]) -> dict[str, Any]:
         "cars_reference_number": input_data.get("cars_reference_number"),
         "feedback": feedback,
         "feedback_count": feedback["count"] if feedback else 0,
-        "results_url": f"results.html?job_id={job_id}&workflow=skiptrace",
+        "results_url": f"{FRONTEND_RESULTS_BASE_URL + '/' if FRONTEND_RESULTS_BASE_URL else ''}results.html?job_id={job_id}&workflow=skiptrace",
     }
 
 
@@ -988,7 +999,11 @@ def handle_history_csv_export(request: Request, headers: dict):
 
     try:
         query, _params = _history_query_from_request(request)
-        rows = [_format_history_row(doc.id, doc.to_dict()) for doc in query.stream()]
+        count_result = query.count().get()
+        total = count_result[0][0].value
+        if total > 5000:
+            return jsonify({"error": "Result set too large; narrow your filters."}), 413, headers
+        rows = [_format_history_row(doc.id, doc.to_dict()) for doc in query.limit(5000).stream()]
     except ValueError:
         return jsonify({"error": "Invalid history filter"}), 400, headers
     except Exception as e:
@@ -1015,13 +1030,13 @@ def handle_history_csv_export(request: Request, headers: dict):
         feedback = row.get("feedback") or {}
         writer.writerow(
             {
-                "CARS Reference Number": row.get("cars_reference_number") or "",
+                "CARS Reference Number": _csv_safe(row.get("cars_reference_number")),
                 "Date/Time of Search": row.get("created_at") or "",
-                "Full Name": row.get("full_name") or "",
-                "User": row.get("user_display") or "",
+                "Full Name": _csv_safe(row.get("full_name")),
+                "User": _csv_safe(row.get("user_display")),
                 "Job ID": row.get("job_id") or "",
                 "Status": row.get("status") or "",
-                "Feedback Summary": feedback.get("comment_summary") or "",
+                "Feedback Summary": _csv_safe(feedback.get("comment_summary")),
                 "Feedback Count": row.get("feedback_count") or 0,
                 "Results URL": row.get("results_url") or "",
             }

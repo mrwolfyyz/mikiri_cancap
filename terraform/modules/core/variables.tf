@@ -216,3 +216,9 @@ variable "origination_workflow_name" {
   type        = string
   default     = "investigate-origination"
 }
+
+variable "frontend_results_base_url" {
+  description = "Base URL for the skiptrace frontend (e.g. https://example.web.app). Prepended to Results URL in CSV exports. Empty = relative path fallback."
+  type        = string
+  default     = ""
+}
