@@ -90,12 +90,16 @@ Function names: `domain_enrichment`, `report_generator_origination`, `report_gen
 - tfvars: `terraform/environments/prod/terraform.tfvars` (gitignored, not committed)
 
 ### Worktree deployment
-`terraform.tfvars` is gitignored, so it won't exist in worktrees. Before deploying from a worktree, copy it from the main repo:
+`terraform.tfvars` and `backend.tf` are gitignored and won't exist in worktrees. Copy both from the main repo before deploying:
 ```bash
 cp /Users/bradleymarks/mikiri/skip-trace-origination/terraform/environments/prod/terraform.tfvars \
    <worktree>/terraform/environments/prod/terraform.tfvars
+cp /Users/bradleymarks/mikiri/skip-trace-origination/terraform/environments/prod/backend.tf \
+   <worktree>/terraform/environments/prod/backend.tf
 ```
-Then run `prepare-functions.sh` and `terraform apply` from within the worktree.
+Then run `terraform init`, `prepare-functions.sh`, and `terraform apply` from within the worktree.
+
+**Note:** On a fresh worktree, `prepare-functions.sh` generates new zip hashes for all functions (shared utilities not yet present), so the targeted plan may show extra functions beyond the one you changed. The content is identical to the main repo — only the targeted function will have meaningful code differences.
 
 ## Key Conventions
 

@@ -1348,9 +1348,16 @@ async function submitHistoryFeedback() {
       const err = await response.json().catch(() => ({}));
       throw new Error(err.error || "Failed to submit feedback");
     }
+    const data = await response.json();
     if (elements.feedbackComment) elements.feedbackComment.value = "";
     await openFeedbackModal(activeFeedbackJobId);
-    await loadSearchHistory();
+    if (data.row) {
+      const idx = historyRows.findIndex((r) => r.job_id === data.row.job_id);
+      if (idx !== -1) {
+        historyRows[idx] = data.row;
+        renderHistoryRows(historyRows);
+      }
+    }
   } catch (error) {
     console.error("Feedback submit failed:", error);
     alert(error.message || "Failed to submit feedback");
