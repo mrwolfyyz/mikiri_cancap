@@ -216,6 +216,154 @@ resource "google_firestore_index" "jobs_workflow_user_cars_created_desc" {
   }
 }
 
+# Indexes for date-range queries (created_at >= / <=) combined with optional
+# equality filters. When created_at is both filtered by range AND ordered,
+# Firestore requires __name__ to be explicit in the index with the same
+# direction as the sort (DESCENDING). The equality-only indexes above lack
+# this and will return FAILED_PRECONDITION for any range + equality combination.
+
+resource "google_firestore_index" "jobs_workflow_created_range" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "workflow_type"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "created_at"
+    order      = "DESCENDING"
+  }
+  fields {
+    field_path = "__name__"
+    order      = "DESCENDING"
+  }
+}
+
+resource "google_firestore_index" "jobs_workflow_user_created_range" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "workflow_type"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "user_id"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "created_at"
+    order      = "DESCENDING"
+  }
+  fields {
+    field_path = "__name__"
+    order      = "DESCENDING"
+  }
+}
+
+resource "google_firestore_index" "jobs_workflow_user_email_created_range" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "workflow_type"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "user_email"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "created_at"
+    order      = "DESCENDING"
+  }
+  fields {
+    field_path = "__name__"
+    order      = "DESCENDING"
+  }
+}
+
+resource "google_firestore_index" "jobs_workflow_cars_created_range" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "workflow_type"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "input.cars_reference_number"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "created_at"
+    order      = "DESCENDING"
+  }
+  fields {
+    field_path = "__name__"
+    order      = "DESCENDING"
+  }
+}
+
+resource "google_firestore_index" "jobs_workflow_user_cars_created_range" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "workflow_type"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "user_id"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "input.cars_reference_number"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "created_at"
+    order      = "DESCENDING"
+  }
+  fields {
+    field_path = "__name__"
+    order      = "DESCENDING"
+  }
+}
+
+resource "google_firestore_index" "jobs_workflow_user_email_cars_created_range" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "workflow_type"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "user_email"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "input.cars_reference_number"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "created_at"
+    order      = "DESCENDING"
+  }
+  fields {
+    field_path = "__name__"
+    order      = "DESCENDING"
+  }
+}
+
 # -----------------------------------------------------------------------------
 # NOTE: Firestore Security Rules
 # -----------------------------------------------------------------------------
