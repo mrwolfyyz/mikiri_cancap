@@ -121,6 +121,26 @@
     gap: var(--space-xs);
 }
 
+.history-new-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    margin-bottom: var(--space-sm);
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: var(--radius);
+    color: #1E40AF;
+    font-size: var(--font-sm);
+}
+
+[data-theme="dark"] .history-new-banner {
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.4);
+    color: #BFDBFE;
+}
+
 .history-table-wrap {
     overflow-x: auto;
     background: var(--bg-secondary);

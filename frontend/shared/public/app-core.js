@@ -65,6 +65,8 @@ let historyAppliedFilters = null;
 let historyLoading = false;
 let historyRequestSequence = 0;
 let historyTotalCount = null;
+let historyPollInterval = null;
+let historyKnownFirstJobId = null;
 
 // ===========================
 // DOM Elements
@@ -265,6 +267,8 @@ function toggleTheme() {
 // Tab Management
 // ===========================
 function switchTab(tabName) {
+  stopHistoryPolling();
+
   elements.tabButtons.forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.tab === tabName);
   });
@@ -278,6 +282,7 @@ function switchTab(tabName) {
     if (!historyLoaded) {
       loadSearchHistory();
     }
+    startHistoryPolling();
   }
 }
 
@@ -1271,8 +1276,53 @@ function populateUserDatalist(users) {
     .join("");
 }
 
+function startHistoryPolling() {
+  stopHistoryPolling();
+  historyPollInterval = setInterval(pollHistoryForUpdates, 30_000);
+}
+
+function stopHistoryPolling() {
+  clearInterval(historyPollInterval);
+  historyPollInterval = null;
+}
+
+async function pollHistoryForUpdates() {
+  if (historyLoading || historyPageIndex !== 0 || !historyKnownFirstJobId) return;
+  try {
+    const params = new URLSearchParams(historyAppliedFilters?.toString() || "");
+    params.set("limit", String(HISTORY_PAGE_SIZE));
+    const response = await fetch(`${API_URL}/jobs/history?${params.toString()}`, {
+      headers: await authHeaders(),
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    const rows = data.rows || [];
+    if (!rows.length || rows[0].job_id === historyKnownFirstJobId) return;
+    const knownIdx = rows.findIndex((r) => r.job_id === historyKnownFirstJobId);
+    const newCount = knownIdx === -1 ? `${HISTORY_PAGE_SIZE}+` : String(knownIdx);
+    showHistoryNewBanner(newCount);
+  } catch (_) {
+    // polling is best-effort — ignore errors
+  }
+}
+
+function showHistoryNewBanner(count) {
+  const label = count === "1" ? "1 new search" : `${count} new searches`;
+  const textEl = document.getElementById("historyNewBannerText");
+  const bannerEl = document.getElementById("historyNewBanner");
+  if (!textEl || !bannerEl) return;
+  textEl.textContent = `${label} — click to refresh`;
+  bannerEl.classList.remove("is-hidden");
+}
+
+function hideHistoryNewBanner() {
+  document.getElementById("historyNewBanner")?.classList.add("is-hidden");
+}
+
 async function loadSearchHistory({ resetPage = false } = {}) {
   if (!hasHistoryUi()) return;
+
+  hideHistoryNewBanner();
 
   if (resetPage || !historyAppliedFilters) {
     historyAppliedFilters = historyFilterParams();
@@ -1312,6 +1362,7 @@ async function loadSearchHistory({ resetPage = false } = {}) {
       historyPageIndex = Math.max(0, historyPageIndex - drop);
     }
     historyLoaded = true;
+    historyKnownFirstJobId = historyRows[0]?.job_id ?? null;
     renderHistoryRows(historyRows);
     setHistoryStatus("", "info");
   } catch (error) {
@@ -1575,6 +1626,10 @@ function initEventListeners() {
     elements.historyApplyFiltersButton?.addEventListener("click", () => loadSearchHistory({ resetPage: true }));
     elements.historyClearFiltersButton?.addEventListener("click", clearSearchHistoryFilters);
     elements.historyExportButton?.addEventListener("click", exportSearchHistoryCsv);
+    document.getElementById("historyNewBannerDismiss")?.addEventListener("click", () => {
+      hideHistoryNewBanner();
+      loadSearchHistory({ resetPage: true });
+    });
     elements.historyPrevPageButton?.addEventListener("click", loadPreviousHistoryPage);
     elements.historyNextPageButton?.addEventListener("click", loadNextHistoryPage);
     elements.historyTableBody?.addEventListener("click", (event) => {
