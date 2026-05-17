@@ -116,6 +116,12 @@ variable "enable_iap" {
   default     = false
 }
 
+variable "frontend_results_base_url" {
+  description = "Base URL for the skiptrace frontend. Prepended to Results URL in CSV exports."
+  type        = string
+  default     = ""
+}
+
 # -----------------------------------------------------------------------------
 # Core Module
 # -----------------------------------------------------------------------------
@@ -134,6 +140,7 @@ module "core" {
   google_workspace_oauth_client_secret_id = var.google_workspace_oauth_client_secret_id
   app_check_enforced                      = var.app_check_enforced
   enable_iap                              = var.enable_iap
+  frontend_results_base_url               = var.frontend_results_base_url
 }
 
 # -----------------------------------------------------------------------------

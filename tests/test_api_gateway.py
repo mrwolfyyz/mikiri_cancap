@@ -202,8 +202,9 @@ class _HistoryDoc:
 
 
 class _HistoryQuery:
-    def __init__(self, docs):
+    def __init__(self, docs, count_override=None):
         self.docs = docs
+        self._count_value = count_override if count_override is not None else len(docs)
         self.filters = []
         self.limit_value = None
         self.orders = []
@@ -225,6 +226,18 @@ class _HistoryQuery:
         self.limit_value = value
         return self
 
+    def count(self):
+        cv = self._count_value
+
+        class _CQ:
+            def get(inner_self):
+                class _Val:
+                    value = cv
+
+                return [[_Val()]]
+
+        return _CQ()
+
     def stream(self):
         docs = sorted(
             self.docs,
@@ -241,8 +254,8 @@ class _HistoryQuery:
 
 
 class _HistoryCollection:
-    def __init__(self, docs):
-        self.query = _HistoryQuery(docs)
+    def __init__(self, docs, count_override=None):
+        self.query = _HistoryQuery(docs, count_override=count_override)
 
     def where(self, *args):
         return self.query.where(*args)
@@ -2053,7 +2066,16 @@ class TestApiGatewayHelpers:
             },
         )
         assert row["job_id"] == "jid"
-        assert "results.html" in row["results_url"]
+        assert row["results_url"].startswith("results.html")
+
+    def test_format_history_row_absolute_url(self):
+        orig = gw.FRONTEND_RESULTS_BASE_URL
+        gw.FRONTEND_RESULTS_BASE_URL = "https://example.com"
+        try:
+            row = gw._format_history_row("jid", {"user_id": "u1", "input": {}})
+            assert row["results_url"].startswith("https://example.com/results.html")
+        finally:
+            gw.FRONTEND_RESULTS_BASE_URL = orig
 
     def test_prefill_doc_expired_naive_datetime(self):
         assert gw._prefill_doc_expired(datetime(2010, 1, 1)) is True
@@ -2123,7 +2145,10 @@ class TestHistoryRoutesEdgeCases:
 
     def test_history_csv_stream_raises_500(self):
         q = MagicMock()
-        q.stream.side_effect = RuntimeError("firestore down")
+        mock_count_val = MagicMock()
+        mock_count_val.value = 0
+        q.count.return_value.get.return_value = [[mock_count_val]]
+        q.limit.return_value.stream.side_effect = RuntimeError("firestore down")
         req = _authed_request(method="GET", path="/jobs/history/export.csv")
         with _app.test_request_context():
             with (
@@ -2134,6 +2159,70 @@ class TestHistoryRoutesEdgeCases:
                 data, status, _ = _parse_response(gw.handle_history_csv_export(req, {}))
         assert status == 500
         assert "export" in data["error"].lower()
+
+    def test_history_csv_export_rejects_over_5000(self):
+        docs = [
+            _HistoryDoc("j1", {"status": "complete", "created_at": datetime(2026, 5, 1), "user_id": "u1", "input": {}})
+        ]
+        req = _authed_request(method="GET", path="/jobs/history/export.csv")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=_HistoryCollection(docs, count_override=5001)),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 413
+        assert "error" in data
+
+    def test_history_csv_export_within_limit(self):
+        docs = [
+            _HistoryDoc(
+                "j1",
+                {
+                    "status": "complete",
+                    "created_at": datetime(2026, 5, 1),
+                    "user_id": "u1",
+                    "input": {"cars_reference_number": "ABCDE123"},
+                },
+            )
+        ]
+        req = _authed_request(method="GET", path="/jobs/history/export.csv")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=_HistoryCollection(docs, count_override=1)),
+            ):
+                body, status, _ = main_handler(req)
+        assert status == 200
+        assert "ABCDE123" in body.get_data(as_text=True)
+
+    def test_history_csv_export_formula_injection(self):
+        docs = [
+            _HistoryDoc(
+                "j1",
+                {
+                    "status": "complete",
+                    "created_at": datetime(2026, 5, 1, 12, 0, 0),
+                    "user_id": "u1",
+                    "user_email": "=attacker@evil.com",
+                    "input": {"full_name": "=cmd|'/c calc'!A1", "cars_reference_number": "+1234"},
+                },
+            )
+        ]
+        req = _authed_request(method="GET", path="/jobs/history/export.csv")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=_HistoryCollection(docs)),
+            ):
+                body, status, _ = main_handler(req)
+        assert status == 200
+        csv_text = body.get_data(as_text=True)
+        assert "'=" in csv_text  # full_name and user sanitised
+        assert "'+" in csv_text  # cars_reference_number sanitised
 
     def test_get_feedback_invalid_path_four_segments(self):
         req = _authed_request(method="GET", path="/jobs/j1/extra/feedback")
