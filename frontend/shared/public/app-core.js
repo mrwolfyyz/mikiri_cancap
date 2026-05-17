@@ -135,6 +135,7 @@ const elements = {
   feedbackRating: document.getElementById("feedbackRating"),
   feedbackComment: document.getElementById("feedbackComment"),
   feedbackSubmitButton: document.getElementById("feedbackSubmitButton"),
+  feedbackError: document.getElementById("feedbackError"),
 
   // Address Verification (elements will be null if feature is not enabled)
   addressVerificationForm: document.getElementById("addressVerificationForm"),
@@ -1195,6 +1196,11 @@ async function loadSearchHistory({ resetPage = false } = {}) {
     historyNextPageToken = data.next_page_token || null;
     historyPageTokens = historyPageTokens.slice(0, historyPageIndex + 1);
     if (historyNextPageToken) historyPageTokens.push(historyNextPageToken);
+    if (historyPageTokens.length > 50) {
+      const drop = historyPageTokens.length - 50;
+      historyPageTokens.splice(0, drop);
+      historyPageIndex = Math.max(0, historyPageIndex - drop);
+    }
     historyLoaded = true;
     renderHistoryRows(historyRows);
     setHistoryStatus("", "info");
@@ -1307,6 +1313,10 @@ async function openFeedbackModal(jobId) {
       : jobId;
   }
   if (elements.feedbackModal) elements.feedbackModal.classList.remove("is-hidden");
+  if (elements.feedbackError) {
+    elements.feedbackError.textContent = "";
+    elements.feedbackError.classList.add("is-hidden");
+  }
   if (elements.feedbackEntries) elements.feedbackEntries.innerHTML = '<p class="history-empty">Loading feedback...</p>';
 
   try {
@@ -1360,7 +1370,10 @@ async function submitHistoryFeedback() {
     }
   } catch (error) {
     console.error("Feedback submit failed:", error);
-    alert(error.message || "Failed to submit feedback");
+    if (elements.feedbackError) {
+      elements.feedbackError.textContent = error.message || "Failed to submit feedback";
+      elements.feedbackError.classList.remove("is-hidden");
+    }
   } finally {
     elements.feedbackSubmitButton.disabled = false;
     elements.feedbackSubmitButton.textContent = "Submit Feedback";
