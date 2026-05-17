@@ -2297,6 +2297,79 @@ class TestHistoryRoutesEdgeCases:
         assert "'=" in csv_text  # full_name and user sanitised
         assert "'+" in csv_text  # cars_reference_number sanitised
 
+    def test_history_csv_export_multiple_feedback_entries(self):
+        docs = [
+            _HistoryDoc(
+                "j1",
+                {
+                    "status": "complete",
+                    "created_at": datetime(2026, 5, 1, 12, 0, 0),
+                    "user_id": "u1",
+                    "input": {"cars_reference_number": "ABCDE123"},
+                    "feedback_entries": [
+                        {
+                            "rating": "positive",
+                            "comment": "Great result",
+                            "submitted_at": datetime(2026, 5, 1, 9, 0, 0),
+                            "user_id": "u1",
+                            "user_email": "a@example.com",
+                        },
+                        {
+                            "rating": "negative",
+                            "comment": "Missed address",
+                            "submitted_at": datetime(2026, 5, 2, 10, 0, 0),
+                            "user_id": "u2",
+                            "user_email": "b@example.com",
+                        },
+                    ],
+                },
+            )
+        ]
+        req = _authed_request(method="GET", path="/jobs/history/export.csv")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=_HistoryCollection(docs)),
+            ):
+                body, status, _ = main_handler(req)
+        assert status == 200
+        csv_text = body.get_data(as_text=True)
+        assert "Great result" in csv_text
+        assert "Missed address" in csv_text
+        assert " | " in csv_text
+        assert "positive" in csv_text
+        assert "negative" in csv_text
+        assert csv_text.count("ABCDE123") == 1  # one row per search, not per feedback
+
+    def test_history_csv_export_no_feedback_entry_is_empty(self):
+        docs = [
+            _HistoryDoc(
+                "j1",
+                {
+                    "status": "complete",
+                    "created_at": datetime(2026, 5, 1, 12, 0, 0),
+                    "user_id": "u1",
+                    "input": {"cars_reference_number": "ABCDE123"},
+                },
+            )
+        ]
+        req = _authed_request(method="GET", path="/jobs/history/export.csv")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=_HistoryCollection(docs)),
+            ):
+                body, status, _ = main_handler(req)
+        assert status == 200
+        csv_text = body.get_data(as_text=True)
+        assert "ABCDE123" in csv_text
+        # Feedback column present but empty — row has trailing comma before Results URL
+        lines = [line for line in csv_text.splitlines() if "ABCDE123" in line]
+        assert len(lines) == 1
+        assert ",," in lines[0]  # empty Feedback cell produces consecutive commas
+
     def test_get_feedback_invalid_path_four_segments(self):
         req = _authed_request(method="GET", path="/jobs/j1/extra/feedback")
         with _app.test_request_context():

@@ -391,6 +391,22 @@ def _feedback_summary(job: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _feedback_csv_text(job: dict[str, Any]) -> str:
+    """Return all feedback entries as a pipe-separated string for CSV export."""
+    entries = _feedback_entries(job)
+    if not entries:
+        return ""
+    parts = []
+    for e in entries:
+        rating = e.get("rating") or ""
+        comment = (e.get("comment") or "").strip()
+        user = e.get("user_email") or e.get("user_id") or ""
+        ts = _isoformat(e.get("submitted_at")) or ""
+        date = ts[:10] if ts else ""
+        parts.append(f"[{date} {rating} {user}]: {comment}")
+    return " | ".join(parts)
+
+
 _FORMULA_CHARS = frozenset("=+-@\t\r")
 
 
@@ -425,6 +441,7 @@ def _format_history_row(job_id: str, job: dict[str, Any]) -> dict[str, Any]:
         "cars_reference_number": input_data.get("cars_reference_number"),
         "feedback": feedback,
         "feedback_count": feedback["count"] if feedback else 0,
+        "feedback_text": _feedback_csv_text(job),
         "results_url": f"{FRONTEND_RESULTS_BASE_URL + '/' if FRONTEND_RESULTS_BASE_URL else ''}results.html?job_id={job_id}&workflow=skiptrace",
     }
 
@@ -1203,14 +1220,13 @@ def handle_history_csv_export(request: Request, headers: dict):
             "User",
             "Job ID",
             "Status",
-            "Feedback Summary",
+            "Feedback",
             "Feedback Count",
             "Results URL",
         ],
     )
     writer.writeheader()
     for row in rows:
-        feedback = row.get("feedback") or {}
         writer.writerow(
             {
                 "CARS Reference Number": _csv_safe(row.get("cars_reference_number")),
@@ -1219,7 +1235,7 @@ def handle_history_csv_export(request: Request, headers: dict):
                 "User": _csv_safe(row.get("user_display")),
                 "Job ID": row.get("job_id") or "",
                 "Status": row.get("status") or "",
-                "Feedback Summary": _csv_safe(feedback.get("comment_summary")),
+                "Feedback": _csv_safe(row.get("feedback_text")),
                 "Feedback Count": row.get("feedback_count") or 0,
                 "Results URL": row.get("results_url") or "",
             }
