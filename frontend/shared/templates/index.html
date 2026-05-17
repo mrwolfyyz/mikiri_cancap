@@ -361,7 +361,8 @@
                 </div>
                 <div class="form-group">
                     <label for="historyUserFilter">User</label>
-                    <input type="text" id="historyUserFilter" placeholder="Email or Firebase user ID">
+                    <input type="text" id="historyUserFilter" placeholder="Email or Firebase user ID" list="historyUserList" autocomplete="off">
+                    <datalist id="historyUserList"></datalist>
                 </div>
                 <div class="form-group">
                     <label for="historyCarsFilter">CARS Reference Number</label>
@@ -373,18 +374,18 @@
                 </div>
             </section>
 
-            <div id="historyStatus" class="status-message" style="display: none;"></div>
+            <div id="historyStatus" class="status-message" aria-live="polite" role="status" style="display: none;"></div>
 
             <div class="history-table-wrap">
                 <table class="history-table">
                     <thead>
                         <tr>
-                            <th>CARS Reference Number</th>
-                            <th>Date/Time of Search</th>
-                            <th>Full Name</th>
-                            <th>User</th>
-                            <th>Feedback</th>
-                            <th>Results</th>
+                            <th scope="col">CARS Reference Number</th>
+                            <th scope="col">Date/Time of Search</th>
+                            <th scope="col">Full Name</th>
+                            <th scope="col">User</th>
+                            <th scope="col">Feedback</th>
+                            <th scope="col">Results</th>
                         </tr>
                     </thead>
                     <tbody id="historyTableBody">
@@ -395,7 +396,7 @@
                 </table>
             </div>
             <div class="history-pagination" aria-label="Search history pagination">
-                <span id="historyPaginationStatus" class="history-pagination-status">No rows loaded.</span>
+                <span id="historyPaginationStatus" class="history-pagination-status" aria-live="polite" role="status">No rows loaded.</span>
                 <div class="history-pagination-actions">
                     <button id="historyPrevPageButton" class="secondary-button" disabled>Previous</button>
                     <button id="historyNextPageButton" class="secondary-button" disabled>Next</button>
@@ -412,18 +413,22 @@
                     </div>
                     <button id="feedbackModalClose" class="modal-close" aria-label="Close feedback modal">&times;</button>
                 </div>
-                <div id="feedbackEntries" class="feedback-entry-list"></div>
+                <div id="feedbackEntries" class="feedback-entry-list" aria-live="polite" role="status"></div>
                 <div class="feedback-add">
-                    <label for="feedbackRating">Add Feedback</label>
-                    <select id="feedbackRating">
-                        <option value="positive">Positive</option>
-                        <option value="negative">Negative</option>
-                    </select>
-                    <textarea id="feedbackComment" rows="4" maxlength="1000" placeholder="Enter additional feedback"></textarea>
-                    <div class="feedback-modal-actions">
-                        <button id="feedbackSubmitButton" class="submit-button">Submit Feedback</button>
-                        <p id="feedbackError" class="error-message is-hidden" role="alert"></p>
-                    </div>
+                    <form id="feedbackForm">
+                        <label for="feedbackRating">Add Feedback</label>
+                        <select id="feedbackRating">
+                            <option value="positive">Positive</option>
+                            <option value="negative">Negative</option>
+                        </select>
+                        <label for="feedbackComment">Additional comment (optional)</label>
+                        <textarea id="feedbackComment" rows="4" maxlength="1000" placeholder="Enter additional feedback"></textarea>
+                        <div id="feedbackCommentCounter" class="char-counter" aria-live="polite">0 / 1000</div>
+                        <div class="feedback-modal-actions">
+                            <button id="feedbackSubmitButton" type="submit" class="submit-button">Submit Feedback</button>
+                            <p id="feedbackError" class="error-message is-hidden" role="alert"></p>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
