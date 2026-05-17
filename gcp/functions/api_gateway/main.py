@@ -717,52 +717,37 @@ def check_rate_limit(user_id: str) -> bool:
 
 
 def check_and_record_endpoint_rate_limit(user_id: str, endpoint: str, max_requests: int, window_seconds: int) -> bool:
-    """Rate-limit read endpoints via a Firestore event log.
+    """Rate-limit read endpoints via a per-user per-window Firestore counter.
 
-    Returns True (allowed) and records the event; False if the user has exceeded
-    max_requests within window_seconds. The count check fails closed; the event
-    write is best-effort (failures are logged but do not block the request).
+    Uses a document keyed by (user_id, endpoint, time_bucket) so no composite
+    index is required. Fails open on Firestore error — blocking all users due to
+    an infrastructure hiccup is worse than briefly skipping rate enforcement.
     """
-    from google.cloud.firestore_v1.base_query import FieldFilter
+    import math
 
-    def _count_recent() -> int:
-        window_start = datetime.utcnow() - timedelta(seconds=window_seconds)
-        col = db.collection("endpoint_rate_limit_events")
-        recent = (
-            col.where(filter=FieldFilter("user_id", "==", user_id))
-            .where(filter=FieldFilter("endpoint", "==", endpoint))
-            .where(filter=FieldFilter("ts", ">=", window_start))
-            .count()
-            .get()
-        )
-        return recent[0][0].value
+    bucket = int(math.floor(datetime.utcnow().timestamp() / window_seconds))
+    doc_id = f"{user_id}_{endpoint}_{bucket}"
 
     try:
-        count = retry_with_backoff(
-            _count_recent,
-            RetryConfig(max_attempts=2, base_delay_seconds=0.2, max_delay_seconds=1.0),
-            operation_name=f"endpoint rate limit count ({endpoint})",
-        )
-    except Exception as e:
-        print(f"[ApiGateway] WARNING: endpoint rate limit check failed for {endpoint}, failing closed: {e}")
-        return False
-
-    if count >= max_requests:
-        return False
-
-    try:
-        db.collection("endpoint_rate_limit_events").add(
+        doc_ref = db.collection("endpoint_rate_limit_counters").document(doc_id)
+        doc = doc_ref.get()
+        count = (doc.get("count") or 0) if doc.exists else 0
+        if count >= max_requests:
+            return False
+        doc_ref.set(
             {
                 "user_id": user_id,
                 "endpoint": endpoint,
-                "ts": datetime.utcnow(),
+                "bucket": bucket,
+                "count": firestore.Increment(1),
                 "expires_at": datetime.utcnow() + timedelta(seconds=window_seconds * 2),
-            }
+            },
+            merge=True,
         )
+        return True
     except Exception as e:
-        print(f"[ApiGateway] WARNING: failed to record endpoint rate limit event for {endpoint}: {e}")
-
-    return True
+        print(f"[ApiGateway] WARNING: endpoint rate limit check failed for {endpoint}, failing open: {e}")
+        return True
 
 
 # =============================================================================

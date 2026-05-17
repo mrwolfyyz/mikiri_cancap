@@ -109,16 +109,15 @@ _prefill_doc_expired = gw._prefill_doc_expired
 # ---------------------------------------------------------------------------
 _app = flask.Flask(__name__)
 
-# Default mock: endpoint rate limit events always within limit (count=0).
-# This lets existing tests for history/feedback handlers pass without needing
-# to patch check_and_record_endpoint_rate_limit individually. The 3-where
-# chain (user_id, endpoint, ts) is distinct from the 2-where chain used by
-# check_rate_limit, so this setup does not affect TestCheckRateLimit tests.
-_mock_rl_zero = MagicMock()
-_mock_rl_zero.value = 0
-gw.db.collection.return_value.where.return_value.where.return_value.where.return_value.count.return_value.get.return_value = [
-    [_mock_rl_zero]
-]
+# Default mock: endpoint rate limit counter always shows count=0 (within limit).
+# Uses the bucket-counter approach: collection("endpoint_rate_limit_counters")
+# .document(doc_id).get() → mock doc with count=0.
+# Tests that patch gw.db.collection with _HistoryCollection will hit an
+# AttributeError on .document() which is caught and fails open (returns True).
+_mock_rl_doc = MagicMock()
+_mock_rl_doc.exists = True
+_mock_rl_doc.get.return_value = 0
+gw.db.collection.return_value.document.return_value.get.return_value = _mock_rl_doc
 
 
 # ---------------------------------------------------------------------------
@@ -2345,35 +2344,37 @@ class TestHistoryRoutesEdgeCases:
 # ===========================================================================
 class TestCheckAndRecordEndpointRateLimit:
     def test_allows_within_limit(self):
-        mock_count = MagicMock()
-        mock_count.value = 5
+        doc_mock = MagicMock()
+        doc_mock.exists = True
+        doc_mock.get.return_value = 5
+        doc_ref_mock = MagicMock()
+        doc_ref_mock.get.return_value = doc_mock
         col_mock = MagicMock()
-        col_mock.where.return_value.where.return_value.where.return_value.count.return_value.get.return_value = [
-            [mock_count]
-        ]
+        col_mock.document.return_value = doc_ref_mock
         with patch.object(gw.db, "collection", return_value=col_mock):
             result = gw.check_and_record_endpoint_rate_limit("u1", "history_list", 120, 3600)
         assert result is True
-        col_mock.add.assert_called_once()
+        doc_ref_mock.set.assert_called_once()
 
     def test_blocks_at_limit(self):
-        mock_count = MagicMock()
-        mock_count.value = 10
+        doc_mock = MagicMock()
+        doc_mock.exists = True
+        doc_mock.get.return_value = 10
+        doc_ref_mock = MagicMock()
+        doc_ref_mock.get.return_value = doc_mock
         col_mock = MagicMock()
-        col_mock.where.return_value.where.return_value.where.return_value.count.return_value.get.return_value = [
-            [mock_count]
-        ]
+        col_mock.document.return_value = doc_ref_mock
         with patch.object(gw.db, "collection", return_value=col_mock):
             result = gw.check_and_record_endpoint_rate_limit("u1", "history_csv_export", 10, 3600)
         assert result is False
-        col_mock.add.assert_not_called()
+        doc_ref_mock.set.assert_not_called()
 
-    def test_fails_closed_on_count_error(self):
+    def test_fails_open_on_firestore_error(self):
         col_mock = MagicMock()
-        col_mock.where.side_effect = Exception("firestore down")
+        col_mock.document.return_value.get.side_effect = Exception("firestore down")
         with patch.object(gw.db, "collection", return_value=col_mock):
             result = gw.check_and_record_endpoint_rate_limit("u1", "history_list", 120, 3600)
-        assert result is False
+        assert result is True
 
 
 # ===========================================================================
