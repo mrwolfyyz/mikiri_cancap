@@ -281,6 +281,23 @@ def _feedback_entries(job: dict[str, Any]) -> list[dict[str, Any]]:
     return [legacy] if legacy else []
 
 
+def _check_feedback_rate_limit(entries: list[dict[str, Any]], user_id: str) -> bool:
+    """Return True if user is within feedback rate limit, False if exceeded. No extra Firestore read.
+
+    Uses POSIX timestamps for comparison so both timezone-aware Firestore datetimes and
+    timezone-naive datetimes (tests) are handled without TypeError.
+    """
+    window_start_ts = (datetime.now(UTC) - timedelta(hours=FEEDBACK_RATE_LIMIT_WINDOW_HOURS)).timestamp()
+    recent = [
+        e
+        for e in entries
+        if e.get("user_id") == user_id
+        and hasattr(e.get("submitted_at"), "timestamp")
+        and e["submitted_at"].timestamp() >= window_start_ts
+    ]
+    return len(recent) < FEEDBACK_RATE_LIMIT_MAX
+
+
 def _feedback_summary(job: dict[str, Any]) -> dict[str, Any] | None:
     entries = _feedback_entries(job)
     if not entries:
@@ -624,6 +641,8 @@ def handle_prefill_session_redeem(request: Request, headers: dict):
 # Maximum investigation requests per user within the rate limit window
 RATE_LIMIT_MAX_REQUESTS = 5
 RATE_LIMIT_WINDOW_SECONDS = 300  # 5 minutes
+FEEDBACK_RATE_LIMIT_MAX = 5
+FEEDBACK_RATE_LIMIT_WINDOW_HOURS = 1
 
 
 def check_rate_limit(user_id: str) -> bool:
@@ -1440,22 +1459,31 @@ def main(request: Request):
         if len(comment) > 1000:
             return jsonify({"error": "comment must be 1000 characters or fewer"}), 400, headers
 
-        # Write feedback to the job document
+        existing_entries = _feedback_entries(job)
+
+        if len(existing_entries) >= 500:
+            return jsonify({"error": "Feedback limit reached for this job."}), 409, headers
+
+        if not _check_feedback_rate_limit(existing_entries, user_id):
+            return jsonify({"error": "Feedback rate limit exceeded. Try again later."}), 429, headers
+
+        feedback_data = {
+            "rating": rating,
+            "comment": comment,
+            "submitted_at": datetime.utcnow(),
+            "user_id": user_id,
+            "user_email": user_profile["user_email"],
+        }
+
         try:
-            feedback_data = {
-                "rating": rating,
-                "comment": comment,
-                "submitted_at": datetime.utcnow(),
-                "user_id": user_id,
-                "user_email": user_profile["user_email"],
-            }
-            existing_entries = _feedback_entries(job)
-            db.collection("jobs").document(job_id).update(
-                {"feedback": feedback_data, "feedback_entries": [*existing_entries, feedback_data]}
-            )
-            return jsonify({"status": "ok"}), 200, headers
+            db.collection("jobs").document(job_id).update({"feedback_entries": firestore.ArrayUnion([feedback_data])})
         except Exception as e:
             return jsonify({"error": f"Failed to save feedback: {str(e)}"}), 500, headers
+
+        updated_job = dict(job)
+        updated_job["feedback_entries"] = [*existing_entries, feedback_data]
+        row = _format_history_row(job_id, updated_job)
+        return jsonify({"status": "ok", "row": row}), 200, headers
 
     # Health check
     if request.method == "GET" and path in ("/health", "/"):

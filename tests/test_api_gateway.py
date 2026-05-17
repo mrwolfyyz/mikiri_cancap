@@ -1576,9 +1576,13 @@ class TestMainRouting:
         assert status == 200
         assert data["status"] == "ok"
         update_payload = update_mock.call_args.args[0]
-        assert update_payload["feedback"]["comment"] == "Great results"
-        assert update_payload["feedback"]["user_email"] == "agent@example.com"
-        assert update_payload["feedback_entries"][0]["comment"] == "Great results"
+        assert "feedback" not in update_payload
+        array_union_arg = gw.firestore.ArrayUnion.call_args.args[0]
+        assert array_union_arg[0]["comment"] == "Great results"
+        assert array_union_arg[0]["user_email"] == "agent@example.com"
+        assert "row" in data
+        assert data["row"]["job_id"] == "j1"
+        assert data["row"]["feedback"] is not None
 
     def test_post_feedback_invalid_rating(self):
         job = {"user_id": "u1", "status": "complete"}
@@ -1623,7 +1627,7 @@ class TestMainRouting:
             "workflow_type": "skiptrace",
             "status": "complete",
             "feedback_entries": [
-                {"rating": "positive", "comment": "Existing", "submitted_at": datetime.utcnow(), "user_id": "u-owner"}
+                {"rating": "positive", "comment": "Existing", "submitted_at": datetime.now(UTC), "user_id": "u-owner"}
             ],
         }
         req = _authed_request(
@@ -1638,8 +1642,76 @@ class TestMainRouting:
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 200
         update_payload = update_mock.call_args.args[0]
-        assert len(update_payload["feedback_entries"]) == 2
-        assert update_payload["feedback_entries"][1]["comment"] == "Needs review"
+        assert "feedback" not in update_payload
+        array_union_arg = gw.firestore.ArrayUnion.call_args.args[0]
+        assert array_union_arg[0]["comment"] == "Needs review"
+
+    def test_post_feedback_limit_exceeded(self):
+        job = {
+            "user_id": "u1",
+            "status": "complete",
+            "feedback_entries": [
+                {"rating": "positive", "comment": str(i), "submitted_at": datetime.now(UTC), "user_id": f"u{i}"}
+                for i in range(500)
+            ],
+        }
+        req = _authed_request(method="POST", path="/jobs/j1/feedback", body={"rating": "positive", "comment": "over"})
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth_claims("u1", "a@b.com", "A"),
+                _stub_get_job(job),
+            ):
+                update_mock = MagicMock()
+                gw.db.collection.return_value.document.return_value.update = update_mock
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 409
+        assert "limit" in data["error"].lower()
+        update_mock.assert_not_called()
+
+    def test_post_feedback_rate_limited(self):
+        recent_time = datetime.now(UTC) - timedelta(minutes=30)
+        job = {
+            "user_id": "u1",
+            "status": "complete",
+            "feedback_entries": [
+                {"rating": "positive", "comment": f"entry {i}", "submitted_at": recent_time, "user_id": "u1"}
+                for i in range(5)
+            ],
+        }
+        req = _authed_request(
+            method="POST", path="/jobs/j1/feedback", body={"rating": "positive", "comment": "one more"}
+        )
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth_claims("u1", "a@b.com", "A"),
+                _stub_get_job(job),
+            ):
+                update_mock = MagicMock()
+                gw.db.collection.return_value.document.return_value.update = update_mock
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 429
+        assert "rate limit" in data["error"].lower()
+        update_mock.assert_not_called()
+
+    def test_post_feedback_returns_row(self):
+        job = {"user_id": "u1", "status": "complete"}
+        req = _authed_request(
+            method="POST", path="/jobs/j1/feedback", body={"rating": "positive", "comment": "looks good"}
+        )
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth_claims("u1", "a@b.com", "A"),
+                _stub_get_job(job),
+            ):
+                gw.db.collection.return_value.document.return_value.update = MagicMock()
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert "row" in data
+        assert data["row"]["job_id"] == "j1"
+        assert data["row"]["feedback"] is not None
 
     def test_post_address_verification_happy_path(self):
         req = _authed_request(
