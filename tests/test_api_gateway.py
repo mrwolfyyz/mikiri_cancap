@@ -2366,7 +2366,7 @@ class TestHistoryRoutesEdgeCases:
         csv_text = body.get_data(as_text=True)
         assert "ABCDE123" in csv_text
         # Feedback column present but empty — row has trailing comma before Results URL
-        lines = [l for l in csv_text.splitlines() if "ABCDE123" in l]
+        lines = [line for line in csv_text.splitlines() if "ABCDE123" in line]
         assert len(lines) == 1
         assert ",," in lines[0]  # empty Feedback cell produces consecutive commas
 
