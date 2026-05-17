@@ -1595,7 +1595,6 @@ footer {
     font-style: italic;
 }
 
-/* History skeleton shimmer (item 2.11) */
 @keyframes skeleton-shimmer {
     0%   { background-position: -200px 0; }
     100% { background-position:  200px 0; }
@@ -1620,7 +1619,6 @@ footer {
     padding: var(--space-sm);
 }
 
-/* Char counter for feedback textarea (item 2.5) */
 .char-counter {
     font-size: var(--font-sm);
     color: var(--text-secondary);
