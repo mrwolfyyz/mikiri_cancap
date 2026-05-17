@@ -1082,8 +1082,8 @@ def handle_history_list(request: Request, headers: dict):
         try:
             count_result = query.limit(10001).count(alias="total").get()
             total_count = count_result[0][0].value
-        except Exception:
-            pass  # fall back to null
+        except Exception:  # nosec B110 — total_count is non-critical; null is a safe fallback
+            pass
 
         if mode == "cars":
             # Fetch extra docs so date-range filtering client-side still fills the page.

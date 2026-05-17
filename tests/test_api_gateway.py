@@ -2082,7 +2082,7 @@ class TestApiGatewayHelpers:
 
     def test_decode_history_page_token_expired(self):
         fs = gw._history_filter_signature({}, 50)
-        tok = gw._encode_history_page_token(datetime(2026, 5, 1, 12, 0, 0), "jid", fs)
+        tok = gw._encode_history_page_token("jid", fs, created_at=datetime(2026, 5, 1, 12, 0, 0))
 
         class _FarFuture(datetime):
             @classmethod
