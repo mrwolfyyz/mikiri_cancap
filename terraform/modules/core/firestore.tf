@@ -364,6 +364,74 @@ resource "google_firestore_index" "jobs_workflow_user_email_cars_created_range" 
   }
 }
 
+# CARS prefix range queries — ordered by cars_reference_number + __name__
+# Required for prefix-match (>=, <=) on input.cars_reference_number.
+
+resource "google_firestore_index" "jobs_workflow_cars_prefix_name" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "workflow_type"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "input.cars_reference_number"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "__name__"
+    order      = "DESCENDING"
+  }
+}
+
+resource "google_firestore_index" "jobs_workflow_user_cars_prefix_name" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "workflow_type"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "user_id"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "input.cars_reference_number"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "__name__"
+    order      = "DESCENDING"
+  }
+}
+
+resource "google_firestore_index" "jobs_workflow_user_email_cars_prefix_name" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "jobs"
+
+  fields {
+    field_path = "workflow_type"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "user_email"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "input.cars_reference_number"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "__name__"
+    order      = "DESCENDING"
+  }
+}
+
 # -----------------------------------------------------------------------------
 # NOTE: Firestore Security Rules
 # -----------------------------------------------------------------------------
