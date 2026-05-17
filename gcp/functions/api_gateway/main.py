@@ -91,6 +91,9 @@ JOB_RETENTION_DAYS = 7
 
 # Chrome extension → web app prefill (Firestore collection prefill_sessions)
 EXTENSION_PREFILL_SECRET = (os.environ.get("EXTENSION_PREFILL_SECRET") or "").strip()
+HISTORY_TOKEN_SECRET = (os.environ.get("HISTORY_TOKEN_SECRET") or "").strip()
+if not HISTORY_TOKEN_SECRET:
+    print("[api_gateway] WARNING: HISTORY_TOKEN_SECRET not set — page tokens are unsigned")
 PREFILL_SESSION_TTL_MINUTES = int(os.environ.get("PREFILL_SESSION_TTL_MINUTES") or "10")
 PREFILL_SESSION_COLLECTION = "prefill_sessions"
 
@@ -244,11 +247,16 @@ def _history_filter_signature(params: dict[str, str], limit: int) -> str:
 
 
 def _encode_history_page_token(created_at: Any, job_id: str, filter_signature: str) -> str:
-    payload = {
+    iat = int(datetime.now(UTC).timestamp())
+    inner = {
         "created_at": _isoformat(created_at),
-        "job_id": job_id,
         "filter_signature": filter_signature,
+        "iat": iat,
+        "job_id": job_id,
     }
+    inner_raw = json.dumps(inner, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    mac = hmac.new(HISTORY_TOKEN_SECRET.encode("utf-8"), inner_raw, hashlib.sha256).hexdigest()
+    payload = {**inner, "mac": mac}
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
@@ -262,6 +270,20 @@ def _decode_history_page_token(token: str, expected_filter_signature: str) -> di
 
     if not isinstance(payload, dict):
         raise ValueError("Invalid history page token")
+
+    mac_from_token = payload.pop("mac", None)
+    if not isinstance(mac_from_token, str):
+        raise ValueError("Invalid history page token")
+
+    inner_raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    expected_mac = hmac.new(HISTORY_TOKEN_SECRET.encode("utf-8"), inner_raw, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(mac_from_token, expected_mac):
+        raise ValueError("Invalid history page token")
+
+    iat = payload.get("iat")
+    if not isinstance(iat, (int, float)) or (datetime.now(UTC).timestamp() - iat) > 3600:
+        raise ValueError("Invalid history page token")
+
     if payload.get("filter_signature") != expected_filter_signature:
         raise ValueError("Invalid history page token")
 
