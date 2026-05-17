@@ -2047,6 +2047,26 @@ class TestApiGatewayHelpers:
         parsed = gw._parse_date_param("2026-05-02T12:00:00Z")
         assert parsed.year == 2026 and parsed.month == 5
 
+    def test_parse_date_param_end_of_day(self):
+        parsed = gw._parse_date_param("2026-05-01", end_of_day=True)
+        assert parsed.hour == 23
+        assert parsed.minute == 59
+        assert parsed.second == 59
+        assert parsed.microsecond == 999999
+
+    def test_decode_history_page_token_expired(self):
+        fs = gw._history_filter_signature({}, 50)
+        tok = gw._encode_history_page_token(datetime(2026, 5, 1, 12, 0, 0), "jid", fs)
+
+        class _FarFuture(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2030, 1, 1, tzinfo=tz or UTC)
+
+        with patch.object(gw, "datetime", _FarFuture):
+            with pytest.raises(ValueError, match="history page token"):
+                gw._decode_history_page_token(tok, fs)
+
     def test_history_filter_signature_stable(self):
         params = {"start_date": "2026-05-01", "user_id": "a@b.com", "cars_reference_number": "abcde1"}
         a = gw._history_filter_signature(params, 50)
@@ -2337,6 +2357,84 @@ class TestHistoryRoutesEdgeCases:
             with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"), _stub_auth("u1"), _stub_get_job(job):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 403
+
+    def test_history_list_date_range_applies_firestore_filters(self):
+        collection = _HistoryCollection([])
+        req = _authed_request(
+            method="GET",
+            path="/jobs/history",
+            query_args={"start_date": "2026-05-01", "end_date": "2026-05-31"},
+        )
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        filter_ops = [(f[0], f[1]) for f in collection.query.filters]
+        assert ("created_at", ">=") in filter_ops
+        assert ("created_at", "<=") in filter_ops
+        end_filter = next(f for f in collection.query.filters if f[0] == "created_at" and f[1] == "<=")
+        assert end_filter[2].hour == 23
+        assert end_filter[2].microsecond == 999999
+
+    def test_history_csv_date_range_applies_firestore_filters(self):
+        docs = [
+            _HistoryDoc(
+                "j1",
+                {
+                    "status": "complete",
+                    "created_at": datetime(2026, 5, 15),
+                    "user_id": "u1",
+                    "input": {"cars_reference_number": "ABCDE1"},
+                },
+            )
+        ]
+        collection = _HistoryCollection(docs, count_override=1)
+        req = _authed_request(
+            method="GET",
+            path="/jobs/history/export.csv",
+            query_args={"start_date": "2026-05-01", "end_date": "2026-05-31"},
+        )
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                body, status, _ = main_handler(req)
+        assert status == 200
+        filter_ops = [(f[0], f[1]) for f in collection.query.filters]
+        assert ("created_at", ">=") in filter_ops
+        assert ("created_at", "<=") in filter_ops
+
+    def test_history_list_limit_clamped_to_max(self):
+        collection = _HistoryCollection([])
+        req = _authed_request(method="GET", path="/jobs/history", query_args={"limit": "10000"})
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert collection.query.limit_value == 201  # 200 clamped + 1 for has_more probe
+
+    def test_history_list_negative_limit_clamped_to_min(self):
+        collection = _HistoryCollection([])
+        req = _authed_request(method="GET", path="/jobs/history", query_args={"limit": "-5"})
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert collection.query.limit_value == 2  # 1 (min) + 1 for has_more probe
 
 
 # ===========================================================================
