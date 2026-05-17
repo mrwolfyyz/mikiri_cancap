@@ -240,7 +240,7 @@ class _HistoryQuery:
         self.limit_value = value
         return self
 
-    def count(self):
+    def count(self, **kwargs):
         cv = self._count_value
 
         class _CQ:
@@ -253,15 +253,41 @@ class _HistoryQuery:
         return _CQ()
 
     def stream(self):
-        docs = sorted(
-            self.docs,
-            key=lambda doc: (doc.to_dict().get("created_at"), doc.id),
-            reverse=True,
-        )
-        if self.cursor:
-            cursor_created = self.cursor["created_at"]
+        docs = list(self.docs)
+
+        # Apply CARS range filters if present (simulates Firestore range query)
+        for f in self.filters:
+            if len(f) == 3 and f[0] == "input.cars_reference_number":
+                field, op, val = f
+                if op == ">=":
+                    docs = [d for d in docs if (d.to_dict().get("input", {}).get("cars_reference_number") or "") >= val]
+                elif op == "<=":
+                    docs = [d for d in docs if (d.to_dict().get("input", {}).get("cars_reference_number") or "") <= val]
+
+        # CARS prefix mode: sort and paginate by cars_reference_number
+        if self.cursor and "input.cars_reference_number" in self.cursor:
+            docs = sorted(
+                docs,
+                key=lambda doc: (doc.to_dict().get("input", {}).get("cars_reference_number") or "", doc.id),
+            )
+            cursor_cars = self.cursor["input.cars_reference_number"]
             cursor_id = self.cursor["__name__"]
-            docs = [doc for doc in docs if (doc.to_dict().get("created_at"), doc.id) < (cursor_created, cursor_id)]
+            docs = [
+                doc
+                for doc in docs
+                if (doc.to_dict().get("input", {}).get("cars_reference_number") or "", doc.id)
+                > (cursor_cars, cursor_id)
+            ]
+        else:
+            docs = sorted(
+                docs,
+                key=lambda doc: (doc.to_dict().get("created_at"), doc.id),
+                reverse=True,
+            )
+            if self.cursor:
+                cursor_created = self.cursor.get("created_at")
+                cursor_id = self.cursor["__name__"]
+                docs = [doc for doc in docs if (doc.to_dict().get("created_at"), doc.id) < (cursor_created, cursor_id)]
         if self.limit_value is not None:
             docs = docs[: self.limit_value]
         return docs
@@ -2077,7 +2103,7 @@ class TestApiGatewayHelpers:
     def test_history_page_token_roundtrip(self):
         fs = gw._history_filter_signature({}, 50)
         created = datetime(2026, 5, 1, 12, 0, 0)
-        tok = gw._encode_history_page_token(created, "jobid12", fs)
+        tok = gw._encode_history_page_token("jobid12", fs, created_at=created)
         dec = gw._decode_history_page_token(tok, fs)
         assert dec["job_id"] == "jobid12"
         assert dec["created_at"].year == 2026
@@ -2116,7 +2142,7 @@ class TestApiGatewayHelpers:
 
     def test_decode_history_page_token_wrong_signature(self):
         fs = gw._history_filter_signature({}, 50)
-        tok = gw._encode_history_page_token(datetime(2026, 5, 1, 12, 0, 0), "jid", fs)
+        tok = gw._encode_history_page_token("jid", fs, created_at=datetime(2026, 5, 1, 12, 0, 0))
         with pytest.raises(ValueError, match="history page token"):
             gw._decode_history_page_token(tok, "not-the-same-signature")
 
@@ -2139,7 +2165,7 @@ class TestApiGatewayHelpers:
 
     def test_decode_history_page_token_tampered_cursor(self):
         fs = gw._history_filter_signature({}, 50)
-        tok = gw._encode_history_page_token(datetime(2026, 5, 1, 12, 0, 0), "real-jid", fs)
+        tok = gw._encode_history_page_token("real-jid", fs, created_at=datetime(2026, 5, 1, 12, 0, 0))
         padded = tok + ("=" * (-len(tok) % 4))
         payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
         payload["job_id"] = "forged-jid"
@@ -2171,7 +2197,7 @@ class TestHistoryRoutesEdgeCases:
             with (
                 patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
                 _stub_auth("u1"),
-                patch.object(gw, "_history_query_from_request", return_value=(q, {"limit": "50"})),
+                patch.object(gw, "_history_query_from_request", return_value=(q, {"limit": "50"}, "date")),
             ):
                 data, status, _ = _parse_response(gw.handle_history_list(req, {}))
         assert status == 500
@@ -2188,7 +2214,7 @@ class TestHistoryRoutesEdgeCases:
             with (
                 patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
                 _stub_auth("u1"),
-                patch.object(gw, "_history_query_from_request", return_value=(q, {})),
+                patch.object(gw, "_history_query_from_request", return_value=(q, {}, "date")),
             ):
                 data, status, _ = _parse_response(gw.handle_history_csv_export(req, {}))
         assert status == 500
@@ -2582,3 +2608,200 @@ class TestEndpointAuditLogging:
         assert "[ApiGateway] feedback_post user=u1" in out
         assert "comment_len=" in out
         assert "great result" not in out
+
+
+# ===========================================================================
+# GET /jobs/history/users
+# ===========================================================================
+class TestHistoryUsers:
+    def test_history_users_requires_auth(self):
+        req = _make_request(method="GET", path="/jobs/history/users")
+        with _app.test_request_context():
+            with patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 401
+
+    def test_history_users_returns_empty_when_no_meta_doc(self):
+        mock_doc = MagicMock()
+        mock_doc.exists = False
+        req = _authed_request(method="GET", path="/jobs/history/users")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(
+                    gw.db, "collection", return_value=MagicMock(**{"document.return_value.get.return_value": mock_doc})
+                ),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert data["users"] == []
+
+    def test_history_users_returns_list_sorted_by_email(self):
+        mock_doc = MagicMock()
+        mock_doc.exists = True
+        mock_doc.to_dict.return_value = {
+            "users": {
+                "u2": {"user_id": "u2", "user_email": "zoe@example.com", "user_name": "Zoe"},
+                "u1": {"user_id": "u1", "user_email": "alice@example.com", "user_name": "Alice"},
+            }
+        }
+        req = _authed_request(method="GET", path="/jobs/history/users")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(
+                    gw.db, "collection", return_value=MagicMock(**{"document.return_value.get.return_value": mock_doc})
+                ),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert len(data["users"]) == 2
+        assert data["users"][0]["user_email"] == "alice@example.com"
+        assert data["users"][1]["user_email"] == "zoe@example.com"
+
+
+# ===========================================================================
+# GET /jobs/history — CARS prefix and total_count
+# ===========================================================================
+class TestHistoryCarsPrefixAndTotalCount:
+    def _make_docs(self, cars_refs):
+        return [
+            _HistoryDoc(
+                f"j{i}",
+                {
+                    "status": "complete",
+                    "created_at": datetime(2026, 5, 1, 12, i, 0),
+                    "user_id": "u1",
+                    "user_email": "a@b.com",
+                    "input": {"full_name": f"Person {i}", "cars_reference_number": cars_ref},
+                },
+            )
+            for i, cars_ref in enumerate(cars_refs)
+        ]
+
+    def test_history_cars_prefix_alone(self):
+        docs = self._make_docs(["ABCDE123", "ABCDE456", "XXXXX999"])
+        collection = _HistoryCollection(docs)
+        req = _authed_request(
+            method="GET", path="/jobs/history", query_args={"cars_reference_number": "ABCDE", "limit": "50"}
+        )
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        # CARS range filter applied
+        assert any(f[0] == "input.cars_reference_number" and f[1] == ">=" for f in collection.query.filters)
+        assert any(f[0] == "input.cars_reference_number" and f[1] == "<=" for f in collection.query.filters)
+        # XXXXX999 not in results (filtered by Firestore range)
+        job_ids = [r["job_id"] for r in data["rows"]]
+        assert "j2" not in job_ids  # XXXXX999
+
+    def test_history_cars_prefix_with_user_filter(self):
+        docs = self._make_docs(["ABCDE123", "ABCDE456"])
+        collection = _HistoryCollection(docs)
+        req = _authed_request(
+            method="GET",
+            path="/jobs/history",
+            query_args={"cars_reference_number": "ABCDE", "user_id": "u1", "limit": "50"},
+        )
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert any(f[0] == "user_id" and f[1] == "==" for f in collection.query.filters)
+        assert any(f[0] == "input.cars_reference_number" and f[1] == ">=" for f in collection.query.filters)
+
+    def test_history_cars_prefix_with_date_range_filters_client_side(self):
+        docs = [
+            _HistoryDoc(
+                "jin",
+                {
+                    "status": "complete",
+                    "created_at": datetime(2026, 5, 5, 0, 0, 0),
+                    "user_id": "u1",
+                    "input": {"full_name": "In Range", "cars_reference_number": "ABCDE100"},
+                },
+            ),
+            _HistoryDoc(
+                "jout",
+                {
+                    "status": "complete",
+                    "created_at": datetime(2026, 1, 1, 0, 0, 0),  # outside range
+                    "user_id": "u1",
+                    "input": {"full_name": "Out of Range", "cars_reference_number": "ABCDE200"},
+                },
+            ),
+        ]
+        collection = _HistoryCollection(docs)
+        req = _authed_request(
+            method="GET",
+            path="/jobs/history",
+            query_args={
+                "cars_reference_number": "ABCDE",
+                "start_date": "2026-05-01",
+                "end_date": "2026-05-31",
+                "limit": "50",
+            },
+        )
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        # Only the in-range doc should be returned
+        job_ids = [r["job_id"] for r in data["rows"]]
+        assert "jin" in job_ids
+        assert "jout" not in job_ids
+        # Date filters must NOT be in Firestore query (applied client-side)
+        assert not any(f[0] == "created_at" for f in collection.query.filters)
+
+    def test_history_total_count_returned(self):
+        docs = self._make_docs(["ABCDE001", "ABCDE002"])
+        collection = _HistoryCollection(docs, count_override=2)
+        req = _authed_request(method="GET", path="/jobs/history", query_args={"limit": "50"})
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert data["total_count"] == 2
+
+    def test_history_total_count_null_on_agg_error(self):
+        docs = self._make_docs(["ABCDE001"])
+        collection = _HistoryCollection(docs)
+        # Make count() raise so total_count falls back to null
+        collection.query._count_value = None
+
+        class _BrokenCQ:
+            def get(self):
+                raise RuntimeError("agg failed")
+
+        collection.query.count = lambda **kw: _BrokenCQ()
+
+        req = _authed_request(method="GET", path="/jobs/history", query_args={"limit": "50"})
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert data["total_count"] is None
+        assert len(data["rows"]) == 1

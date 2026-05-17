@@ -237,26 +237,37 @@ def _history_filter_signature(params: dict[str, str], limit: int) -> str:
     """Stable signature used to keep page tokens bound to one filtered result set."""
     user_filter = (params.get("user_id") or "").strip()
     user_field = "user_email" if "@" in user_filter else "user_id"
+    cars_ref = (params.get("cars_reference_number") or "").strip().upper() or None
     normalized = {
         "start_date": _isoformat(_parse_date_param(params.get("start_date"))),
         "end_date": _isoformat(_parse_date_param(params.get("end_date"), end_of_day=True)),
         "user_field": user_field if user_filter else None,
         "user_filter": user_filter.lower() if user_field == "user_email" else user_filter,
-        "cars_reference_number": (params.get("cars_reference_number") or "").strip().upper() or None,
+        "cars_reference_number": cars_ref,
+        "cars_mode": "prefix" if cars_ref else None,
         "limit": limit,
     }
     payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _encode_history_page_token(created_at: Any, job_id: str, filter_signature: str) -> str:
+def _encode_history_page_token(
+    job_id: str,
+    filter_signature: str,
+    *,
+    created_at: Any = None,
+    cars_ref: str | None = None,
+) -> str:
     iat = int(datetime.now(UTC).timestamp())
-    inner = {
-        "created_at": _isoformat(created_at),
+    inner: dict[str, Any] = {
         "filter_signature": filter_signature,
         "iat": iat,
         "job_id": job_id,
     }
+    if cars_ref is not None:
+        inner["cars_ref"] = cars_ref
+    else:
+        inner["created_at"] = _isoformat(created_at)
     inner_raw = json.dumps(inner, sort_keys=True, separators=(",", ":")).encode("utf-8")
     mac = hmac.new(HISTORY_TOKEN_SECRET.encode("utf-8"), inner_raw, hashlib.sha256).hexdigest()
     payload = {**inner, "mac": mac}
@@ -290,11 +301,36 @@ def _decode_history_page_token(token: str, expected_filter_signature: str) -> di
     if payload.get("filter_signature") != expected_filter_signature:
         raise ValueError("Invalid history page token")
 
-    created_at = _parse_date_param(payload.get("created_at"))
     job_id = (payload.get("job_id") or "").strip()
-    if not created_at or not job_id:
+    if not job_id:
+        raise ValueError("Invalid history page token")
+
+    cars_ref = payload.get("cars_ref")
+    if cars_ref is not None:
+        if not isinstance(cars_ref, str) or not cars_ref:
+            raise ValueError("Invalid history page token")
+        return {"cars_ref": cars_ref, "job_id": job_id}
+
+    created_at = _parse_date_param(payload.get("created_at"))
+    if not created_at:
         raise ValueError("Invalid history page token")
     return {"created_at": created_at, "job_id": job_id}
+
+
+def _in_date_range(ts: Any, start: Any, end: Any) -> bool:
+    """Return True when ts falls within [start, end]; None bounds are ignored."""
+    if ts is None:
+        return start is None and end is None
+    if not isinstance(ts, datetime):
+        try:
+            ts = _parse_date_param(ts)
+        except Exception:
+            return True
+    if start and ts < start:
+        return False
+    if end and ts > end:
+        return False
+    return True
 
 
 def _feedback_entries(job: dict[str, Any]) -> list[dict[str, Any]]:
@@ -954,7 +990,14 @@ def verify_job_ownership(request: Request, job_id: str, headers: dict) -> tuple[
     return job, user_id, None
 
 
-def _history_query_from_request(request: Request):
+def _history_query_from_request(request: Request) -> tuple[Any, dict[str, str], str]:
+    """Build the Firestore query for history. Returns (query, params, mode).
+
+    mode is "cars" when CARS prefix filtering is active (ordering by cars_reference_number)
+    or "date" otherwise (ordering by created_at). When mode is "cars", date range filters are
+    omitted from the Firestore query — callers must apply them client-side because Firestore
+    forbids range filters on two different fields.
+    """
     params = _request_args(request)
     query = db.collection("jobs").where("workflow_type", "==", "skiptrace")
 
@@ -963,24 +1006,50 @@ def _history_query_from_request(request: Request):
     user_filter = (params.get("user_id") or "").strip()
     cars_reference_number = (params.get("cars_reference_number") or "").strip().upper()
 
-    if start_date:
-        query = query.where("created_at", ">=", start_date)
-    if end_date:
-        query = query.where("created_at", "<=", end_date)
     if user_filter:
         if "@" in user_filter:
             query = query.where("user_email", "==", user_filter.lower())
         else:
             query = query.where("user_id", "==", user_filter)
+
     if cars_reference_number:
-        query = query.where("input.cars_reference_number", "==", cars_reference_number)
+        cars_prefix_end = cars_reference_number + ""
+        query = (
+            query.where("input.cars_reference_number", ">=", cars_reference_number)
+            .where("input.cars_reference_number", "<=", cars_prefix_end)
+            .order_by("input.cars_reference_number", direction=firestore.Query.ASCENDING)
+            .order_by("__name__", direction=firestore.Query.DESCENDING)
+        )
+        return query, params, "cars"
+
+    if start_date:
+        query = query.where("created_at", ">=", start_date)
+    if end_date:
+        query = query.where("created_at", "<=", end_date)
 
     return (
         query.order_by("created_at", direction=firestore.Query.DESCENDING).order_by(
             "__name__", direction=firestore.Query.DESCENDING
         ),
         params,
+        "date",
     )
+
+
+def handle_history_users(request: Request, headers: dict):
+    """Return distinct skiptrace users for populating the history user filter."""
+    uid, auth_error = verify_firebase_token(request)
+    if auth_error:
+        return jsonify(auth_error), 401, headers
+    try:
+        doc = db.collection("meta").document("skiptrace_users").get()
+        users_map = (doc.to_dict() or {}).get("users", {}) if doc.exists else {}
+        users = sorted(users_map.values(), key=lambda u: (u.get("user_email") or "").lower())
+    except Exception as e:
+        logger.error("Failed to load skiptrace users: %s", e)
+        users = []
+    print(f"[ApiGateway] history_users user={uid} count={len(users)}")
+    return jsonify({"users": users}), 200, headers
 
 
 def handle_history_list(request: Request, headers: dict):
@@ -995,27 +1064,63 @@ def handle_history_list(request: Request, headers: dict):
         return jsonify({"error": "Too many requests. Please wait before loading more history."}), 429, headers
 
     try:
-        query, params = _history_query_from_request(request)
+        query, params, mode = _history_query_from_request(request)
         raw_limit = int(params.get("limit") or "50")
         limit = max(1, min(raw_limit, 200))
         filter_signature = _history_filter_signature(params, limit)
         page_token = (params.get("page_token") or "").strip()
         if page_token:
             cursor = _decode_history_page_token(page_token, filter_signature)
-            query = query.start_after({"created_at": cursor["created_at"], "__name__": cursor["job_id"]})
+            if mode == "cars":
+                query = query.start_after(
+                    {"input.cars_reference_number": cursor["cars_ref"], "__name__": cursor["job_id"]}
+                )
+            else:
+                query = query.start_after({"created_at": cursor["created_at"], "__name__": cursor["job_id"]})
 
-        docs = list(query.limit(limit + 1).stream())
-        page_docs = docs[:limit]
-        rows = [_format_history_row(doc.id, doc.to_dict()) for doc in page_docs]
-        has_more = len(docs) > limit
-        next_page_token = None
-        if has_more and page_docs:
-            last_doc = page_docs[-1]
-            next_page_token = _encode_history_page_token(
-                (last_doc.to_dict() or {}).get("created_at"), last_doc.id, filter_signature
-            )
+        total_count = None
+        try:
+            count_result = query.limit(10001).count(alias="total").get()
+            total_count = count_result[0][0].value
+        except Exception:
+            pass  # fall back to null
+
+        if mode == "cars":
+            # Fetch extra docs so date-range filtering client-side still fills the page.
+            # Page size may be < limit when both CARS prefix and date range are active.
+            start_date = _parse_date_param(params.get("start_date"))
+            end_date = _parse_date_param(params.get("end_date"), end_of_day=True)
+            raw_docs = list(query.limit(limit * 4).stream())
+            filtered = [
+                d for d in raw_docs if _in_date_range((d.to_dict() or {}).get("created_at"), start_date, end_date)
+            ]
+            page_docs = filtered[:limit]
+            has_more = len(filtered) > limit or len(raw_docs) == limit * 4
+            rows = [_format_history_row(doc.id, doc.to_dict()) for doc in page_docs]
+            next_page_token = None
+            if has_more and page_docs:
+                last_doc = page_docs[-1]
+                next_page_token = _encode_history_page_token(
+                    last_doc.id,
+                    filter_signature,
+                    cars_ref=(last_doc.to_dict() or {}).get("input", {}).get("cars_reference_number"),
+                )
+        else:
+            docs = list(query.limit(limit + 1).stream())
+            page_docs = docs[:limit]
+            rows = [_format_history_row(doc.id, doc.to_dict()) for doc in page_docs]
+            has_more = len(docs) > limit
+            next_page_token = None
+            if has_more and page_docs:
+                last_doc = page_docs[-1]
+                next_page_token = _encode_history_page_token(
+                    last_doc.id,
+                    filter_signature,
+                    created_at=(last_doc.to_dict() or {}).get("created_at"),
+                )
+
         print(
-            f"[ApiGateway] history_list user={uid} filter_sig={filter_signature} row_count={len(rows)} has_more={has_more}"
+            f"[ApiGateway] history_list user={uid} mode={mode} filter_sig={filter_signature} row_count={len(rows)} has_more={has_more}"
         )
         return (
             jsonify(
@@ -1025,6 +1130,7 @@ def handle_history_list(request: Request, headers: dict):
                     "page_size": limit,
                     "has_more": has_more,
                     "next_page_token": next_page_token,
+                    "total_count": total_count,
                 }
             ),
             200,
@@ -1051,12 +1157,18 @@ def handle_history_csv_export(request: Request, headers: dict):
         return jsonify({"error": "CSV export rate limit exceeded. Maximum 10 exports per hour."}), 429, headers
 
     try:
-        query, _params = _history_query_from_request(request)
+        query, csv_params, csv_mode = _history_query_from_request(request)
         count_result = query.count().get()
         total = count_result[0][0].value
         if total > 5000:
             return jsonify({"error": "Result set too large; narrow your filters."}), 413, headers
-        rows = [_format_history_row(doc.id, doc.to_dict()) for doc in query.limit(5000).stream()]
+        rows_raw = [_format_history_row(doc.id, doc.to_dict()) for doc in query.limit(5000).stream()]
+        if csv_mode == "cars":
+            csv_start = _parse_date_param(csv_params.get("start_date"))
+            csv_end = _parse_date_param(csv_params.get("end_date"), end_of_day=True)
+            rows = [r for r in rows_raw if _in_date_range(r.get("created_at"), csv_start, csv_end)]
+        else:
+            rows = rows_raw
     except ValueError:
         return jsonify({"error": "Invalid history filter"}), 400, headers
     except Exception as e:
@@ -1257,6 +1369,24 @@ def handle_investigation(request: Request, headers: dict, workflow_name: str):
         user_name=user_profile["user_name"],
     )
 
+    # Track skiptrace users for history filter autocomplete
+    if is_skiptrace:
+        try:
+            db.collection("meta").document("skiptrace_users").set(
+                {
+                    "users": {
+                        user_id: {
+                            "user_id": user_id,
+                            "user_email": user_profile["user_email"],
+                            "user_name": user_profile["user_name"],
+                        }
+                    }
+                },
+                merge=True,
+            )
+        except Exception as e:
+            print(f"[ApiGateway] WARNING: failed to update skiptrace_users: {e}")
+
     # Trigger workflow (async), then mark job as pending
     try:
         trigger_workflow(job_id, email, full_name, city, province, company_name, workflow_name=workflow_name)
@@ -1379,6 +1509,10 @@ def main(request: Request):
     # GET /jobs/history/export.csv
     if request.method == "GET" and path == "/jobs/history/export.csv":
         return handle_history_csv_export(request, headers)
+
+    # GET /jobs/history/users
+    if request.method == "GET" and path == "/jobs/history/users":
+        return handle_history_users(request, headers)
 
     # GET /jobs/history
     if request.method == "GET" and path == "/jobs/history":

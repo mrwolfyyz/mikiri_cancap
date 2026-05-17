@@ -54,14 +54,17 @@ let statusMessageTimer = null;
 let statusMessageStartTime = null;
 let currentStatusMessage = "";
 let historyLoaded = false;
+let historyUsersLoaded = false;
 let historyRows = [];
 let activeFeedbackJobId = null;
+let _modalTriggerEl = null;
 let historyPageTokens = [null];
 let historyPageIndex = 0;
 let historyNextPageToken = null;
 let historyAppliedFilters = null;
 let historyLoading = false;
 let historyRequestSequence = 0;
+let historyTotalCount = null;
 
 // ===========================
 // DOM Elements
@@ -270,8 +273,11 @@ function switchTab(tabName) {
     content.classList.toggle("active", content.id === `${tabName}-tab`);
   });
 
-  if (tabName === "history" && !historyLoaded) {
-    loadSearchHistory();
+  if (tabName === "history") {
+    loadHistoryUsers();
+    if (!historyLoaded) {
+      loadSearchHistory();
+    }
   }
 }
 
@@ -1119,8 +1125,16 @@ function updateHistoryPaginationStatus(rowCount = historyRows.length) {
   } else if (!rowCount) {
     elements.historyPaginationStatus.textContent = "No rows to show.";
   } else {
-    const rowLabel = rowCount === 1 ? "row" : "rows";
-    elements.historyPaginationStatus.textContent = `Page ${historyPageIndex + 1}: showing ${rowCount} ${rowLabel}`;
+    const pageNum = historyPageIndex + 1;
+    const total =
+      typeof historyTotalCount === "number"
+        ? historyTotalCount > 10000
+          ? "10,000+"
+          : historyTotalCount.toLocaleString()
+        : null;
+    elements.historyPaginationStatus.textContent = total
+      ? `Page ${pageNum} · showing ${rowCount} of ${total}`
+      : `Page ${pageNum}: showing ${rowCount} rows`;
   }
 }
 
@@ -1138,7 +1152,9 @@ function renderHistoryRows(rows) {
   if (!elements.historyTableBody) return;
 
   if (!rows.length) {
-    elements.historyTableBody.innerHTML = '<tr><td colspan="6" class="history-empty">No searches match these filters.</td></tr>';
+    const hasFilters = historyAppliedFilters && [...historyAppliedFilters].length > 0;
+    const msg = hasFilters ? "No searches match these filters." : "No searches found yet.";
+    elements.historyTableBody.innerHTML = `<tr><td colspan="6" class="history-empty">${msg}</td></tr>`;
     return;
   }
 
@@ -1164,6 +1180,97 @@ function renderHistoryRows(rows) {
     .join("");
 }
 
+// ===========================
+// History URL State
+// ===========================
+function _pushHistoryState() {
+  const p = new URLSearchParams();
+  const v = (id) => document.getElementById(id)?.value || "";
+  if (v("historyStartDate")) p.set("start_date", v("historyStartDate"));
+  if (v("historyEndDate")) p.set("end_date", v("historyEndDate"));
+  if (v("historyUserFilter")) p.set("user_id", v("historyUserFilter"));
+  if (v("historyCarsFilter")) p.set("cars_reference_number", v("historyCarsFilter"));
+  const qs = p.toString();
+  window.history.replaceState({}, "", qs ? `?${qs}` : window.location.pathname);
+}
+
+function _hydrateHistoryFromUrl() {
+  const p = new URLSearchParams(window.location.search);
+  const set = (id, key) => {
+    if (p.has(key)) {
+      const el = document.getElementById(id);
+      if (el) el.value = p.get(key);
+    }
+  };
+  set("historyStartDate", "start_date");
+  set("historyEndDate", "end_date");
+  set("historyUserFilter", "user_id");
+  set("historyCarsFilter", "cars_reference_number");
+  return p.has("start_date") || p.has("end_date") || p.has("user_id") || p.has("cars_reference_number");
+}
+
+// ===========================
+// History Error Messages
+// ===========================
+const HISTORY_ERROR_MAP = [
+  ["page token", "Your session page expired — returning to page 1."],
+  ["Too many requests", "Too many requests. Please wait a moment and try again."],
+  ["Rate limit", "Too many requests. Please wait a moment and try again."],
+  ["Failed to load", "Unable to load search history. Please try again."],
+  ["Failed to export", "Unable to export CSV. Please try again."],
+];
+
+function _friendlyHistoryError(msg) {
+  for (const [key, friendly] of HISTORY_ERROR_MAP) {
+    if (msg?.includes(key)) return friendly;
+  }
+  return "Something went wrong. Please try again.";
+}
+
+// ===========================
+// History Skeleton
+// ===========================
+function renderHistorySkeleton() {
+  if (!elements.historyTableBody) return;
+  elements.historyTableBody.innerHTML = Array(5)
+    .fill(0)
+    .map(
+      () =>
+        `<tr class="history-skeleton-row">${Array(6)
+          .fill('<td><span class="skeleton-cell"></span></td>')
+          .join("")}</tr>`
+    )
+    .join("");
+}
+
+async function loadHistoryUsers() {
+  if (historyUsersLoaded) return;
+  try {
+    const cached = sessionStorage.getItem("historyUsers");
+    if (cached) {
+      populateUserDatalist(JSON.parse(cached));
+      historyUsersLoaded = true;
+      return;
+    }
+    const resp = await fetch(`${API_URL}/jobs/history/users`, { headers: await authHeaders() });
+    if (!resp.ok) return;
+    const { users } = await resp.json();
+    sessionStorage.setItem("historyUsers", JSON.stringify(users));
+    populateUserDatalist(users);
+    historyUsersLoaded = true;
+  } catch {
+    // fail silently — free-text filter still works
+  }
+}
+
+function populateUserDatalist(users) {
+  const dl = document.getElementById("historyUserList");
+  if (!dl) return;
+  dl.innerHTML = users
+    .map((u) => `<option value="${escapeHtml(u.user_email)}">${escapeHtml(u.user_name || u.user_email)}</option>`)
+    .join("");
+}
+
 async function loadSearchHistory({ resetPage = false } = {}) {
   if (!hasHistoryUi()) return;
 
@@ -1172,7 +1279,9 @@ async function loadSearchHistory({ resetPage = false } = {}) {
     resetHistoryPagination();
   }
 
+  _pushHistoryState();
   setHistoryStatus("Loading search history...", "info");
+  renderHistorySkeleton();
   if (elements.historyApplyFiltersButton) elements.historyApplyFiltersButton.disabled = true;
   historyLoading = true;
   updateHistoryPaginationControls();
@@ -1193,6 +1302,7 @@ async function loadSearchHistory({ resetPage = false } = {}) {
     const data = await response.json();
     if (requestSequence !== historyRequestSequence) return;
     historyRows = data.rows || [];
+    historyTotalCount = data.total_count ?? null;
     historyNextPageToken = data.next_page_token || null;
     historyPageTokens = historyPageTokens.slice(0, historyPageIndex + 1);
     if (historyNextPageToken) historyPageTokens.push(historyNextPageToken);
@@ -1207,10 +1317,16 @@ async function loadSearchHistory({ resetPage = false } = {}) {
   } catch (error) {
     if (requestSequence !== historyRequestSequence) return;
     console.error("Search history load failed:", error);
+    if (error.message?.includes("page token")) {
+      resetHistoryPagination();
+      loadSearchHistory({ resetPage: true });
+      return;
+    }
     historyRows = [];
+    historyTotalCount = null;
     historyNextPageToken = null;
     renderHistoryRows([]);
-    setHistoryStatus(error.message || "Failed to load search history", "error");
+    setHistoryStatus(_friendlyHistoryError(error.message), "error");
   } finally {
     if (requestSequence === historyRequestSequence) {
       historyLoading = false;
@@ -1269,17 +1385,46 @@ async function exportSearchHistoryCsv() {
     setHistoryStatus("", "info");
   } catch (error) {
     console.error("CSV export failed:", error);
-    setHistoryStatus(error.message || "Failed to export CSV", "error");
+    setHistoryStatus(_friendlyHistoryError(error.message), "error");
   } finally {
     if (elements.historyExportButton) elements.historyExportButton.disabled = false;
   }
 }
 
+function _escapeModal(e) {
+  if (e.key === "Escape") closeFeedbackModal();
+}
+
+function _trapModalFocus(e) {
+  if (e.key !== "Tab" || !elements.feedbackModal) return;
+  const focusable = [
+    ...elements.feedbackModal.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    ),
+  ];
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
 function closeFeedbackModal() {
   activeFeedbackJobId = null;
-  if (elements.feedbackModal) elements.feedbackModal.classList.add("is-hidden");
+  elements.feedbackModal?.classList.add("is-hidden");
+  elements.feedbackModal?.removeEventListener("keydown", _trapModalFocus);
+  document.removeEventListener("keydown", _escapeModal);
   if (elements.feedbackEntries) elements.feedbackEntries.innerHTML = "";
   if (elements.feedbackComment) elements.feedbackComment.value = "";
+  const counter = document.getElementById("feedbackCommentCounter");
+  if (counter) counter.textContent = "0 / 1000";
+  _modalTriggerEl?.focus();
+  _modalTriggerEl = null;
 }
 
 function renderFeedbackEntries(entries) {
@@ -1303,7 +1448,8 @@ function renderFeedbackEntries(entries) {
     .join("");
 }
 
-async function openFeedbackModal(jobId) {
+async function openFeedbackModal(jobId, triggerEl) {
+  _modalTriggerEl = triggerEl || document.activeElement;
   activeFeedbackJobId = jobId;
   const row = historyRows.find((item) => item.job_id === jobId);
   if (elements.feedbackModalTitle) elements.feedbackModalTitle.textContent = "Feedback";
@@ -1312,7 +1458,12 @@ async function openFeedbackModal(jobId) {
       ? `${row.cars_reference_number || "No CARS reference"} - ${row.full_name || "Unknown name"}`
       : jobId;
   }
-  if (elements.feedbackModal) elements.feedbackModal.classList.remove("is-hidden");
+  if (elements.feedbackModal) {
+    elements.feedbackModal.classList.remove("is-hidden");
+    elements.feedbackModal.addEventListener("keydown", _trapModalFocus);
+    document.addEventListener("keydown", _escapeModal);
+    elements.feedbackModalClose?.focus();
+  }
   if (elements.feedbackError) {
     elements.feedbackError.textContent = "";
     elements.feedbackError.classList.add("is-hidden");
@@ -1429,7 +1580,7 @@ function initEventListeners() {
     elements.historyTableBody?.addEventListener("click", (event) => {
       const button = event.target.closest("[data-feedback-job-id]");
       if (button) {
-        openFeedbackModal(button.dataset.feedbackJobId);
+        openFeedbackModal(button.dataset.feedbackJobId, button);
       }
     });
     elements.feedbackModalClose?.addEventListener("click", closeFeedbackModal);
@@ -1438,7 +1589,14 @@ function initEventListeners() {
         closeFeedbackModal();
       }
     });
-    elements.feedbackSubmitButton?.addEventListener("click", submitHistoryFeedback);
+    document.getElementById("feedbackForm")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      submitHistoryFeedback();
+    });
+    elements.feedbackComment?.addEventListener("input", () => {
+      const counter = document.getElementById("feedbackCommentCounter");
+      if (counter) counter.textContent = `${elements.feedbackComment.value.length} / 1000`;
+    });
   }
 
   // Conditionally init address verification if feature is enabled and module is loaded
@@ -1570,6 +1728,14 @@ async function init() {
   checkDriveConfiguration();
   loadDriveConfiguration();
   updateServiceAccountEmail();
+
+  // Restore history filters from URL and auto-load if present (items 2.8 + 2.9)
+  if (hasHistoryUi()) {
+    const hadState = _hydrateHistoryFromUrl();
+    if (hadState) {
+      switchTab("history"); // triggers loadSearchHistory() via !historyLoaded path
+    }
+  }
 
   // Prefill from extension (#prefill=token after server-side session create)
   setTimeout(() => {

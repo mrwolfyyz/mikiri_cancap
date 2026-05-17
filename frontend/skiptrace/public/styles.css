@@ -176,6 +176,12 @@
     text-decoration: underline;
 }
 
+.history-action-link:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+    border-radius: 4px;
+}
+
 .history-result-link {
     color: var(--accent);
     font-weight: 600;
@@ -241,6 +247,11 @@
     cursor: pointer;
     font-size: 1.75rem;
     line-height: 1;
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .feedback-entry-list {
@@ -1582,4 +1593,37 @@ footer {
     padding: var(--space-md);
     color: var(--text-secondary);
     font-style: italic;
+}
+
+/* History skeleton shimmer (item 2.11) */
+@keyframes skeleton-shimmer {
+    0%   { background-position: -200px 0; }
+    100% { background-position:  200px 0; }
+}
+
+.skeleton-cell {
+    display: block;
+    height: 1em;
+    width: 80%;
+    border-radius: 4px;
+    background: linear-gradient(
+        90deg,
+        var(--bg-secondary) 25%,
+        var(--border)       50%,
+        var(--bg-secondary) 75%
+    );
+    background-size: 400px 100%;
+    animation: skeleton-shimmer 1.2s infinite linear;
+}
+
+.history-skeleton-row td {
+    padding: var(--space-sm);
+}
+
+/* Char counter for feedback textarea (item 2.5) */
+.char-counter {
+    font-size: var(--font-sm);
+    color: var(--text-secondary);
+    text-align: right;
+    margin-top: var(--space-xs);
 }
