@@ -75,6 +75,7 @@ os.environ.setdefault("CHAT_HANDLER_ORIGINATION_URL", "https://chat-orig.example
 os.environ.setdefault("ADDRESS_VERIFICATION_URL", "https://addr.example.com")
 os.environ.setdefault("CORS_ALLOWED_ORIGINS", "*")
 os.environ.setdefault("EXTENSION_PREFILL_SECRET", "test-extension-prefill-secret")
+os.environ.setdefault("HISTORY_TOKEN_SECRET", "test-history-token-secret")
 os.environ.setdefault("PREFILL_SESSION_TTL_MINUTES", "10")
 os.environ.setdefault("REQUIRE_SSO", "false")
 os.environ.setdefault("APP_CHECK_ENFORCED", "false")
@@ -2068,6 +2069,31 @@ class TestApiGatewayHelpers:
         raw = base64.urlsafe_b64encode(b"[1,2,3]").decode("ascii").rstrip("=")
         with pytest.raises(ValueError, match="history page token"):
             gw._decode_history_page_token(raw, fs)
+
+    def test_decode_history_page_token_missing_mac(self):
+        fs = gw._history_filter_signature({}, 50)
+        inner = {"created_at": "2026-05-01T12:00:00", "filter_signature": fs, "iat": 1747000000, "job_id": "jid"}
+        raw = (
+            base64.urlsafe_b64encode(json.dumps(inner, sort_keys=True, separators=(",", ":")).encode())
+            .decode()
+            .rstrip("=")
+        )
+        with pytest.raises(ValueError, match="history page token"):
+            gw._decode_history_page_token(raw, fs)
+
+    def test_decode_history_page_token_tampered_cursor(self):
+        fs = gw._history_filter_signature({}, 50)
+        tok = gw._encode_history_page_token(datetime(2026, 5, 1, 12, 0, 0), "real-jid", fs)
+        padded = tok + ("=" * (-len(tok) % 4))
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")))
+        payload["job_id"] = "forged-jid"
+        tampered = (
+            base64.urlsafe_b64encode(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode())
+            .decode()
+            .rstrip("=")
+        )
+        with pytest.raises(ValueError, match="history page token"):
+            gw._decode_history_page_token(tampered, fs)
 
 
 class TestHistoryRoutesEdgeCases:
