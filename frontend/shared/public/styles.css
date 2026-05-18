@@ -101,19 +101,27 @@
 
 .history-filters {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: var(--space-md);
+    grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+    gap: var(--space-xs);
     align-items: end;
     background: var(--bg-secondary);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius);
-    padding: var(--space-lg);
+    padding: var(--space-sm);
     margin-bottom: var(--space-md);
     box-shadow: var(--shadow-sm);
 }
 
 .history-filters .form-group {
     margin-bottom: 0;
+}
+
+.history-filters .form-group label {
+    margin-bottom: 4px;
+}
+
+.history-filters .form-group input {
+    padding: 10px 12px;
 }
 
 .history-filter-actions {
@@ -824,6 +832,18 @@
     color: var(--text-primary);
     transform: translateY(-1px);
     box-shadow: var(--shadow-sm);
+}
+
+.secondary-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.secondary-button:disabled:hover {
+    background: var(--bg-secondary);
+    border-color: var(--border);
+    transform: none;
+    box-shadow: var(--shadow-xs);
 }
 
 .status-message {
