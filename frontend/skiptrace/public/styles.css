@@ -93,23 +93,16 @@
    =========================== */
 .history-header {
     display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: var(--space-md);
-    margin-bottom: var(--space-lg);
+    justify-content: flex-end;
+    margin-bottom: var(--space-sm);
 }
 
 .history-filters {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
-    gap: var(--space-xs);
+    grid-template-columns: 150px 150px 1fr 1fr auto;
+    gap: var(--space-sm);
     align-items: end;
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    padding: var(--space-sm);
     margin-bottom: var(--space-md);
-    box-shadow: var(--shadow-sm);
 }
 
 .history-filters .form-group {
