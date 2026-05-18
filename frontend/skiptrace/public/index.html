@@ -187,10 +187,6 @@
         <!-- Search History Tab -->
         <div id="history-tab" class="tab-content">
             <div class="history-header">
-                <div>
-                    <h2>Search History</h2>
-                    <p class="section-description">Review skip trace searches across all signed-in users.</p>
-                </div>
                 <button id="historyExportButton" class="secondary-button">Export CSV</button>
             </div>
 
@@ -205,12 +201,12 @@
                 </div>
                 <div class="form-group">
                     <label for="historyUserFilter">User</label>
-                    <input type="text" id="historyUserFilter" placeholder="Email or Firebase user ID" list="historyUserList" autocomplete="off">
+                    <input type="text" id="historyUserFilter" list="historyUserList" autocomplete="off">
                     <datalist id="historyUserList"></datalist>
                 </div>
                 <div class="form-group">
-                    <label for="historyCarsFilter">CARS Reference Number</label>
-                    <input type="text" id="historyCarsFilter" placeholder="ABCDE123" autocomplete="off">
+                    <label for="historyCarsFilter">CARS Ref #</label>
+                    <input type="text" id="historyCarsFilter" autocomplete="off">
                 </div>
                 <div class="history-filter-actions">
                     <button id="historyApplyFiltersButton" class="secondary-button">Apply Filters</button>
