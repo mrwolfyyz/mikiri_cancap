@@ -286,11 +286,11 @@ Because everything runs in your GCP environment, **you have full control**:
 
 - ✅ **Secrets in Secret Manager** (no hardcoded credentials)
 - ✅ **Least-Privilege IAM** (no editor/owner service accounts)
-- ✅ **Firestore Security Rules** (user isolation enforced)
+- ✅ **Firestore Security Rules** (user isolation enforced for direct browser-origin reads; the API Gateway uses the Admin SDK and applies its own per-endpoint authorization — owner-only for origination, cross-user-by-design for skiptrace search history)
 - ✅ **App Check Enforced** (reCAPTCHA Enterprise origin-bound tokens required on the API gateway and on direct Firestore reads; browsers running from any non-allowed origin cannot mint valid tokens)
 - ✅ **Token Verification** (Firebase ID token required for all user-data API routes; health and CORS preflight are public)
 - ✅ **CORS Restricted** (required at api_gateway startup; Terraform and deploy validation block wildcard in non-dev; hosting URLs in production)
-- ✅ **Server-Side Rate Limiting** (per-user, 5 requests per 5 minutes via Firestore; fails closed on Firestore error (returns 429 rather than allowing unlimited requests through))
+- ✅ **Server-Side Rate Limiting** (per-user, per-endpoint via Firestore. Investigation creation: 5/5min, fails closed. History list: 120/hr, fails open (availability-first). History CSV export: 10/hr, fails closed (exfiltration defense). All caps emit a `RATE_LIMITED` log line when hit.)
 - ✅ **Request Size Limits** (50KB for investigations, 500KB for chat including markdown context)
 - ✅ **Conversation History Cap** (frontend: 40 messages, backend: rejects >50 messages)
 - ✅ **Input Validation** (request size limits, field length limits; `full_name` and `city` validated via NFKC normalization + Unicode letter allow-list in shared module `gcp/shared/llm_input_validators.py`, applied consistently across `api_gateway` and `query_constructor`; province validated as two-letter code or allow-listed free text; HTTP 400 on invalid input — fail closed)
@@ -315,8 +315,8 @@ A: Firestore documents can be deleted via console or API at any time. TTL on `ex
 **Q: What happens if HIBP goes down?**  
 A: Investigation continues without breach data. Platform degrades gracefully if external APIs fail.
 
-**Q: Can employees see each other's investigations?**  
-A: No - Firestore security rules enforce user isolation. Each user can only access their own data.
+**Q: Can employees see each other's investigations?**
+A: For **skiptrace** investigations, yes — internal employees can browse and search across all skiptrace investigations performed by anyone in their organization. This is a deliberate feature that supports operational handoff and quality review. Access is gated on SSO (Google Workspace) + corporate-domain allowlist (`ALLOWED_EMAIL_DOMAINS`), and every cross-user access is logged with viewer uid, owner uid, and job id (see Cloud Logging filter `[ApiGateway] cross_user=true`). For **origination** investigations, no — Firestore-backed access checks enforce owner-only access via the API Gateway.
 
 **Q: Does App Check protect against a compromised backend service account reading Firestore?**  
 A: No. App Check applies to client SDK traffic (browsers, mobile apps). Server-side SDKs authenticating with a service account are exempt from App Check enforcement by design — this is required for Cloud Functions and Cloud Workflows to read/write Firestore. As a result, a compromised worker service account with `roles/datastore.user` can read across all tenants' data in the project. This is mitigated by tight IAM scoping on function service accounts (see § IAM & Least Privilege), by short Firestore TTL on job and chat documents, and by Cloud Logging of Firestore access. The correct framing: **App Check raises the bar for browser-origin abuse; service-account IAM is the control for internal-plane abuse.**

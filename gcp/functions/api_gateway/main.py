@@ -93,7 +93,10 @@ JOB_RETENTION_DAYS = 7
 EXTENSION_PREFILL_SECRET = (os.environ.get("EXTENSION_PREFILL_SECRET") or "").strip()
 HISTORY_TOKEN_SECRET = (os.environ.get("HISTORY_TOKEN_SECRET") or "").strip()
 if not HISTORY_TOKEN_SECRET:
-    print("[api_gateway] WARNING: HISTORY_TOKEN_SECRET not set — page tokens are unsigned")
+    raise ValueError(
+        "HISTORY_TOKEN_SECRET must be configured. This secret signs skiptrace history pagination tokens; "
+        "without it, the API cannot prevent forged page cursors."
+    )
 PREFILL_SESSION_TTL_MINUTES = int(os.environ.get("PREFILL_SESSION_TTL_MINUTES") or "10")
 PREFILL_SESSION_COLLECTION = "prefill_sessions"
 
@@ -786,12 +789,23 @@ def check_rate_limit(user_id: str) -> bool:
         return False
 
 
-def check_and_record_endpoint_rate_limit(user_id: str, endpoint: str, max_requests: int, window_seconds: int) -> bool:
+def check_and_record_endpoint_rate_limit(
+    user_id: str,
+    endpoint: str,
+    max_requests: int,
+    window_seconds: int,
+    fail_closed: bool = False,
+) -> bool:
     """Rate-limit read endpoints via a per-user per-window Firestore counter.
 
     Uses a document keyed by (user_id, endpoint, time_bucket) so no composite
-    index is required. Fails open on Firestore error — blocking all users due to
-    an infrastructure hiccup is worse than briefly skipping rate enforcement.
+    index is required.
+
+    fail_closed=False (default): on Firestore error, allow the request through
+        and emit a WARNING log. Appropriate for benign reads where availability
+        matters more than enforcement.
+    fail_closed=True: on Firestore error, deny the request (return False). Use
+        for high-value endpoints where bulk exfiltration is the threat model.
     """
     import math
 
@@ -810,12 +824,15 @@ def check_and_record_endpoint_rate_limit(user_id: str, endpoint: str, max_reques
                 "endpoint": endpoint,
                 "bucket": bucket,
                 "count": firestore.Increment(1),
-                "expires_at": datetime.utcnow() + timedelta(seconds=window_seconds * 2),
+                "expire_at": datetime.utcnow() + timedelta(seconds=window_seconds * 2),
             },
             merge=True,
         )
         return True
     except Exception as e:
+        if fail_closed:
+            print(f"[ApiGateway] WARNING: endpoint rate limit check failed for {endpoint}, FAILING CLOSED: {e}")
+            return False
         print(f"[ApiGateway] WARNING: endpoint rate limit check failed for {endpoint}, failing open: {e}")
         return True
 
@@ -1095,6 +1112,7 @@ def handle_history_list(request: Request, headers: dict):
     if not check_and_record_endpoint_rate_limit(
         uid, "history_list", HISTORY_LIST_RATE_LIMIT_MAX, HISTORY_LIST_RATE_LIMIT_WINDOW_SECONDS
     ):
+        print(f"[ApiGateway] history_list RATE_LIMITED viewer={uid}")
         return jsonify({"error": "Too many requests. Please wait before loading more history."}), 429, headers
 
     try:
@@ -1153,8 +1171,13 @@ def handle_history_list(request: Request, headers: dict):
                     created_at=(last_doc.to_dict() or {}).get("created_at"),
                 )
 
+        owner_uids = [r.get("user_id") for r in rows]
+        cross_user_count = sum(1 for o in owner_uids if o and o != uid)
+        job_ids_for_log = ",".join((r.get("job_id") or "")[:12] for r in rows[:50])
         print(
-            f"[ApiGateway] history_list user={uid} mode={mode} filter_sig={filter_signature} row_count={len(rows)} has_more={has_more}"
+            f"[ApiGateway] history_list viewer={uid} mode={mode} filter_sig={filter_signature} "
+            f"row_count={len(rows)} has_more={has_more} cross_user_count={cross_user_count} "
+            f"job_ids={job_ids_for_log}"
         )
         headers["Cache-Control"] = "no-store, must-revalidate"
         return (
@@ -1177,7 +1200,7 @@ def handle_history_list(request: Request, headers: dict):
         return jsonify({"error": "Invalid history filter"}), 400, headers
     except Exception as e:
         logger.error("Search history list failed: %s", e)
-        return jsonify({"error": f"Failed to load search history: {str(e)}"}), 500, headers
+        return jsonify({"error": "Failed to load search history. Please try again."}), 500, headers
 
 
 def handle_history_csv_export(request: Request, headers: dict):
@@ -1187,8 +1210,13 @@ def handle_history_csv_export(request: Request, headers: dict):
         return jsonify(auth_error), 401, headers
 
     if not check_and_record_endpoint_rate_limit(
-        uid, "history_csv_export", CSV_EXPORT_RATE_LIMIT_MAX, CSV_EXPORT_RATE_LIMIT_WINDOW_SECONDS
+        uid,
+        "history_csv_export",
+        CSV_EXPORT_RATE_LIMIT_MAX,
+        CSV_EXPORT_RATE_LIMIT_WINDOW_SECONDS,
+        fail_closed=True,
     ):
+        print(f"[ApiGateway] history_csv_export RATE_LIMITED viewer={uid}")
         return jsonify({"error": "CSV export rate limit exceeded. Maximum 10 exports per hour."}), 429, headers
 
     try:
@@ -1208,7 +1236,7 @@ def handle_history_csv_export(request: Request, headers: dict):
         return jsonify({"error": "Invalid history filter"}), 400, headers
     except Exception as e:
         logger.error("Search history CSV export failed: %s", e)
-        return jsonify({"error": f"Failed to export search history: {str(e)}"}), 500, headers
+        return jsonify({"error": "Failed to export search history. Please try again."}), 500, headers
 
     output = io.StringIO()
     writer = csv.DictWriter(
@@ -1242,7 +1270,13 @@ def handle_history_csv_export(request: Request, headers: dict):
         )
 
     csv_bytes = len(output.getvalue().encode())
-    print(f"[ApiGateway] history_csv_export user={uid} row_count={len(rows)} bytes={csv_bytes}")
+    owner_uids = [r.get("user_id") for r in rows]
+    cross_user_count = sum(1 for o in owner_uids if o and o != uid)
+    job_ids_for_log = ",".join((r.get("job_id") or "")[:12] for r in rows[:50])
+    print(
+        f"[ApiGateway] history_csv_export viewer={uid} row_count={len(rows)} bytes={csv_bytes} "
+        f"cross_user_count={cross_user_count} job_ids={job_ids_for_log}"
+    )
     filename = f"skiptrace-search-history-{datetime.utcnow().strftime('%Y-%m-%d')}.csv"
     response = Response(output.getvalue(), mimetype="text/csv")
     response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -1278,7 +1312,12 @@ def handle_history_feedback_get(request: Request, job_id: str, headers: dict):
                 "user_email": entry.get("user_email"),
             }
         )
-    print(f"[ApiGateway] feedback_get user={uid} job_id={job_id} entry_count={len(entries)}")
+    owner_uid = job.get("user_id")
+    cross_user = bool(owner_uid and owner_uid != uid)
+    print(
+        f"[ApiGateway] feedback_get viewer={uid} job_id={job_id} entry_count={len(entries)} "
+        f"owner_uid={owner_uid} cross_user={cross_user}"
+    )
     headers["Cache-Control"] = "no-store, must-revalidate"
     return jsonify({"entries": entries}), 200, headers
 
@@ -1299,6 +1338,12 @@ def handle_skiptrace_result_data(request: Request, job_id: str, headers: dict):
     if not markdown_reports:
         return jsonify({"error": "Markdown reports not available for this job"}), 404, headers
 
+    owner_uid = job.get("user_id")
+    cross_user = bool(owner_uid and owner_uid != _user_id)
+    print(
+        f"[ApiGateway] skiptrace_result_view viewer={_user_id} job_id={job_id} "
+        f"owner_uid={owner_uid} cross_user={cross_user}"
+    )
     return jsonify({"job_data": _json_safe(job), "markdown_reports": markdown_reports}), 200, headers
 
 
@@ -1439,7 +1484,8 @@ def handle_investigation(request: Request, headers: dict, workflow_name: str):
             RetryConfig(max_attempts=3, base_delay_seconds=0.5, max_delay_seconds=5.0),
             operation_name="Firestore update job failed",
         )
-        return jsonify({"error": f"Failed to start investigation: {str(e)}"}), 500, headers
+        logger.error("Failed to start investigation: %s", e)
+        return jsonify({"error": "Failed to start investigation. Please try again."}), 500, headers
 
     return jsonify({"job_id": job_id}), 202, headers
 
@@ -1499,7 +1545,8 @@ def proxy_chat_request(request: Request, headers: dict, target_url: str, service
         )
         return jsonify(response.json()), response.status_code, headers
     except requests.exceptions.RequestException as e:
-        return jsonify({"error": f"{service_name} failed: {str(e)}"}), 500, headers
+        logger.error("%s failed: %s", service_name, e)
+        return jsonify({"error": f"{service_name} failed. Please try again."}), 500, headers
 
 
 # =============================================================================
@@ -1603,7 +1650,8 @@ def main(request: Request):
             # Origination has: summary, identity, corporate, litigation, regulator
             return jsonify(markdown_reports), 200, headers
         except Exception as e:
-            return jsonify({"error": f"Failed to retrieve markdown: {str(e)}"}), 500, headers
+            logger.error("Failed to retrieve markdown: %s", e)
+            return jsonify({"error": "Failed to retrieve markdown. Please try again."}), 500, headers
 
     # POST /address-verification
     if request.method == "POST" and path == "/address-verification":
@@ -1673,7 +1721,8 @@ def main(request: Request):
             )
             return jsonify(response.json()), response.status_code, headers
         except requests.exceptions.RequestException as e:
-            return jsonify({"error": f"Address verification failed: {str(e)}"}), 500, headers
+            logger.error("Address verification failed: %s", e)
+            return jsonify({"error": "Address verification failed. Please try again."}), 500, headers
 
     # POST /chat_handler
     if request.method == "POST" and path == "/chat_handler":
@@ -1746,12 +1795,17 @@ def main(request: Request):
         try:
             db.collection("jobs").document(job_id).update({"feedback_entries": firestore.ArrayUnion([feedback_data])})
         except Exception as e:
-            return jsonify({"error": f"Failed to save feedback: {str(e)}"}), 500, headers
+            logger.error("Failed to save feedback: %s", e)
+            return jsonify({"error": "Failed to save feedback. Please try again."}), 500, headers
 
         updated_job = dict(job)
         updated_job["feedback_entries"] = [*existing_entries, feedback_data]
         row = _format_history_row(job_id, updated_job)
-        print(f"[ApiGateway] feedback_post user={user_id} job_id={job_id} rating={rating} comment_len={len(comment)}")
+        cross_user = bool(job_user_id and job_user_id != user_id)
+        print(
+            f"[ApiGateway] feedback_post viewer={user_id} job_id={job_id} rating={rating} "
+            f"comment_len={len(comment)} owner_uid={job_user_id} cross_user={cross_user}"
+        )
         return jsonify({"status": "ok", "row": row}), 200, headers
 
     # Health check

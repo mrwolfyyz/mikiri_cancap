@@ -76,13 +76,17 @@ jobs:
         run: pip install pip-audit
 
       - name: Audit test dependencies
-        run: pip-audit -r requirements-test.txt
+        # PYSEC-2025-183: pyjwt transitive dep, no fixed version available, vendor disputes
+        # classification (says key-length choice is the application's responsibility, not the
+        # library's). HIGH attack complexity. Re-evaluate when a fix is released.
+        run: pip-audit -r requirements-test.txt --ignore-vuln PYSEC-2025-183
 
       - name: Audit function dependencies
         run: |
           for req in gcp/functions/*/requirements.txt; do
             echo "Auditing $req..."
-            pip-audit -r "$req"
+            # PYSEC-2025-183: pyjwt transitive dep, no fixed version, vendor disputes — see test dep step above
+            pip-audit -r "$req" --ignore-vuln PYSEC-2025-183
           done
 
   typecheck:
