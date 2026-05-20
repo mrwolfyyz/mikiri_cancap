@@ -1080,3 +1080,32 @@
         padding: var(--space-md);
     }
 }
+
+/* Cross-user viewer banner */
+.cross-user-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 0 0 16px 0;
+  border: 1px solid #d4a017;
+  background: #fff9e6;
+  border-radius: 6px;
+  font-size: 14px;
+}
+.cross-user-banner.hidden { display: none; }
+.cross-user-banner__icon { font-size: 18px; line-height: 1; flex-shrink: 0; }
+.cross-user-banner__text { flex: 1; }
+.cross-user-banner__dismiss {
+  background: none; border: none; font-size: 20px; line-height: 1;
+  cursor: pointer; padding: 0 4px; color: #666; flex-shrink: 0;
+}
+.cross-user-banner__dismiss:hover { color: #000; }
+
+[data-theme="dark"] .cross-user-banner {
+  background: #78350F;
+  border-color: #F59E0B;
+  color: #FEF3C7;
+}
+[data-theme="dark"] .cross-user-banner__dismiss { color: #FCD34D; }
+[data-theme="dark"] .cross-user-banner__dismiss:hover { color: #FEF3C7; }

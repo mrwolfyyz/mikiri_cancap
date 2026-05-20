@@ -61,6 +61,16 @@
             <a href="index.html" class="button">Return to Home</a>
         </div>
 
+        <!-- Cross-user viewer banner (shown when viewer != job owner) -->
+        <div id="crossUserBanner" class="cross-user-banner hidden" role="status" aria-live="polite">
+          <span class="cross-user-banner__icon" aria-hidden="true">ⓘ</span>
+          <div class="cross-user-banner__text">
+            <strong>You are viewing a search performed by <span id="crossUserBannerOwner"></span>.</strong>
+            Feedback you add will be visible to all internal users.
+          </div>
+          <button type="button" id="crossUserBannerDismiss" class="cross-user-banner__dismiss" aria-label="Dismiss">×</button>
+        </div>
+
         <!-- Results Content (populated by report-renderer.js) -->
         <div id="resultsContent" class="results-content" style="display: none;"></div>
     </div>
