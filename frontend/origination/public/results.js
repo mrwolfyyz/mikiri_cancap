@@ -129,6 +129,7 @@ async function loadInvestigationData() {
         jobData,
         markdownReports,
     });
+    renderCrossUserBanner(jobData);
 
     elements.loadingState.style.display = 'none';
     elements.resultsContent.style.display = 'block';
@@ -150,6 +151,42 @@ function initDarkMode() {
             localStorage.setItem('darkMode', (next === 'dark').toString());
         });
     }
+}
+
+// ===========================
+// Cross-User Banner
+// ===========================
+function renderCrossUserBanner(jobData) {
+  const banner = document.getElementById("crossUserBanner");
+  const ownerEl = document.getElementById("crossUserBannerOwner");
+  const dismissBtn = document.getElementById("crossUserBannerDismiss");
+  if (!banner || !ownerEl || !dismissBtn) return;
+
+  const currentUser = firebase.auth().currentUser;
+  if (!currentUser) { banner.classList.add("hidden"); return; }
+
+  const ownerUid = jobData?.user_id;
+  if (!ownerUid || ownerUid === currentUser.uid) {
+    banner.classList.add("hidden");
+    return;
+  }
+
+  // job_id is the Firestore document ID, not stored as a field in job_data.
+  // Use module-level currentJobId (from URL params) as the per-job dismiss key.
+  const dismissKey = `crossUserBannerDismissed:${currentJobId}`;
+  if (sessionStorage.getItem(dismissKey) === "1") {
+    banner.classList.add("hidden");
+    return;
+  }
+
+  const ownerLabel = jobData?.user_name || jobData?.user_email || "another user";
+  ownerEl.textContent = ownerLabel;  // textContent, not innerHTML — avoids XSS on owner name/email
+  banner.classList.remove("hidden");
+
+  dismissBtn.onclick = () => {
+    banner.classList.add("hidden");
+    sessionStorage.setItem(dismissKey, "1");
+  };
 }
 
 // ===========================
