@@ -128,6 +128,12 @@ variable "frontend_results_base_url" {
   default     = ""
 }
 
+variable "job_retention_days" {
+  description = "Days to retain job documents in Firestore."
+  type        = number
+  default     = 7
+}
+
 # -----------------------------------------------------------------------------
 # Core Module
 # -----------------------------------------------------------------------------
@@ -147,6 +153,7 @@ module "core" {
   app_check_enforced                      = var.app_check_enforced
   enable_iap                              = var.enable_iap
   frontend_results_base_url               = var.frontend_results_base_url
+  job_retention_days                      = var.job_retention_days
 }
 
 # -----------------------------------------------------------------------------

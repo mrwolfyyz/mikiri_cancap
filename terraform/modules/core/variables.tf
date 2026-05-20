@@ -222,3 +222,14 @@ variable "frontend_results_base_url" {
   type        = string
   default     = ""
 }
+
+variable "job_retention_days" {
+  description = "Days to retain job documents in Firestore before TTL-based deletion. Applied at job creation. Minimum 1."
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.job_retention_days >= 1
+    error_message = "job_retention_days must be >= 1."
+  }
+}

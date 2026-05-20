@@ -11,3 +11,7 @@ region     = "northamerica-northeast1"
 # IMPORTANT: Restrict CORS to specific domains in production (do not use "*")
 # Include firebaseapp.com domains too if your team uses them.
 cors_allowed_origins = "https://YOUR_PROJECT_ID-skiptrace.web.app,https://YOUR_PROJECT_ID-origination.web.app,https://YOUR_PROJECT_ID-skiptrace.firebaseapp.com,https://YOUR_PROJECT_ID-origination.firebaseapp.com"
+
+# Days to retain skiptrace/origination job documents in Firestore. Minimum 1; default 7.
+# Lower values reduce data exposure but also shorten the search-history window available to internal users.
+job_retention_days = 7

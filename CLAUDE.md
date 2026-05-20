@@ -123,3 +123,6 @@ _ff.cloud_event = lambda f: f
 _ff.http = lambda f: f
 ```
 Missing either causes cross-file test pollution via `sys.modules`.
+
+### Skiptrace search history is cross-user by design
+Any internal SSO user can list, view, and CSV-export every skiptrace investigation. Trust boundary is `REQUIRE_SSO=true` + `ALLOWED_EMAIL_DOMAINS`. See [docs/DEPLOYMENT.md § Skiptrace search history](docs/DEPLOYMENT.md) for env vars, quotas, audit log queries, and secret rotation.

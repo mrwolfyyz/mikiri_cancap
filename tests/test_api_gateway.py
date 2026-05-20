@@ -76,6 +76,7 @@ os.environ.setdefault("ADDRESS_VERIFICATION_URL", "https://addr.example.com")
 os.environ.setdefault("CORS_ALLOWED_ORIGINS", "*")
 os.environ.setdefault("EXTENSION_PREFILL_SECRET", "test-extension-prefill-secret")
 os.environ.setdefault("HISTORY_TOKEN_SECRET", "test-history-token-secret")
+os.environ.setdefault("JOB_RETENTION_DAYS", "7")
 os.environ.setdefault("PREFILL_SESSION_TTL_MINUTES", "10")
 os.environ.setdefault("REQUIRE_SSO", "false")
 os.environ.setdefault("APP_CHECK_ENFORCED", "false")
@@ -2782,39 +2783,50 @@ class TestHistoryUsers:
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 401
 
-    def test_history_users_returns_empty_when_no_meta_doc(self):
-        mock_doc = MagicMock()
-        mock_doc.exists = False
+    def test_history_users_returns_empty_when_no_jobs_in_window(self):
+        collection = _HistoryCollection([])
         req = _authed_request(method="GET", path="/jobs/history/users")
         with _app.test_request_context():
             with (
                 patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
                 _stub_auth("u1"),
-                patch.object(
-                    gw.db, "collection", return_value=MagicMock(**{"document.return_value.get.return_value": mock_doc})
-                ),
+                patch.object(gw.db, "collection", return_value=collection),
             ):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 200
         assert data["users"] == []
 
     def test_history_users_returns_list_sorted_by_email(self):
-        mock_doc = MagicMock()
-        mock_doc.exists = True
-        mock_doc.to_dict.return_value = {
-            "users": {
-                "u2": {"user_id": "u2", "user_email": "zoe@example.com", "user_name": "Zoe"},
-                "u1": {"user_id": "u1", "user_email": "alice@example.com", "user_name": "Alice"},
-            }
-        }
+        now = datetime(2026, 5, 20, 12, 0, 0)
+        docs = [
+            _HistoryDoc(
+                "j1",
+                {
+                    "user_id": "u2",
+                    "user_email": "zoe@example.com",
+                    "user_name": "Zoe",
+                    "workflow_type": "skiptrace",
+                    "created_at": now - timedelta(days=1),
+                },
+            ),
+            _HistoryDoc(
+                "j2",
+                {
+                    "user_id": "u1",
+                    "user_email": "alice@example.com",
+                    "user_name": "Alice",
+                    "workflow_type": "skiptrace",
+                    "created_at": now - timedelta(days=2),
+                },
+            ),
+        ]
+        collection = _HistoryCollection(docs)
         req = _authed_request(method="GET", path="/jobs/history/users")
         with _app.test_request_context():
             with (
                 patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
                 _stub_auth("u1"),
-                patch.object(
-                    gw.db, "collection", return_value=MagicMock(**{"document.return_value.get.return_value": mock_doc})
-                ),
+                patch.object(gw.db, "collection", return_value=collection),
             ):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 200
@@ -3015,3 +3027,168 @@ class TestFiveHundredResponseSafety:
         assert status == 500
         assert "secret collection name" not in data.get("error", "")
         assert data["error"] == "Failed to export search history. Please try again."
+
+
+# ===========================================================================
+# T3 — JOB_RETENTION_DAYS must be >= 1; no upper bound
+# ===========================================================================
+class TestJobRetentionDaysConfig:
+    def test_defaults_to_7_when_unset(self):
+        env = {k: v for k, v in os.environ.items()}
+        env.pop("JOB_RETENTION_DAYS", None)
+        alias = "api_gw_retention_default"
+        try:
+            with patch.dict(os.environ, env, clear=True):
+                mod = load_function_module("api_gateway", alias)
+            assert mod.JOB_RETENTION_DAYS == 7
+        finally:
+            sys.modules.pop(alias, None)
+
+    def test_parses_int_from_env(self):
+        env = {**os.environ, "JOB_RETENTION_DAYS": "14"}
+        alias = "api_gw_retention_14"
+        try:
+            with patch.dict(os.environ, env, clear=True):
+                mod = load_function_module("api_gateway", alias)
+            assert mod.JOB_RETENTION_DAYS == 14
+        finally:
+            sys.modules.pop(alias, None)
+
+    def test_zero_raises_value_error(self):
+        env = {**os.environ, "JOB_RETENTION_DAYS": "0"}
+        alias = "api_gw_retention_bad"
+        try:
+            with patch.dict(os.environ, env, clear=True):
+                with pytest.raises(ValueError, match="JOB_RETENTION_DAYS"):
+                    load_function_module("api_gateway", alias)
+        finally:
+            sys.modules.pop(alias, None)
+
+    def test_large_value_accepted(self):
+        """No upper bound — 240 days is valid."""
+        env = {**os.environ, "JOB_RETENTION_DAYS": "240"}
+        alias = "api_gw_retention_240"
+        try:
+            with patch.dict(os.environ, env, clear=True):
+                mod = load_function_module("api_gateway", alias)
+            assert mod.JOB_RETENTION_DAYS == 240
+        finally:
+            sys.modules.pop(alias, None)
+
+
+# ===========================================================================
+# T4 — Daily CSV export rate limit
+# ===========================================================================
+class TestDailyCsvExportRateLimit:
+    def test_daily_limit_returns_429_with_rate_limited_daily_log(self):
+        """Returns 429 with RATE_LIMITED_DAILY log line when daily cap is hit."""
+        req = _authed_request(method="GET", path="/jobs/history/export.csv")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                # hourly check passes (True), daily check blocks (False)
+                patch.object(gw, "check_and_record_endpoint_rate_limit", side_effect=[True, False]),
+                patch("builtins.print") as mock_print,
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 429
+        assert data.get("error") == "CSV export daily limit exceeded. Maximum 50 exports per 24 hours."
+        printed = " ".join(str(c) for c in mock_print.call_args_list)
+        assert "RATE_LIMITED_DAILY" in printed
+
+
+# ===========================================================================
+# T5 — handle_history_users derives users from active jobs
+# ===========================================================================
+class TestHistoryUsersDerivedFromJobs:
+    def test_returns_users_from_active_jobs(self):
+        """Users are derived from jobs; sorted by email ascending."""
+        now = datetime(2026, 5, 20, 12, 0, 0)
+        docs = [
+            _HistoryDoc(
+                "j1",
+                {
+                    "user_id": "u2",
+                    "user_email": "bob@example.com",
+                    "user_name": "Bob",
+                    "workflow_type": "skiptrace",
+                    "created_at": now - timedelta(days=3),
+                },
+            ),
+            _HistoryDoc(
+                "j2",
+                {
+                    "user_id": "u1",
+                    "user_email": "alice@example.com",
+                    "user_name": "Alice",
+                    "workflow_type": "skiptrace",
+                    "created_at": now - timedelta(days=1),
+                },
+            ),
+        ]
+        collection = _HistoryCollection(docs)
+        req = _authed_request(method="GET", path="/jobs/history/users")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert len(data["users"]) == 2
+        assert data["users"][0]["user_email"] == "alice@example.com"
+        assert data["users"][1]["user_email"] == "bob@example.com"
+
+    def test_deduplicates_users_across_jobs(self):
+        """Multiple jobs by the same user produce a single entry."""
+        now = datetime(2026, 5, 20, 12, 0, 0)
+        docs = [
+            _HistoryDoc(
+                "j1",
+                {
+                    "user_id": "u1",
+                    "user_email": "a@example.com",
+                    "user_name": "A",
+                    "workflow_type": "skiptrace",
+                    "created_at": now - timedelta(days=1),
+                },
+            ),
+            _HistoryDoc(
+                "j2",
+                {
+                    "user_id": "u1",
+                    "user_email": "a@example.com",
+                    "user_name": "A",
+                    "workflow_type": "skiptrace",
+                    "created_at": now - timedelta(days=2),
+                },
+            ),
+        ]
+        collection = _HistoryCollection(docs)
+        req = _authed_request(method="GET", path="/jobs/history/users")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 200
+        assert len(data["users"]) == 1
+
+    def test_does_not_read_meta_document(self):
+        """meta/skiptrace_users document is never accessed."""
+        collection = _HistoryCollection([])
+        req = _authed_request(method="GET", path="/jobs/history/users")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                patch.object(gw.db, "collection", return_value=collection) as mock_col,
+            ):
+                _parse_response(main_handler(req))
+        # The collection was called with "jobs", never with "meta"
+        calls = [str(c) for c in mock_col.call_args_list]
+        assert not any("meta" in c for c in calls)
