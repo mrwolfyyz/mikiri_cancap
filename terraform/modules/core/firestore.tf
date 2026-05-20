@@ -64,6 +64,17 @@ resource "google_firestore_field" "prefill_sessions_expire_at_ttl" {
   depends_on = [google_firestore_database.default]
 }
 
+resource "google_firestore_field" "endpoint_rate_limit_counters_expire_at_ttl" {
+  project    = var.project_id
+  database   = google_firestore_database.default.name
+  collection = "endpoint_rate_limit_counters"
+  field      = "expire_at"
+
+  ttl_config {}
+
+  depends_on = [google_firestore_database.default]
+}
+
 # -----------------------------------------------------------------------------
 # Firestore Indexes (if needed)
 # -----------------------------------------------------------------------------

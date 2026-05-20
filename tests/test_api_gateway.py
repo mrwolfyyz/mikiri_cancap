@@ -842,7 +842,7 @@ class TestHandleInvestigation:
                     gw.db.collection.return_value.document.return_value.update = MagicMock()
                     data, status, _ = _parse_response(handle_investigation(req, {}, "x"))
         assert status == 500
-        assert "boom" in data["error"]
+        assert "Failed to start investigation" in data["error"]
 
 
 # ===========================================================================
@@ -1564,6 +1564,7 @@ class TestMainRouting:
             with (
                 patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
                 _stub_auth("u1"),
+                _stub_endpoint_rate_limit(),
                 patch.object(gw.db, "collection", return_value=_HistoryCollection(docs)),
             ):
                 body, status, _ = main_handler(req)
@@ -1952,7 +1953,7 @@ class TestMainRouting:
             ):
                 data, status, _ = _parse_response(main_handler(req))
         assert status == 500
-        assert "db error" in data["error"]
+        assert "Failed to retrieve markdown" in data["error"]
 
 
 # ===========================================================================
@@ -2226,6 +2227,7 @@ class TestHistoryRoutesEdgeCases:
             with (
                 patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
                 _stub_auth("u1"),
+                _stub_endpoint_rate_limit(),
                 patch.object(gw, "_history_query_from_request", return_value=(q, {}, "date")),
             ):
                 data, status, _ = _parse_response(gw.handle_history_csv_export(req, {}))
@@ -2265,6 +2267,7 @@ class TestHistoryRoutesEdgeCases:
             with (
                 patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
                 _stub_auth("u1"),
+                _stub_endpoint_rate_limit(),
                 patch.object(gw.db, "collection", return_value=_HistoryCollection(docs, count_override=1)),
             ):
                 body, status, _ = main_handler(req)
@@ -2289,6 +2292,7 @@ class TestHistoryRoutesEdgeCases:
             with (
                 patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
                 _stub_auth("u1"),
+                _stub_endpoint_rate_limit(),
                 patch.object(gw.db, "collection", return_value=_HistoryCollection(docs)),
             ):
                 body, status, _ = main_handler(req)
@@ -2330,6 +2334,7 @@ class TestHistoryRoutesEdgeCases:
             with (
                 patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
                 _stub_auth("u1"),
+                _stub_endpoint_rate_limit(),
                 patch.object(gw.db, "collection", return_value=_HistoryCollection(docs)),
             ):
                 body, status, _ = main_handler(req)
@@ -2359,6 +2364,7 @@ class TestHistoryRoutesEdgeCases:
             with (
                 patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
                 _stub_auth("u1"),
+                _stub_endpoint_rate_limit(),
                 patch.object(gw.db, "collection", return_value=_HistoryCollection(docs)),
             ):
                 body, status, _ = main_handler(req)
@@ -2513,6 +2519,7 @@ class TestHistoryRoutesEdgeCases:
             with (
                 patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
                 _stub_auth("u1"),
+                _stub_endpoint_rate_limit(),
                 patch.object(gw.db, "collection", return_value=collection),
             ):
                 body, status, _ = main_handler(req)
@@ -2585,6 +2592,13 @@ class TestCheckAndRecordEndpointRateLimit:
             result = gw.check_and_record_endpoint_rate_limit("u1", "history_list", 120, 3600)
         assert result is True
 
+    def test_fails_closed_on_firestore_error(self):
+        col_mock = MagicMock()
+        col_mock.document.return_value.get.side_effect = Exception("firestore down")
+        with patch.object(gw.db, "collection", return_value=col_mock):
+            result = gw.check_and_record_endpoint_rate_limit("u1", "history_csv_export", 10, 3600, fail_closed=True)
+        assert result is False
+
 
 # ===========================================================================
 # Rate-limit enforcement on history / feedback read endpoints
@@ -2626,6 +2640,30 @@ class TestEndpointRateLimitEnforcement:
         assert status == 429
         assert "error" in data
 
+    def test_history_list_rate_limited_emits_rate_limited_log(self, capsys):
+        req = _authed_request(method="GET", path="/jobs/history")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                _stub_endpoint_rate_limit(allowed=False),
+            ):
+                _, status, _ = _parse_response(main_handler(req))
+        assert status == 429
+        assert "RATE_LIMITED" in capsys.readouterr().out
+
+    def test_history_csv_export_rate_limited_emits_rate_limited_log(self, capsys):
+        req = _authed_request(method="GET", path="/jobs/history/export.csv")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                _stub_endpoint_rate_limit(allowed=False),
+            ):
+                _, status, _ = _parse_response(main_handler(req))
+        assert status == 429
+        assert "RATE_LIMITED" in capsys.readouterr().out
+
 
 # ===========================================================================
 # Audit logging on history / feedback endpoints
@@ -2648,7 +2686,7 @@ class TestEndpointAuditLogging:
             ):
                 _parse_response(main_handler(req))
         out = capsys.readouterr().out
-        assert "[ApiGateway] history_list user=u1" in out
+        assert "[ApiGateway] history_list viewer=u1" in out
         assert "row_count=" in out
 
     def test_history_csv_export_emits_audit_log(self, capsys):
@@ -2669,7 +2707,7 @@ class TestEndpointAuditLogging:
                 _body, status, _ = main_handler(req)
         assert status == 200
         out = capsys.readouterr().out
-        assert "[ApiGateway] history_csv_export user=u1" in out
+        assert "[ApiGateway] history_csv_export viewer=u1" in out
         assert "row_count=" in out
         assert "bytes=" in out
 
@@ -2690,9 +2728,47 @@ class TestEndpointAuditLogging:
             ):
                 _parse_response(main_handler(req))
         out = capsys.readouterr().out
-        assert "[ApiGateway] feedback_post user=u1" in out
+        assert "[ApiGateway] feedback_post viewer=u1" in out
         assert "comment_len=" in out
         assert "great result" not in out
+
+    def test_history_list_audit_log_includes_cross_user_fields(self, capsys):
+        docs = [
+            _HistoryDoc("j1", {"status": "complete", "created_at": datetime(2026, 5, 1), "user_id": "u2", "input": {}}),
+            _HistoryDoc("j2", {"status": "complete", "created_at": datetime(2026, 5, 2), "user_id": "u1", "input": {}}),
+        ]
+        req = _authed_request(user_id="u1", method="GET", path="/jobs/history")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                _stub_endpoint_rate_limit(),
+                patch.object(gw.db, "collection", return_value=_HistoryCollection(docs)),
+            ):
+                _parse_response(main_handler(req))
+        out = capsys.readouterr().out
+        assert "viewer=u1" in out
+        assert "cross_user_count=1" in out
+        assert "job_ids=" in out
+
+    def test_history_csv_export_audit_log_includes_cross_user_fields(self, capsys):
+        docs = [
+            _HistoryDoc("j1", {"status": "complete", "created_at": datetime(2026, 5, 1), "user_id": "u2", "input": {}}),
+        ]
+        req = _authed_request(user_id="u1", method="GET", path="/jobs/history/export.csv")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                _stub_endpoint_rate_limit(),
+                patch.object(gw.db, "collection", return_value=_HistoryCollection(docs, count_override=1)),
+            ):
+                _body, status, _ = main_handler(req)
+        assert status == 200
+        out = capsys.readouterr().out
+        assert "viewer=u1" in out
+        assert "cross_user_count=1" in out
+        assert "job_ids=" in out
 
 
 # ===========================================================================
@@ -2890,3 +2966,52 @@ class TestHistoryCarsPrefixAndTotalCount:
         assert status == 200
         assert data["total_count"] is None
         assert len(data["rows"]) == 1
+
+
+# ===========================================================================
+# T1 — HISTORY_TOKEN_SECRET must be set or module raises ValueError at load
+# ===========================================================================
+class TestHistoryTokenSecretRequired:
+    def test_missing_history_token_secret_raises_at_import(self):
+        env = {k: v for k, v in os.environ.items()}
+        env.pop("HISTORY_TOKEN_SECRET", None)
+        alias = "api_gateway_main_notoken_test"
+        try:
+            with patch.dict(os.environ, env, clear=True):
+                with pytest.raises(ValueError, match="HISTORY_TOKEN_SECRET"):
+                    load_function_module("api_gateway", alias)
+        finally:
+            sys.modules.pop(alias, None)
+
+
+# ===========================================================================
+# T2 — 500 responses must not leak exception detail to clients
+# ===========================================================================
+class TestFiveHundredResponseSafety:
+    def test_history_list_500_does_not_leak_exception(self):
+        req = _authed_request(method="GET", path="/jobs/history")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                _stub_endpoint_rate_limit(),
+                patch.object(gw, "_history_query_from_request", side_effect=RuntimeError("secret db path /sensitive")),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 500
+        assert "secret db path" not in data.get("error", "")
+        assert data["error"] == "Failed to load search history. Please try again."
+
+    def test_history_csv_export_500_does_not_leak_exception(self):
+        req = _authed_request(method="GET", path="/jobs/history/export.csv")
+        with _app.test_request_context():
+            with (
+                patch.object(gw, "CORS_ALLOWED_ORIGINS", "*"),
+                _stub_auth("u1"),
+                _stub_endpoint_rate_limit(),
+                patch.object(gw, "_history_query_from_request", side_effect=RuntimeError("secret collection name")),
+            ):
+                data, status, _ = _parse_response(main_handler(req))
+        assert status == 500
+        assert "secret collection name" not in data.get("error", "")
+        assert data["error"] == "Failed to export search history. Please try again."
