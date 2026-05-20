@@ -485,6 +485,7 @@ resource "google_cloudfunctions2_function" "api_gateway" {
       HISTORY_TOKEN_SECRET        = nonsensitive(random_password.history_token_secret.result)
       PREFILL_SESSION_TTL_MINUTES = "10"
       FRONTEND_RESULTS_BASE_URL   = var.frontend_results_base_url
+      JOB_RETENTION_DAYS          = tostring(var.job_retention_days)
     }
   }
 

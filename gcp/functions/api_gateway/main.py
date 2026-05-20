@@ -86,8 +86,11 @@ if not CORS_ALLOWED_ORIGINS:
         "CORS_ALLOWED_ORIGINS must be explicitly configured. Use '*' only for deliberate development usage."
     )
 
-# Job document retention (aligned with report generators and frontend chat TTL)
-JOB_RETENTION_DAYS = 7
+# Job document retention (aligned with report generators and frontend chat TTL).
+# Configurable per-environment via JOB_RETENTION_DAYS env var; defaults to 7.
+JOB_RETENTION_DAYS = int(os.environ.get("JOB_RETENTION_DAYS") or "7")
+if JOB_RETENTION_DAYS < 1:
+    raise ValueError(f"JOB_RETENTION_DAYS must be >= 1; got {JOB_RETENTION_DAYS}")
 
 # Chrome extension → web app prefill (Firestore collection prefill_sessions)
 EXTENSION_PREFILL_SECRET = (os.environ.get("EXTENSION_PREFILL_SECRET") or "").strip()
@@ -753,6 +756,8 @@ HISTORY_LIST_RATE_LIMIT_MAX = 120
 HISTORY_LIST_RATE_LIMIT_WINDOW_SECONDS = 3600
 CSV_EXPORT_RATE_LIMIT_MAX = 10
 CSV_EXPORT_RATE_LIMIT_WINDOW_SECONDS = 3600
+CSV_EXPORT_DAILY_RATE_LIMIT_MAX = 50
+CSV_EXPORT_DAILY_RATE_LIMIT_WINDOW_SECONDS = 86400
 FEEDBACK_GET_RATE_LIMIT_MAX = 120
 FEEDBACK_GET_RATE_LIMIT_WINDOW_SECONDS = 3600
 
@@ -1088,18 +1093,36 @@ def _history_query_from_request(request: Request) -> tuple[Any, dict[str, str], 
 
 
 def handle_history_users(request: Request, headers: dict):
-    """Return distinct skiptrace users for populating the history user filter."""
+    """Return distinct skiptrace users active within the retention window, for autocomplete."""
     uid, auth_error = verify_firebase_token(request)
     if auth_error:
         return jsonify(auth_error), 401, headers
     try:
-        doc = db.collection("meta").document("skiptrace_users").get()
-        users_map = (doc.to_dict() or {}).get("users", {}) if doc.exists else {}
-        users = sorted(users_map.values(), key=lambda u: (u.get("user_email") or "").lower())
+        # Look back over the full retention window so the autocomplete reflects who is currently
+        # represented in the search history (not a separate doc that could drift).
+        window_start = datetime.utcnow() - timedelta(days=JOB_RETENTION_DAYS)
+        docs = (
+            db.collection("jobs")
+            .where("workflow_type", "==", "skiptrace")
+            .where("created_at", ">=", window_start)
+            .stream()
+        )
+        seen: dict[str, dict] = {}
+        for doc in docs:
+            data = doc.to_dict() or {}
+            user_id = data.get("user_id")
+            if not user_id or user_id in seen:
+                continue
+            seen[user_id] = {
+                "user_id": user_id,
+                "user_email": data.get("user_email"),
+                "user_name": data.get("user_name"),
+            }
+        users = sorted(seen.values(), key=lambda u: (u.get("user_email") or "").lower())
     except Exception as e:
         logger.error("Failed to load skiptrace users: %s", e)
         users = []
-    print(f"[ApiGateway] history_users user={uid} count={len(users)}")
+    print(f"[ApiGateway] history_users viewer={uid} count={len(users)}")
     return jsonify({"users": users}), 200, headers
 
 
@@ -1218,6 +1241,16 @@ def handle_history_csv_export(request: Request, headers: dict):
     ):
         print(f"[ApiGateway] history_csv_export RATE_LIMITED viewer={uid}")
         return jsonify({"error": "CSV export rate limit exceeded. Maximum 10 exports per hour."}), 429, headers
+
+    if not check_and_record_endpoint_rate_limit(
+        uid,
+        "history_csv_export_daily",
+        CSV_EXPORT_DAILY_RATE_LIMIT_MAX,
+        CSV_EXPORT_DAILY_RATE_LIMIT_WINDOW_SECONDS,
+        fail_closed=True,
+    ):
+        print(f"[ApiGateway] history_csv_export RATE_LIMITED_DAILY viewer={uid}")
+        return jsonify({"error": "CSV export daily limit exceeded. Maximum 50 exports per 24 hours."}), 429, headers
 
     try:
         query, csv_params, csv_mode = _history_query_from_request(request)
@@ -1449,24 +1482,6 @@ def handle_investigation(request: Request, headers: dict, workflow_name: str):
         user_email=user_profile["user_email"],
         user_name=user_profile["user_name"],
     )
-
-    # Track skiptrace users for history filter autocomplete
-    if is_skiptrace:
-        try:
-            db.collection("meta").document("skiptrace_users").set(
-                {
-                    "users": {
-                        user_id: {
-                            "user_id": user_id,
-                            "user_email": user_profile["user_email"],
-                            "user_name": user_profile["user_name"],
-                        }
-                    }
-                },
-                merge=True,
-            )
-        except Exception as e:
-            print(f"[ApiGateway] WARNING: failed to update skiptrace_users: {e}")
 
     # Trigger workflow (async), then mark job as pending
     try:
