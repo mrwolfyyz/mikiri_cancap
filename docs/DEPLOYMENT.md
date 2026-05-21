@@ -183,6 +183,8 @@ Key variables to configure:
 | `google_workspace_oauth_client_secret_id` | Secret Manager secret name containing OAuth client secret | `"workspace-oauth-client-secret"` |
 | `app_check_enforced` | Enforce Firebase App Check token verification in API gateway | `true` |
 | `enable_iap` | Phase 2 toggle to remove public `allUsers` invoker | `false` |
+| `job_retention_days` | Days to retain job documents before TTL-based deletion (min 1; default 7). Interacts with cross-user search-history visibility — see [Skiptrace search history](#skiptrace-search-history-cross-user-visibility). | `7` |
+| `frontend_results_base_url` | Absolute base URL used to build deep links in CSV exports (e.g. results page links). Empty = relative path fallback. | `"https://PROJECT-skiptrace.web.app"` |
 
 ### Required for SSO: OAuth Secret in Secret Manager (Before Terraform Plan/Apply)
 
