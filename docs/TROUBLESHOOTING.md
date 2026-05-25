@@ -68,18 +68,57 @@ Error: googleapi: Error 403: The caller does not have permission
 Error: Error creating ...: googleapi: Error 409: Resource already exists
 ```
 
-**Solution:**
+This means the resource exists in GCP but not in Terraform state — typically from a manual creation in the console/gcloud, or from a partial apply where the GCP create succeeded but the state write failed.
 
-1. Import the existing resource:
+**Solution:** prefer `terraform import` over `state rm`. `state rm` followed by `terraform apply` only works if Terraform can recreate the resource; for resources where recreation triggers downtime or behaviour change (IAM bindings, Vertex AI Search corpora, anything indexed), import is safer.
+
+1. **Find the GCP resource name.** For most resources `gcloud <service> list` works. For Vertex AI Search target sites (where the resource ID is an opaque base64 blob), you must call the Discovery Engine REST API directly:
    ```bash
-   terraform import RESOURCE_TYPE.RESOURCE_NAME RESOURCE_ID
+   TOKEN=$(gcloud auth print-access-token)
+   curl -s -H "Authorization: Bearer $TOKEN" \
+        -H "x-goog-user-project: PROJECT_ID" \
+        "https://discoveryengine.googleapis.com/v1/projects/PROJECT_ID/locations/global/collections/default_collection/dataStores/DATA_STORE_ID/siteSearchEngine/targetSites?pageSize=200"
+   ```
+   The `x-goog-user-project` header is required — without it the API returns `403 PERMISSION_DENIED` complaining about a missing quota project.
+
+2. **Import into state:**
+   ```bash
+   terraform import 'module.path.RESOURCE_TYPE.RESOURCE_NAME' 'FULL_GCP_RESOURCE_NAME'
    ```
 
-2. Or remove from state and recreate:
+3. **Re-plan.** Terraform will show whatever diff exists between the imported real-world state and your config (often an attribute drift). If the diff requires a replace and that's unacceptable, either adjust the config to match reality or accept the brief downtime.
+
+---
+
+### Error: state move blocked — destination already exists
+
+**Symptom:**
+```
+Warning: Unresolved resource instance address changes
+  - module.X.RESOURCE_A could not move to module.X.RESOURCE_B[0]
+Terraform has planned to destroy these objects.
+```
+
+`moved {}` blocks in the module code told Terraform to rename a resource, but both addresses already exist in state — usually because a prior targeted apply (or `terraform import`) created the new name without removing the old. The planned `destroy` will resolve the duplicate **in state**, but it will also call the underlying API to delete the real resource.
+
+**This is especially dangerous for `google_*_iam_member` resources.** Deleting one of two duplicate state entries that point to the same binding removes the binding from GCP. The "winning" address remains in state as a no-op, so it won't re-create the binding until the next apply detects drift — meanwhile the real binding is gone.
+
+**Solution:** drop the stale duplicate from state without calling the API.
+
+1. Verify both addresses point to the same real resource (matching `id`, `etag`, role/member):
    ```bash
-   terraform state rm RESOURCE_TYPE.RESOURCE_NAME
-   terraform apply
+   terraform show -json PLAN_FILE | jq '.resource_changes[] | select(.address | contains("RESOURCE_NAME"))'
    ```
+
+2. Remove the stale name from state (the one that's NOT the new canonical name from the `moved` block):
+   ```bash
+   terraform state rm 'module.path.RESOURCE_TYPE.STALE_NAME'
+   ```
+   `state rm` only edits the local state JSON. It does not call any GCP API.
+
+3. Re-plan. The destroy entry should disappear; the surviving address (already a no-op) continues to manage the real resource.
+
+If you accidentally accept the planned destroy on an IAM resource, recovery is `terraform apply` again immediately — drift detection will re-create the binding, but there will be a gap during which public/cross-service access is revoked.
 
 ---
 

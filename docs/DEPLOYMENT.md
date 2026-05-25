@@ -563,6 +563,21 @@ cd ../origination
 firebase deploy --only hosting
 ```
 
+### Reconciling after a stretch of targeted applies
+
+`terraform apply -target=...` is convenient for shipping one function at a time, but each targeted run skips drift detection for everything else. Over weeks of targeted-only deploys, two kinds of state inconsistency can accumulate silently and only surface on the next full apply:
+
+- **Duplicate state entries.** Resources renamed via `moved {}` blocks can end up registered under both the old and new addresses if a targeted apply (or a `terraform import`) touched the resource without triggering the `moved` reconciliation.
+- **Out-of-band GCP resources.** Anything created in the console / via `gcloud` / by a partial apply that failed after the GCP create will exist in GCP but not in state. The next full apply hits `409 already exists`.
+
+**Mitigation:** run a non-targeted `terraform plan` (apply optional) periodically — monthly is a reasonable cadence — so these issues surface as warnings while you have time to fix them, rather than mid-deploy. The plan output is read-only; running it costs nothing.
+
+**Recovery recipes** for both patterns are in [TROUBLESHOOTING.md](./TROUBLESHOOTING.md):
+- [Error: "Resource already exists"](./TROUBLESHOOTING.md#error-resource-already-exists) — for out-of-band GCP resources (use `terraform import`, not `state rm`, especially for indexed or IAM resources).
+- [Error: state move blocked — destination already exists](./TROUBLESHOOTING.md#error-state-move-blocked--destination-already-exists) — for `moved {}` duplicate-state warnings (use `terraform state rm` on the stale address; never accept the planned `destroy` on `*_iam_member` resources).
+
+---
+
 ### Upgrading to the Strict SSO + App Check Baseline
 
 **When to use this**: moving an environment deployed under the previous (anonymous-auth-allowed, App Check unenforced) baseline to the strict SSO + App Check baseline. This is a one-time migration per environment; after it completes, future updates follow the routine "Update Functions" / "Update Frontend" flows above.
