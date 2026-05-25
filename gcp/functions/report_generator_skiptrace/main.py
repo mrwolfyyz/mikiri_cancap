@@ -427,6 +427,27 @@ def on_job_updated(event: CloudEvent) -> None:
                 update_data["markdown_reports"] = markdown_reports
                 print("[SkipTraceReportGenerator] ✓ Stored markdown reports in Firestore for chat feature")
 
+            # Auto-submit negative feedback when no high-confidence social handles found.
+            # Surfaces in search history and CSV export as an engineering signal of "dud" jobs.
+            # Lands atomically with the status flip via the same set(merge=True) call.
+            top_handles = (report_data.get("scored") or {}).get("top_handles") or []
+            has_high_conf_handle = any(h.get("confidence") == "high" for h in top_handles)
+            already_auto_flagged = any(e.get("auto_submitted") for e in (doc_data.get("feedback_entries") or []))
+            if not has_high_conf_handle and not already_auto_flagged:
+                auto_feedback_entry = {
+                    "rating": "negative",
+                    "comment": "Auto-submitted: no high-confidence social handles found.",
+                    "submitted_at": datetime.utcnow(),
+                    "user_id": "system:auto",
+                    "user_email": "system@auto",
+                    "auto_submitted": True,
+                }
+                update_data["feedback_entries"] = firestore.ArrayUnion([auto_feedback_entry])
+                print(
+                    f"[SkipTraceReportGenerator] Auto-submitted negative feedback "
+                    f"(no high-conf handles) job_id={job_id}"
+                )
+
             job_ref.set(update_data, merge=True)
 
             print("[SkipTraceReportGenerator] ✓ Updated Firestore: status=complete, reports_generated=true")

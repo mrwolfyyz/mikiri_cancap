@@ -565,6 +565,114 @@ class TestOnJobUpdated:
         update_data = mock_ref.set.call_args[0][0]
         assert update_data["status"] == "complete"
 
+    # --- Auto-submit negative feedback when no high-confidence social handles ---
+
+    def _run_with_handles(self, top_handles, existing_feedback_entries=None):
+        """Helper: run on_job_updated with a configurable top_handles list and
+        optional pre-existing feedback_entries on the job document. Returns the
+        update_data passed to job_ref.set and the mock_ref for further assertions."""
+        identity_data = {
+            "identity": {
+                "seed": {"full_name": "John Doe", "email": "john@example.com"},
+                "scored": {"top_handles": top_handles},
+                "contactability": {"score": "Good"},
+                "breaches": [],
+                "queries": [],
+                "grounding_metadata": {},
+            },
+            "enrichment": {
+                "domains": {},
+                "addresses": {},
+                "contacts": {"phones": [], "emails": [], "addresses": []},
+            },
+        }
+        data = {
+            "status": "post_processing",
+            "workflow_type": "skiptrace",
+            "input": {"full_name": "John Doe", "drive_folder_id": ""},
+            "result": json.dumps(identity_data),
+        }
+        if existing_feedback_entries is not None:
+            data["feedback_entries"] = existing_feedback_entries
+
+        mock_doc = _mock_firestore_doc(data)
+        mock_ref = MagicMock()
+        mock_ref.get.return_value = mock_doc
+
+        mock_client = MagicMock()
+        mock_client.collection.return_value.document.return_value = mock_ref
+
+        def fake_generate(report_data, borrower_name, output_dir, **kwargs):
+            md_file = output_dir / f"Identity___{borrower_name.replace(' ', '_')}.md"
+            md_file.write_text("# Identity Report")
+
+        # Reset ArrayUnion mock so per-test call inspection is clean
+        rgs_main.firestore.ArrayUnion.reset_mock()
+
+        with patch.object(rgs_main, "firestore_client", mock_client), patch.object(rgs_main, "md_gen") as mock_md:
+            mock_md.generate_identity_report_skiptrace = fake_generate
+            on_job_updated(_make_cloud_event())
+
+        update_data = mock_ref.set.call_args[0][0]
+        return update_data, mock_ref
+
+    def test_auto_feedback_written_when_no_high_conf_handles(self):
+        """Job with only medium/low confidence handles → auto-feedback entry written."""
+        top_handles = [
+            {"platform": "linkedin", "handle": "jdoe", "confidence": "medium"},
+            {"platform": "twitter", "handle": "jd", "confidence": "low"},
+        ]
+        update_data, _ = self._run_with_handles(top_handles)
+
+        assert update_data["status"] == "complete"
+        assert "feedback_entries" in update_data
+        rgs_main.firestore.ArrayUnion.assert_called_once()
+        entries_arg = rgs_main.firestore.ArrayUnion.call_args[0][0]
+        assert len(entries_arg) == 1
+        entry = entries_arg[0]
+        assert entry["rating"] == "negative"
+        assert entry["user_id"] == "system:auto"
+        assert entry["user_email"] == "system@auto"
+        assert entry["auto_submitted"] is True
+        assert "no high-confidence social handles" in entry["comment"]
+
+    def test_auto_feedback_skipped_when_high_conf_handle_present(self):
+        """Job with at least one high-confidence handle → no auto-feedback written."""
+        top_handles = [
+            {"platform": "linkedin", "handle": "jdoe", "confidence": "high"},
+            {"platform": "twitter", "handle": "jd", "confidence": "low"},
+        ]
+        update_data, _ = self._run_with_handles(top_handles)
+
+        assert update_data["status"] == "complete"
+        assert "feedback_entries" not in update_data
+        rgs_main.firestore.ArrayUnion.assert_not_called()
+
+    def test_auto_feedback_written_when_handles_empty(self):
+        """Empty top_handles list → auto-feedback entry written (treated as no high-conf)."""
+        update_data, _ = self._run_with_handles([])
+
+        assert update_data["status"] == "complete"
+        assert "feedback_entries" in update_data
+        rgs_main.firestore.ArrayUnion.assert_called_once()
+
+    def test_auto_feedback_idempotent_when_already_flagged(self):
+        """Job already has an auto_submitted entry → no new auto-feedback written
+        even if no high-conf handles. Protects against Cloud Functions retries."""
+        existing = [
+            {
+                "rating": "negative",
+                "comment": "Auto-submitted: no high-confidence social handles found.",
+                "user_id": "system:auto",
+                "auto_submitted": True,
+            }
+        ]
+        update_data, _ = self._run_with_handles([], existing_feedback_entries=existing)
+
+        assert update_data["status"] == "complete"
+        assert "feedback_entries" not in update_data
+        rgs_main.firestore.ArrayUnion.assert_not_called()
+
 
 # ===========================================================================
 # Drive helper functions
