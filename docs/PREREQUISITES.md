@@ -17,6 +17,14 @@ This document outlines all prerequisites needed before deploying the Skip Trace 
 
 ### 1. Create a GCP Project
 
+> ⚠ **Project ID length constraint — choose a project ID ≤ 18 characters.**
+> Firebase Hosting site IDs (`${project_id}-skiptrace` and
+> `${project_id}-origination`) are capped at 30 characters. The `-origination`
+> suffix consumes 12 chars, so the project ID itself must be ≤ 18 chars or
+> `terraform apply` will fail late when creating the hosting sites. `terraform
+> plan` does **not** catch this — the API call does, after the project,
+> state bucket, OAuth client, and most resources are already created.
+
 **Option A: Using Google Cloud Console**
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com)
@@ -83,9 +91,14 @@ gcloud projects get-iam-policy $PROJECT_ID --flatten="bindings[].members" \
 
 ### 4. Enable Required APIs
 
-**Note**: Terraform automatically enables these APIs during deployment. You don't need to enable them manually unless you want to verify they're enabled beforehand.
+**Note**: Terraform automatically enables most APIs during deployment, so this section is *mostly* optional.
 
-If you want to enable them manually (optional), run in **two batches** (`gcloud services enable` supports max 20 services per command):
+**However**, the following APIs **must be enabled before Terraform runs**, because steps below in this file (still in PREREQUISITES) call them directly:
+
+- `secretmanager.googleapis.com` — required by the OAuth-secret step in § 3 below.
+- `iam.googleapis.com` / `cloudresourcemanager.googleapis.com` — required by the IAM role check earlier in this section.
+
+The pragmatic choice is to just enable the full set now in **two batches** (`gcloud services enable` supports max 20 services per command). It costs nothing extra and avoids hitting `SERVICE_DISABLED` errors mid-flow:
 
 ```bash
 # Batch 1 (20 services)
@@ -127,6 +140,9 @@ REGION="northamerica-northeast1"
 gsutil mb -l $REGION -p $PROJECT_ID gs://${PROJECT_ID}-terraform-state
 
 # Enable versioning for state recovery
+# Note: on a freshly-created project, this command can 403 with
+# "storage.buckets.update denied" for ~30 seconds after `gsutil mb` while
+# bucket-level IAM propagates. If you hit that, wait 30s and re-run this line.
 gsutil versioning set on gs://${PROJECT_ID}-terraform-state
 ```
 
@@ -180,7 +196,8 @@ sudo apt-get install google-cloud-cli
 **Configure:**
 
 ```bash
-# Initialize and authenticate
+# Initialize and authenticate (only needed on a fresh gcloud install;
+# skip if `gcloud auth list` already shows an active account)
 gcloud init
 
 # Set default project
@@ -188,7 +205,9 @@ gcloud init
 gcloud config set project YOUR_PROJECT_ID
 
 # Set default region
-# Note: use --quiet to avoid a prompt to enable the Compute Engine API (not required)
+# Note: use --quiet to avoid a prompt to enable the Compute Engine API (not required).
+# You will see "WARNING: Property validation for compute/region was skipped." —
+# that is the expected counterpart of --quiet and is safe to ignore here.
 gcloud config set compute/region northamerica-northeast1 --quiet
 
 # Authenticate application default credentials (for Terraform)
@@ -207,14 +226,17 @@ ADC_CLIENT_ID=$(cat ~/.config/gcloud/application_default_credentials.json | grep
 if [ "$ADC_CLIENT_ID" = "$PROJECT_NUMBER" ]; then
   echo "✓ OAuth client project matches target project"
 else
-  echo "✗ ERROR: OAuth client project mismatch. Re-authenticate with correct project active:"
-  echo "   gcloud config set project YOUR_PROJECT_ID"
-  echo "   gcloud auth application-default login"
-  echo "   gcloud auth application-default set-quota-project YOUR_PROJECT_ID"
+  echo "⚠ NOTE: OAuth client project does not match target project."
+  echo "   This is expected when ADC uses gcloud's shared client (client ID prefix"
+  echo "   764086051850) — which is the default on most setups. For projects where"
+  echo "   you have created a project-bound Web OAuth client in Console (used by"
+  echo "   Firebase Auth, not by ADC), terraform apply will still succeed."
+  echo "   If terraform apply fails on google_identity_platform_config, see"
+  echo "   TROUBLESHOOTING.md § Unable to initialize authentication for workarounds."
 fi
 ```
 
-**Note**: The order matters! Always set the project before authenticating ADC (`gcloud auth application-default login`). However, the OAuth client used by ADC may belong to an organization-level or account-level project that cannot be changed by simply setting the active project. If the OAuth client project doesn't match your target project, the Identity Platform API will fail even with quota project set correctly. This is a known limitation when using organization-level OAuth clients. See [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) for workarounds (manual Firebase Console configuration or service account authentication).
+**Note**: The order matters — always set the project before authenticating ADC (`gcloud auth application-default login`). On most setups the OAuth client that ADC uses is gcloud's well-known shared client (ID prefix `764086051850`), which is **not** project-bound; that mismatch is normal and does not cause failures by itself. The corner case to watch is **organization-managed GCP setups** where an org-level OAuth client AND an org policy together can block the Identity Platform API during `terraform apply`. If you encounter that specific failure, see [TROUBLESHOOTING.md § "Unable to initialize authentication"](./TROUBLESHOOTING.md#error-unable-to-initialize-authentication-frontend-authentication-error) for the Firebase Console workaround.
 
 #### Google Cloud Shell: ADC file location
 
@@ -422,7 +444,8 @@ Run through this checklist before deployment. **Verify each item with the comman
 
 - [ ] **Terraform state bucket created with versioning**
   ```bash
-  # Verify bucket exists
+  # Verify bucket exists (empty output is expected on a fresh bucket — the
+  # command succeeds; it just has nothing to list yet)
   gsutil ls gs://${PROJECT_ID}-terraform-state
   
   # Verify versioning is enabled

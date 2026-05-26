@@ -12,6 +12,28 @@ region     = "northamerica-northeast1"
 # Include firebaseapp.com domains too if your team uses them.
 cors_allowed_origins = "https://YOUR_PROJECT_ID-skiptrace.web.app,https://YOUR_PROJECT_ID-origination.web.app,https://YOUR_PROJECT_ID-skiptrace.firebaseapp.com,https://YOUR_PROJECT_ID-origination.firebaseapp.com"
 
-# Days to retain skiptrace/origination job documents in Firestore. Minimum 1; default 7.
-# Lower values reduce data exposure but also shorten the search-history window available to internal users.
+# -----------------------------------------------------------------------------
+# Google Workspace SSO (REQUIRED — module validations enforce these in prod)
+# -----------------------------------------------------------------------------
+# Create the OAuth client first (see PREREQUISITES.md § Google Workspace OAuth
+# Client) and store its client secret in Secret Manager as
+# "workspace-oauth-client-secret" before running `terraform plan`.
+
+google_workspace_oauth_client_id        = "REPLACE_WITH_OAUTH_CLIENT_ID.apps.googleusercontent.com"
+allowed_email_domains                   = ["yourcorp.com"]
+google_workspace_oauth_client_secret_id = "workspace-oauth-client-secret"
+
+# Absolute base URL used to build deep links in CSV exports (e.g. Results page
+# links). Leave empty for relative-path fallback. Typically points at the
+# skiptrace frontend hosting URL.
+frontend_results_base_url = "https://YOUR_PROJECT_ID-skiptrace.web.app"
+
+# -----------------------------------------------------------------------------
+# Firestore job document retention
+# -----------------------------------------------------------------------------
+# Days to retain job documents in Firestore before TTL-based deletion (min 1).
+# This is also the maximum search-history window available to internal users
+# (see DEPLOYMENT.md § "Skiptrace search history"). Set per your organization's
+# data retention policy — lower values reduce data exposure but shorten how far
+# back the search history can go.
 job_retention_days = 7

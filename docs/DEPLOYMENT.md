@@ -122,12 +122,13 @@ ADC_CLIENT_ID=$(cat ~/.config/gcloud/application_default_credentials.json | grep
 if [ "$ADC_CLIENT_ID" = "$PROJECT_NUMBER" ]; then
   echo "✓ OAuth client project matches target project"
 else
-  echo "⚠️  WARNING: OAuth client project ($ADC_CLIENT_ID) does not match target project ($PROJECT_NUMBER)"
-  echo "   This will cause Identity Platform API to fail during terraform apply."
-  echo "   Try re-authenticating ADC (may not work if OAuth client is org-level):"
-  echo "   gcloud auth application-default login"
-  echo "   gcloud auth application-default set-quota-project PROJECT_ID"
-  echo "   If this doesn't fix it, configure Identity Platform manually via Firebase Console post-deployment."
+  echo "⚠️  NOTE: OAuth client project ($ADC_CLIENT_ID) does not match target project ($PROJECT_NUMBER)."
+  echo "   This is expected when ADC uses gcloud's shared client (prefix 764086051850),"
+  echo "   which is the default on most setups. For projects where you created a"
+  echo "   project-bound Web OAuth client in Console (used by Firebase Auth, not by"
+  echo "   ADC), terraform apply will still succeed."
+  echo "   If terraform apply fails on google_identity_platform_config, see"
+  echo "   TROUBLESHOOTING.md § Unable to initialize authentication for workarounds."
 fi
 
 # Verify Firebase authentication
@@ -315,7 +316,13 @@ terraform apply
 # Type 'yes' when prompted
 ```
 
-**Note**: If you encounter errors about Eventarc or Workflows service agents not existing, wait 5-10 minutes for service agents to propagate after API enablement, then run `terraform apply` again. The Identity Platform Config resource may fail due to OAuth client mismatch (documented in PREREQUISITES.md) - this is expected and non-blocking if you configure authentication manually via Firebase Console.
+**Note**: On a brand-new project, the first `terraform apply` commonly hits one or more of the following — all documented:
+
+- **Eventarc / Workflows service agent missing** (`...does not exist`). Google-managed service agents are created when the API is enabled but can take 2-3 minutes to propagate. Wait 5-10 minutes and re-run `terraform apply`. See [TROUBLESHOOTING.md § "Eventarc Service Account does not exist"](./TROUBLESHOOTING.md#error-eventarc-service-account-does-not-exist).
+- **Firestore index "already exists" (409)** on several `jobs` indexes. Race condition where the GCP create succeeded but Terraform did not record the result in state. Resolve by `terraform import`ing the existing indexes — recipe in [TROUBLESHOOTING.md § "Resource already exists"](./TROUBLESHOOTING.md#error-resource-already-exists).
+- **`google_identity_platform_config` failure**. Only happens when your ADC uses an org-level OAuth client AND the org blocks Identity Platform calls. For most setups (fresh project with a project-bound Web OAuth client in Console), this resource succeeds. If it does fail, the failure is non-blocking — see [TROUBLESHOOTING.md § "Unable to initialize authentication"](./TROUBLESHOOTING.md#error-unable-to-initialize-authentication-frontend-authentication-error) for the Firebase Console workaround.
+
+Plan: re-run `terraform apply` (after a short wait for SA propagation) and resolve any 409s with `terraform import`. A clean apply at the end is the goal.
 
 This will:
 - Enable required GCP APIs
@@ -353,7 +360,10 @@ ls -la chrome-extension/config.js
 
 ### Step 4: Add Secret Values
 
-Terraform creates empty secrets. Add the remaining runtime values:
+Terraform creates the secret containers and seeds each with a placeholder
+version (so the function deploys don't fail to mount the secret). You now need
+to add a real value as a **new version** — the function will pick up the latest
+enabled version on its next invocation:
 
 ```bash
 # Set your project ID (or add --project=PROJECT_ID to each command)
@@ -398,7 +408,7 @@ firebase use PROJECT_ID
 cat .firebaserc
 ```
 
-**Note**: The `.firebaserc` file should reference your project ID. If it doesn't exist or is incorrect, Firebase CLI will prompt you during deployment.
+**Note**: `firebase use PROJECT_ID` sets the active project for this directory in Firebase's per-user state — it does **not** rewrite the `default` entry in `.firebaserc`. To verify the active project, run `firebase use` (no args); it should print your project ID. `.firebaserc` is mutated later by `firebase target:apply` (next step).
 
 ### Step 5b: Configure Firebase Hosting Targets
 

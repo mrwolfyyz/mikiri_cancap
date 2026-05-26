@@ -88,6 +88,31 @@ This means the resource exists in GCP but not in Terraform state — typically f
 
 3. **Re-plan.** Terraform will show whatever diff exists between the imported real-world state and your config (often an attribute drift). If the diff requires a replace and that's unacceptable, either adjust the config to match reality or accept the brief downtime.
 
+#### Special case: Firestore composite index race on first apply
+
+On a brand-new project, several `jobs` composite indexes commonly fail the first `terraform apply` with `Error 409: index already exists`. The GCP create succeeded but Terraform did not record the result in state — typically because indexes are created in parallel and the API returns the same ID before state writes complete.
+
+To map each failing Terraform address to its GCP index ID:
+
+```bash
+PROJECT_ID="your-project-id"
+
+# 1. Get all jobs indexes with their field shapes
+gcloud firestore indexes composite list --project=$PROJECT_ID --format=json \
+  | jq -r '.[] | "\(.name | split("/")[-1])  |  \([.fields[] | "\(.fieldPath):\(.order // .arrayConfig)"] | join(", "))"'
+```
+
+The output is one line per index: `<INDEX_ID>  |  field1:ORDER, field2:ORDER, ...`. Match each failing Terraform resource (e.g. `module.core.google_firestore_index.jobs_workflow_user_created_desc`) to the row whose fields match the resource's `fields { ... }` blocks in `terraform/modules/core/firestore.tf`. GCP appends `__name__:DESCENDING` to every index automatically — ignore that trailing field when matching unless the Terraform resource also declares an explicit `__name__` field.
+
+Then `terraform import` each one:
+
+```bash
+terraform import 'module.core.google_firestore_index.RESOURCE_NAME' \
+  'projects/PROJECT_ID/databases/(default)/collectionGroups/jobs/indexes/INDEX_ID'
+```
+
+After all imports, run `terraform plan`. The 409s disappear; any remaining `~`/`+`/`-` is normal post-import drift (commonly a regenerated `local_file.*` or in-place update on `google_identity_platform_config`). Re-run `terraform apply` to converge.
+
 ---
 
 ### Error: state move blocked — destination already exists
